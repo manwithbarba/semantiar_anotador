@@ -6,6 +6,9 @@ usando el buscador embebido (`autocomplete-binding`) restringido por jerarquía.
 Pensada para el flujo de calibración de anotadores del proyecto SEMANTIAR
 (corpus clínico en español rioplatense).
 
+> 📄 Descripción técnica detallada (integración con el servidor de terminología,
+> autocompletado, búsqueda multi-prefijo, FHIR API): [`docs/IMPLEMENTACION.md`](docs/IMPLEMENTACION.md).
+
 ## Flujo
 
 1. **Cargar JSON** con los textos a anotar (o **Ejemplo** para probar con los 15
