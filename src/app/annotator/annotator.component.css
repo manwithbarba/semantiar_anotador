@@ -223,6 +223,11 @@
   -webkit-text-fill-color: #9aa3b2;
 }
 
+/* Reserve space for the selected-concept chip so the layout doesn't shift */
+.chip-slot {
+  min-height: 24px;
+  margin-top: 2px;
+}
 .selected-chip {
   display: inline-flex;
   align-items: center;
@@ -232,7 +237,6 @@
   border-radius: 14px;
   padding: 2px 9px;
   font-size: 12px;
-  margin-top: 2px;
 }
 .selected-chip mat-icon {
   font-size: 15px;
