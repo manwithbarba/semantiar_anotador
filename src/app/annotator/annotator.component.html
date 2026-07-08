@@ -27,6 +27,12 @@
   <button mat-stroked-button (click)="loadExample()">
     <mat-icon>science</mat-icon> Ejemplo
   </button>
+  @if (loaded()) {
+    <button mat-stroked-button color="warn" (click)="clearAll()"
+            matTooltip="Limpiar todo y empezar de nuevo">
+      <mat-icon>restart_alt</mat-icon> Limpiar
+    </button>
+  }
   <button mat-flat-button color="accent" class="download-btn"
           [class.complete]="complete()" [disabled]="!loaded()" (click)="download()">
     <mat-icon>{{ complete() ? 'task_alt' : 'download' }}</mat-icon> Descargar
@@ -191,3 +197,18 @@
     </mat-card>
   }
 </div>
+
+<!-- Confirmation dialog for clearing with undownloaded work -->
+<ng-template #confirmClear>
+  <h2 mat-dialog-title>Limpiar y empezar de nuevo</h2>
+  <mat-dialog-content>
+    Hay anotaciones que <strong>no descargaste</strong>. Si limpiás el espacio de
+    trabajo se van a perder. ¿Querés continuar?
+  </mat-dialog-content>
+  <mat-dialog-actions align="end">
+    <button mat-button mat-dialog-close>Cancelar</button>
+    <button mat-flat-button color="warn" [mat-dialog-close]="true">
+      <mat-icon>restart_alt</mat-icon> Limpiar todo
+    </button>
+  </mat-dialog-actions>
+</ng-template>

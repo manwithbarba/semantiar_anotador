@@ -1,4 +1,4 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal, TemplateRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
@@ -12,6 +12,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 import { AutocompleteBindingComponent } from '../bindings/autocomplete-binding/autocomplete-binding.component';
@@ -50,6 +51,7 @@ import {
     MatTooltipModule,
     MatExpansionModule,
     MatProgressBarModule,
+    MatDialogModule,
     MatSnackBarModule,
     AutocompleteBindingComponent,
   ],
@@ -60,6 +62,9 @@ export class AnnotatorComponent implements OnInit {
   private http = inject(HttpClient);
   private terminologyService = inject(TerminologyService);
   private snackBar = inject(MatSnackBar);
+  private dialog = inject(MatDialog);
+
+  @ViewChild('confirmClear') confirmClearTpl!: TemplateRef<unknown>;
 
   readonly categories = CATEGORIES;
   readonly polarities = POLARITIES;
@@ -81,6 +86,9 @@ export class AnnotatorComponent implements OnInit {
 
   // Working set
   cases = signal<CaseAnnotation[]>([]);
+
+  /** True when there are annotation changes not yet downloaded. */
+  dirty = signal<boolean>(false);
 
   loaded = computed(() => this.cases().length > 0);
   annotatedCount = computed(
@@ -156,7 +164,33 @@ export class AnnotatorComponent implements OnInit {
       comentarios: String(c.comentarios ?? ''),
     }));
     this.cases.set(cases);
+    this.dirty.set(false);
     this.snackBar.open(`Cargados ${cases.length} casos.`, 'OK', { duration: 2500 });
+  }
+
+  // ---- Clear / start over ----
+
+  /** Clear everything; warn first if there is undownloaded annotation work. */
+  clearAll(): void {
+    if (this.dirty()) {
+      this.dialog
+        .open(this.confirmClearTpl, { width: '420px' })
+        .afterClosed()
+        .subscribe((ok) => {
+          if (ok) this.doClear();
+        });
+    } else {
+      this.doClear();
+    }
+  }
+
+  private doClear(): void {
+    this.cases.set([]);
+    this.project.set('');
+    this.batch.set('');
+    this.sourceFile.set('');
+    this.dirty.set(false);
+    this.snackBar.open('Espacio de trabajo limpio.', 'OK', { duration: 2000 });
   }
 
   // ---- Concept block editing ----
@@ -167,6 +201,7 @@ export class AnnotatorComponent implements OnInit {
       fn(copy[caseIdx]);
       return copy;
     });
+    this.dirty.set(true);
   }
 
   addConcept(caseIdx: number): void {
@@ -270,5 +305,6 @@ export class AnnotatorComponent implements OnInit {
     a.download = `SEMANTIAR_anotado${idPart}_${stamp}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    this.dirty.set(false);
   }
 }
