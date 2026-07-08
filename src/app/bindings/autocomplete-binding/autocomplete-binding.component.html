@@ -4,10 +4,7 @@
   }
   <input #inputElement type="text" placeholder="{{ formControl.value?.display || binding.title || 'Search...' }}" matInput [formControl]="formControl" [matAutocomplete]="auto" [readonly]="readonly" (blur)="onBlur()" (focus)="onFocus()">
   <!-- [value]="(formControl.value?.display) ? formControl.value.display : ''"> -->
-  @if (selectedConcept?.code) {
-    <mat-hint>SNOMED CT: {{ selectedConcept.code }}</mat-hint>
-  }
-  @if (!selectedConcept?.code && !errorState) {
+  @if (!selectedConcept?.code && !errorState && binding.note) {
     <mat-hint><span [innerHTML]="binding.note"></span></mat-hint>
   }
   @if (formControl.value && !readonly) {
