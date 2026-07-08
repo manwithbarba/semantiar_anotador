@@ -82,15 +82,24 @@ La búsqueda se restringe a la jerarquía elegida (root concepts verificados ví
 
 ## Servidor de terminología
 
-Configurable en la barra **Configuración de terminología** y por entorno:
+Un único servidor para dev y prod: **SnowstormX demo**
+(`https://implementation-demo.snomedtools.org/fhir`), definido en
+`src/environments/`. Configurable en vivo desde la barra **Configuración de
+terminología**.
 
-| Entorno | Servidor FHIR | Edición | Idioma |
-|---|---|---|---|
-| dev (`ng serve` / `ng build`) | `implementation-demo.snomedtools.org/fhir` | Internacional | en |
-| prod (`build:pages`) | `snomedbrowser.org/fhir` | Internacional | en |
+### Detección automática de edición
 
-Definidos en `src/environments/`. `snomedbrowser.org` solo acepta el origen de
-GitHub Pages (CORS), por eso en desarrollo se usa `implementation-demo`.
+Al iniciar (y con el botón **Re-detectar edición**), la app consulta el
+`CodeSystem` del servidor y elige:
+
+- **Argentina (`http://snomed.info/sct/11000221109`)** si está presente →
+  búsqueda **en español**.
+- **Internacional (`http://snomed.info/sct`)** como fallback → búsqueda
+  **en inglés**.
+
+La edición activa se muestra como badge en el panel de configuración. Cuando se
+cargue la edición argentina en el servidor, la app la usará automáticamente sin
+cambios de código.
 
 ## Desarrollo
 

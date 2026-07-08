@@ -38,7 +38,9 @@
   <mat-expansion-panel class="config-panel">
     <mat-expansion-panel-header>
       <mat-panel-title><mat-icon class="cfg-icon">settings</mat-icon> Configuración de terminología</mat-panel-title>
-      <mat-panel-description class="cfg-desc">{{ editionUri() }}</mat-panel-description>
+      <mat-panel-description class="cfg-desc">
+        <span class="edition-badge">{{ editionLabel() }}</span>
+      </mat-panel-description>
     </mat-expansion-panel-header>
     <div class="config-row">
       <mat-form-field appearance="outline" class="cfg-field">
@@ -53,6 +55,12 @@
         <mat-label>ID anotador</mat-label>
         <input matInput [ngModel]="annotatorId()" (ngModelChange)="annotatorId.set($event)" />
       </mat-form-field>
+    </div>
+    <div class="cfg-actions">
+      <span class="edition-active">Edición activa: <strong>{{ editionLabel() }}</strong></span>
+      <button mat-stroked-button (click)="detectEdition()">
+        <mat-icon>refresh</mat-icon> Re-detectar edición
+      </button>
     </div>
   </mat-expansion-panel>
 

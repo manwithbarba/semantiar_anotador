@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
@@ -56,7 +56,7 @@ import {
   templateUrl: './annotator.component.html',
   styleUrl: './annotator.component.css',
 })
-export class AnnotatorComponent {
+export class AnnotatorComponent implements OnInit {
   private http = inject(HttpClient);
   private terminologyService = inject(TerminologyService);
   private snackBar = inject(MatSnackBar);
@@ -77,6 +77,7 @@ export class AnnotatorComponent {
   // Terminology configuration (editable)
   terminologyServer = signal<string>(DEFAULT_TERMINOLOGY_SERVER);
   editionUri = signal<string>(DEFAULT_EDITION_URI);
+  editionLabel = signal<string>('Detectando edición…');
 
   // Working set
   cases = signal<CaseAnnotation[]>([]);
@@ -90,6 +91,23 @@ export class AnnotatorComponent {
     return total ? Math.round((this.annotatedCount() / total) * 100) : 0;
   });
   complete = computed(() => this.loaded() && this.annotatedCount() === this.cases().length);
+
+  ngOnInit(): void {
+    this.detectEdition();
+  }
+
+  /** Auto-select the Argentina edition (Spanish) if present, else International (English). */
+  detectEdition(): void {
+    this.editionLabel.set('Detectando edición…');
+    this.terminologyService.detectEdition(this.terminologyServer()).subscribe((info) => {
+      this.editionUri.set(info.editionUri);
+      this.editionLabel.set(info.label);
+      const msg = info.isArgentina
+        ? 'Edición Argentina detectada — búsqueda en español.'
+        : 'Edición Argentina no disponible — usando Internacional (inglés).';
+      this.snackBar.open(msg, 'OK', { duration: 4000 });
+    });
+  }
 
   // ---- Loading ----
 
@@ -214,11 +232,14 @@ export class AnnotatorComponent {
   onServerChange(value: string): void {
     this.terminologyServer.set(value);
     this.terminologyService.setTerminologyServer(value);
+    // Re-detect the edition on the new server.
+    this.detectEdition();
   }
 
   onEditionChange(value: string): void {
     this.editionUri.set(value);
     this.terminologyService.setEditionUri(value);
+    this.editionLabel.set('Edición manual');
   }
 
   // ---- Export ----

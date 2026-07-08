@@ -75,10 +75,17 @@ export const SUBJECTS: Subject[] = ['Paciente', 'Familiar'];
 
 export const MAX_CONCEPTS_PER_CASE = 10;
 
-// Terminology defaults come from the Angular environment (dev vs. prod server).
+// Terminology defaults come from the Angular environment.
 export const DEFAULT_TERMINOLOGY_SERVER = environment.terminologyServer;
 export const DEFAULT_EDITION_URI = environment.editionUri;
 export const DEFAULT_DISPLAY_LANGUAGE = environment.displayLanguage;
+
+/** SNOMED CT Argentina edition module. Preferred when present on the server. */
+export const AR_EDITION_URI = 'http://snomed.info/sct/11000221109';
+export const AR_DISPLAY_LANGUAGE = 'es';
+/** International edition (English fallback). */
+export const INTL_EDITION_URI = 'http://snomed.info/sct';
+export const INTL_DISPLAY_LANGUAGE = 'en';
 
 export function newConcept(): ConceptAnnotation {
   return {

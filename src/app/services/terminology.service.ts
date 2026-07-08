@@ -2,10 +2,24 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { catchError, map, Observable, of } from 'rxjs';
 import {
+  AR_DISPLAY_LANGUAGE,
+  AR_EDITION_URI,
   DEFAULT_DISPLAY_LANGUAGE,
   DEFAULT_EDITION_URI,
   DEFAULT_TERMINOLOGY_SERVER,
+  INTL_DISPLAY_LANGUAGE,
+  INTL_EDITION_URI,
 } from '../models/annotation.model';
+
+/** Result of edition auto-detection. */
+export interface EditionInfo {
+  editionUri: string;
+  displayLanguage: string;
+  /** Short human label for the UI, e.g. "Argentina (es)". */
+  label: string;
+  /** True when the Argentina edition was found on the server. */
+  isArgentina: boolean;
+}
 
 /**
  * Minimal terminology service: just enough for the autocomplete-binding component.
@@ -29,6 +43,54 @@ export class TerminologyService {
 
   setEditionUri(uri: string) {
     this.editionUri = uri || '';
+  }
+
+  /**
+   * Detect the best edition on the current server: prefer the Argentina edition
+   * (in Spanish) when present, otherwise fall back to International (English).
+   * Applies the result to the service state and returns it.
+   */
+  detectEdition(terminologyServer?: string): Observable<EditionInfo> {
+    const base = (terminologyServer || this.terminologyServer || '').replace(/\/$/, '');
+    const intl: EditionInfo = {
+      editionUri: INTL_EDITION_URI,
+      displayLanguage: INTL_DISPLAY_LANGUAGE,
+      label: 'Internacional (en)',
+      isArgentina: false,
+    };
+    if (!base) {
+      this.applyEdition(intl);
+      return of(intl);
+    }
+    const headers = new HttpHeaders({ Accept: 'application/fhir+json' });
+    return this.http
+      .get<any>(`${base}/CodeSystem?_elements=version,url`, { headers })
+      .pipe(
+        map((bundle: any) => {
+          const hasAr = (bundle?.entry ?? []).some((e: any) =>
+            String(e?.resource?.version ?? '').startsWith(AR_EDITION_URI)
+          );
+          const info: EditionInfo = hasAr
+            ? {
+                editionUri: AR_EDITION_URI,
+                displayLanguage: AR_DISPLAY_LANGUAGE,
+                label: 'Argentina (es)',
+                isArgentina: true,
+              }
+            : intl;
+          this.applyEdition(info);
+          return info;
+        }),
+        catchError(() => {
+          this.applyEdition(intl);
+          return of(intl);
+        })
+      );
+  }
+
+  private applyEdition(info: EditionInfo): void {
+    this.editionUri = info.editionUri;
+    this.displayLanguage = info.displayLanguage;
   }
 
   /**
