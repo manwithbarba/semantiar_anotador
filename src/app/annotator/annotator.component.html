@@ -24,9 +24,6 @@
   <button mat-stroked-button (click)="fileInput.click()">
     <mat-icon>upload_file</mat-icon> Cargar JSON
   </button>
-  <button mat-stroked-button (click)="loadExample()">
-    <mat-icon>science</mat-icon> Ejemplo
-  </button>
   @if (loaded()) {
     <button mat-stroked-button color="warn" (click)="clearAll()"
             matTooltip="Limpiar todo y empezar de nuevo">
@@ -71,13 +68,54 @@
   </mat-expansion-panel>
 
   @if (!loaded()) {
-    <div class="empty-state">
-      <mat-icon class="empty-icon">description</mat-icon>
-      <h2>No hay casos cargados</h2>
-      <p>Cargá un archivo JSON con los textos a anotar, o probá con el ejemplo.</p>
-      <button mat-flat-button color="primary" (click)="loadExample()">
-        <mat-icon>science</mat-icon> Cargar ejemplo
-      </button>
+    <div class="home">
+      <div class="home-card">
+        <div class="home-hero">
+          <mat-icon class="home-logo">local_hospital</mat-icon>
+          <h1>Anotador SNOMED CT</h1>
+          <p class="home-sub">Herramienta de anotación clínica del proyecto SEMANTIAR</p>
+        </div>
+
+        <ol class="home-steps">
+          <li>
+            <span class="step-num">1</span>
+            <mat-icon class="step-ic">upload_file</mat-icon>
+            <div class="step-txt">
+              <strong>Cargá el archivo JSON</strong>
+              <span>Subí el archivo que te asignó el administrador.</span>
+            </div>
+          </li>
+          <li>
+            <span class="step-num">2</span>
+            <mat-icon class="step-ic">edit_note</mat-icon>
+            <div class="step-txt">
+              <strong>Completá las anotaciones</strong>
+              <span>Codificá cada concepto clínico con SNOMED CT y su contexto.</span>
+            </div>
+          </li>
+          <li>
+            <span class="step-num">3</span>
+            <mat-icon class="step-ic">download</mat-icon>
+            <div class="step-txt">
+              <strong>Descargá el resultado</strong>
+              <span>Bajá el JSON anotado cuando termines todos los casos.</span>
+            </div>
+          </li>
+          <li>
+            <span class="step-num">4</span>
+            <mat-icon class="step-ic">mail</mat-icon>
+            <div class="step-txt">
+              <strong>Enviálo al administrador</strong>
+              <span>Mandá el archivo descargado por correo al administrador.</span>
+            </div>
+          </li>
+        </ol>
+
+        <button mat-flat-button color="primary" class="home-cta" (click)="fileInput.click()">
+          <mat-icon>upload_file</mat-icon> Cargar archivo JSON
+        </button>
+        <p class="home-hint">Formato aceptado: <code>.json</code></p>
+      </div>
     </div>
   }
 
