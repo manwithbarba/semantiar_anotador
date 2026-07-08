@@ -10,7 +10,6 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { MatExpansionModule } from '@angular/material/expansion';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
@@ -49,7 +48,6 @@ import {
     MatFormFieldModule,
     MatInputModule,
     MatTooltipModule,
-    MatExpansionModule,
     MatProgressBarModule,
     MatDialogModule,
     MatSnackBarModule,
@@ -65,6 +63,7 @@ export class AnnotatorComponent implements OnInit {
   private dialog = inject(MatDialog);
 
   @ViewChild('confirmClear') confirmClearTpl!: TemplateRef<unknown>;
+  @ViewChild('settingsDialog') settingsTpl!: TemplateRef<unknown>;
 
   readonly categories = CATEGORIES;
   readonly polarities = POLARITIES;
@@ -110,11 +109,19 @@ export class AnnotatorComponent implements OnInit {
     this.terminologyService.detectEdition(this.terminologyServer()).subscribe((info) => {
       this.editionUri.set(info.editionUri);
       this.editionLabel.set(info.label);
-      const msg = info.isArgentina
-        ? 'Edición Argentina detectada — búsqueda en español.'
-        : 'Edición Argentina no disponible — usando Internacional (inglés).';
-      this.snackBar.open(msg, 'OK', { duration: 4000 });
+      // No notice on success (Argentina present). Only warn on the English fallback.
+      if (!info.isArgentina) {
+        this.snackBar.open(
+          'Edición Argentina no disponible — usando Internacional (inglés).',
+          'OK',
+          { duration: 4000 }
+        );
+      }
     });
+  }
+
+  openSettings(): void {
+    this.dialog.open(this.settingsTpl, { width: '540px' });
   }
 
   // ---- Loading ----

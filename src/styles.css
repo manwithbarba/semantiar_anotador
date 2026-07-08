@@ -1,4 +1,8 @@
 /* You can add global styles to this file, and also import other style files */
+:root {
+  /* Brand color — global so it's available in CDK overlays (dialogs) too */
+  --brand: #2d3e5f;
+}
 html, body {
   height: 100%;
 }

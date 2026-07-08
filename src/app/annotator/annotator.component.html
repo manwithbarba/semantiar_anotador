@@ -34,39 +34,13 @@
           [class.complete]="complete()" [disabled]="!loaded()" (click)="download()">
     <mat-icon>{{ complete() ? 'task_alt' : 'download' }}</mat-icon> Descargar
   </button>
+  <button mat-icon-button class="settings-btn" (click)="openSettings()"
+          matTooltip="Configuración de terminología">
+    <mat-icon>settings</mat-icon>
+  </button>
 </mat-toolbar>
 
 <div class="content">
-  <!-- Configuration -->
-  <mat-expansion-panel class="config-panel">
-    <mat-expansion-panel-header>
-      <mat-panel-title><mat-icon class="cfg-icon">settings</mat-icon> Configuración de terminología</mat-panel-title>
-      <mat-panel-description class="cfg-desc">
-        <span class="edition-badge">{{ editionLabel() }}</span>
-      </mat-panel-description>
-    </mat-expansion-panel-header>
-    <div class="config-row">
-      <mat-form-field appearance="outline" class="cfg-field">
-        <mat-label>Servidor FHIR</mat-label>
-        <input matInput [ngModel]="terminologyServer()" (ngModelChange)="onServerChange($event)" />
-      </mat-form-field>
-      <mat-form-field appearance="outline" class="cfg-field">
-        <mat-label>Edición (URI)</mat-label>
-        <input matInput [ngModel]="editionUri()" (ngModelChange)="onEditionChange($event)" />
-      </mat-form-field>
-      <mat-form-field appearance="outline" class="cfg-field cfg-short">
-        <mat-label>ID anotador</mat-label>
-        <input matInput [ngModel]="annotatorId()" (ngModelChange)="annotatorId.set($event)" />
-      </mat-form-field>
-    </div>
-    <div class="cfg-actions">
-      <span class="edition-active">Edición activa: <strong>{{ editionLabel() }}</strong></span>
-      <button mat-stroked-button (click)="detectEdition()">
-        <mat-icon>refresh</mat-icon> Re-detectar edición
-      </button>
-    </div>
-  </mat-expansion-panel>
-
   @if (!loaded()) {
     <div class="home">
       <div class="home-card">
@@ -235,6 +209,34 @@
     </mat-card>
   }
 </div>
+
+<!-- Terminology configuration dialog (discreet; most users never open it) -->
+<ng-template #settingsDialog>
+  <h2 mat-dialog-title>Configuración de terminología</h2>
+  <mat-dialog-content>
+    <p class="settings-edition">
+      Edición activa: <span class="edition-badge">{{ editionLabel() }}</span>
+    </p>
+    <mat-form-field appearance="outline" class="settings-field">
+      <mat-label>Servidor FHIR</mat-label>
+      <input matInput [ngModel]="terminologyServer()" (ngModelChange)="onServerChange($event)" />
+    </mat-form-field>
+    <mat-form-field appearance="outline" class="settings-field">
+      <mat-label>Edición (URI)</mat-label>
+      <input matInput [ngModel]="editionUri()" (ngModelChange)="onEditionChange($event)" />
+    </mat-form-field>
+    <mat-form-field appearance="outline" class="settings-field">
+      <mat-label>ID anotador</mat-label>
+      <input matInput [ngModel]="annotatorId()" (ngModelChange)="annotatorId.set($event)" />
+    </mat-form-field>
+    <button mat-stroked-button class="settings-redetect" (click)="detectEdition()">
+      <mat-icon>refresh</mat-icon> Re-detectar edición
+    </button>
+  </mat-dialog-content>
+  <mat-dialog-actions align="end">
+    <button mat-flat-button color="primary" mat-dialog-close>Cerrar</button>
+  </mat-dialog-actions>
+</ng-template>
 
 <!-- Confirmation dialog for clearing with undownloaded work -->
 <ng-template #confirmClear>
