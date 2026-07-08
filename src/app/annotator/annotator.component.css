@@ -1,0 +1,251 @@
+:host {
+  display: block;
+  --brand: #2d3e5f;
+}
+
+.app-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  gap: 8px;
+}
+
+.app-title {
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+/* Toolbar progress */
+.progress-area {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 220px;
+  margin-right: 12px;
+}
+.progress-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  line-height: 1;
+}
+.progress-count {
+  white-space: nowrap;
+  color: #4a5468;
+}
+.progress-pct {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--brand);
+}
+.progress-pct.done {
+  color: #1e7d34;
+}
+.progress-pct mat-icon {
+  font-size: 15px;
+  height: 15px;
+  width: 15px;
+}
+.progress-bar {
+  border-radius: 4px;
+  --mat-progress-bar-active-indicator-color: var(--brand);
+  --mat-progress-bar-track-color: #dfe3ea;
+}
+.progress-bar.done {
+  --mat-progress-bar-active-indicator-color: #1e7d34;
+}
+
+/* Download button turns green when all cases are annotated */
+.download-btn.complete {
+  background-color: #1e7d34 !important;
+  color: #fff !important;
+}
+
+.app-toolbar button {
+  margin-left: 4px;
+}
+
+.content {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 16px 16px 72px;
+  /* Compact Material form fields across the annotator */
+  --mat-form-field-container-height: 42px;
+  --mat-form-field-container-vertical-padding: 8px;
+  font-size: 13px;
+}
+.content mat-form-field {
+  font-size: 13px;
+}
+
+/* Config */
+.config-panel {
+  margin-bottom: 20px;
+}
+.cfg-icon {
+  vertical-align: middle;
+  margin-right: 6px;
+}
+.cfg-desc {
+  font-size: 12px;
+  color: #667;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.config-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 8px;
+}
+.cfg-field {
+  flex: 1 1 300px;
+}
+.cfg-short {
+  flex: 0 1 160px;
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 64px 16px;
+  color: #667;
+}
+.empty-icon {
+  font-size: 64px;
+  height: 64px;
+  width: 64px;
+  color: #b0b8c4;
+}
+.empty-state h2 {
+  margin: 12px 0 4px;
+  font-weight: 500;
+}
+
+/* Cases */
+.case-card {
+  margin-bottom: 12px;
+  border-left: 4px solid var(--brand);
+  padding: 12px 14px;
+}
+.case-card mat-card-header {
+  padding: 0;
+  margin-bottom: 6px;
+}
+.case-id {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--brand);
+}
+.case-text {
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.55;
+  color: #1b2436;
+  background: #fff6e5;
+  border: 1px solid #f2d79b;
+  border-left: 5px solid #e8a33d;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 2px 0 14px;
+}
+
+/* Concept blocks */
+.concept-block {
+  border: 1px solid #e2e6ec;
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: #fcfdff;
+}
+.concept-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+.concept-num {
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--brand);
+  border-radius: 6px;
+  padding: 1px 7px;
+}
+.remove-btn {
+  transform: scale(0.75);
+}
+
+.concept-fields {
+  display: grid;
+  grid-template-columns: 190px 1fr 210px;
+  gap: 10px;
+  align-items: start;
+  margin-bottom: 8px;
+}
+.f-search {
+  min-width: 0;
+}
+/* Grey out the concept search until a category is chosen (pierce child encapsulation) */
+.f-search ::ng-deep .mat-form-field-disabled .mat-mdc-text-field-wrapper {
+  background: #eef0f4;
+  border-radius: 6px;
+}
+.f-search ::ng-deep .mat-form-field-disabled .mdc-text-field__input::placeholder {
+  color: #9aa3b2;
+  -webkit-text-fill-color: #9aa3b2;
+}
+
+.selected-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #e6f4ea;
+  color: #1e7d34;
+  border-radius: 14px;
+  padding: 2px 9px;
+  font-size: 12px;
+  margin-top: 2px;
+}
+.selected-chip mat-icon {
+  font-size: 15px;
+  height: 15px;
+  width: 15px;
+}
+.chip-code {
+  font-family: monospace;
+  opacity: 0.75;
+}
+
+.context-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.f-ctx {
+  flex: 1 1 130px;
+}
+
+.case-actions {
+  margin: 2px 0 8px;
+}
+.case-actions button {
+  font-size: 12px;
+}
+.comentarios {
+  width: 100%;
+}
+
+@media (max-width: 760px) {
+  .concept-fields {
+    grid-template-columns: 1fr;
+  }
+}
