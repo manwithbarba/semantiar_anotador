@@ -16,13 +16,11 @@ export interface AnnotationDocument {
   cases: ClinicalCase[];
 }
 
-/** SNOMED CT hierarchy categories allowed for annotation (the 5 from the spec). */
+/** SNOMED CT hierarchy categories currently enabled for annotation. */
 export type Category =
   | 'Hallazgo clínico'
   | 'Procedimiento'
-  | 'Sustancia/Fármaco'
-  | 'Estructura corporal'
-  | 'Organismo';
+  | 'Fármaco';
 
 export type Polarity = 'Activo' | 'Negado';
 export type Certainty = 'Confirmado' | 'Sospecha' | 'Diferencial';
@@ -59,13 +57,11 @@ export interface AnnotationOutput {
   cases: CaseAnnotation[];
 }
 
-/** The 5 allowed categories with their SNOMED hierarchy ECL constraint. */
+/** Categories currently enabled, with their SNOMED hierarchy ECL constraint. */
 export const CATEGORIES: { label: Category; ecl: string; search: string }[] = [
   { label: 'Hallazgo clínico', ecl: '<<404684003', search: 'Buscar hallazgo clínico…' },
   { label: 'Procedimiento', ecl: '<<71388002', search: 'Buscar procedimiento…' },
-  { label: 'Sustancia/Fármaco', ecl: '<<105590001 OR <<373873005', search: 'Buscar sustancia o fármaco…' },
-  { label: 'Estructura corporal', ecl: '<<123037004', search: 'Buscar estructura corporal…' },
-  { label: 'Organismo', ecl: '<<410607006', search: 'Buscar organismo…' },
+  { label: 'Fármaco', ecl: '<<373873005', search: 'Buscar fármaco…' },
 ];
 
 export const POLARITIES: Polarity[] = ['Activo', 'Negado'];

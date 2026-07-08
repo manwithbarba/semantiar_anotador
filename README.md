@@ -76,9 +76,10 @@ La búsqueda se restringe a la jerarquía elegida (root concepts verificados ví
 |---|---|
 | Hallazgo clínico | `<<404684003` |
 | Procedimiento | `<<71388002` |
-| Sustancia/Fármaco | `<<105590001 OR <<373873005` |
-| Estructura corporal | `<<123037004` |
-| Organismo | `<<410607006` |
+| Fármaco | `<<373873005` |
+
+> Nota: por ahora solo están habilitados estos 3 dominios. Sustancia, Estructura
+> corporal y Organismo quedaron fuera (se pueden reactivar en `CATEGORIES`).
 
 ## Servidor de terminología
 
