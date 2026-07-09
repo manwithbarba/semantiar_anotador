@@ -8,7 +8,7 @@
         <span class="progress-count">{{ annotatedCount() }} / {{ cases().length }} casos</span>
         <span class="progress-pct" [class.done]="complete()">
           @if (complete()) { <mat-icon>check_circle</mat-icon> Completo }
-          @else { {{ progressPct() }}% }
+          @else { {{ progressPct() }}% · <span class="pending-label">{{ pendingCount() }} pendientes</span> }
         </span>
       </div>
       <mat-progress-bar
@@ -24,7 +24,17 @@
   <button mat-stroked-button (click)="fileInput.click()">
     <mat-icon>upload_file</mat-icon> Cargar JSON
   </button>
+  @if (loaded() && !complete()) {
+    <button mat-stroked-button color="accent" (click)="scrollToFirstPending()"
+            matTooltip="Ir al primer caso sin anotar">
+      <mat-icon>arrow_downward</mat-icon> Ir al pendiente
+    </button>
+  }
   @if (loaded()) {
+    <button mat-icon-button (click)="openStats()"
+            matTooltip="Ver estadísticas de sesiones">
+      <mat-icon>bar_chart</mat-icon>
+    </button>
     <button mat-stroked-button color="warn" (click)="clearAll()"
             matTooltip="Limpiar todo y empezar de nuevo">
       <mat-icon>restart_alt</mat-icon> Limpiar
@@ -72,7 +82,7 @@
             <mat-icon class="step-ic">download</mat-icon>
             <div class="step-txt">
               <strong>Descargá el resultado</strong>
-              <span>Bajá el JSON anotado cuando termines todos los casos.</span>
+              <span>Bajá el JSON anotado. Si no terminaste, podés volver a cargarlo después para continuar.</span>
             </div>
           </li>
           <li>
@@ -80,7 +90,7 @@
             <mat-icon class="step-ic">mail</mat-icon>
             <div class="step-txt">
               <strong>Enviálo al administrador</strong>
-              <span>Mandá el archivo descargado por correo al administrador.</span>
+              <span>Mandá el archivo descargado por correo cuando hayas completado todos los casos.</span>
             </div>
           </li>
         </ol>
@@ -95,9 +105,22 @@
 
   <!-- Cases -->
   @for (caseItem of cases(); track caseItem.id; let ci = $index) {
-    <mat-card class="case-card">
+    <mat-card class="case-card"
+              [class.case-annotated]="caseItem.concepts.some(cc => !!cc.sctid)"
+              [class.case-pending]="!caseItem.concepts.some(cc => !!cc.sctid)">
       <mat-card-header>
-        <mat-card-title class="case-id">{{ caseItem.id }}</mat-card-title>
+        <mat-card-title class="case-id">
+          {{ caseItem.id }}
+          @if (caseItem.concepts.some(cc => !!cc.sctid)) {
+            <span class="case-status-badge done-badge">
+              <mat-icon>check_circle</mat-icon> Anotado
+            </span>
+          } @else {
+            <span class="case-status-badge pending-badge">
+              <mat-icon>radio_button_unchecked</mat-icon> Pendiente
+            </span>
+          }
+        </mat-card-title>
       </mat-card-header>
       <mat-card-content>
         <p class="case-text">{{ caseItem.text }}</p>
@@ -250,5 +273,52 @@
     <button mat-flat-button color="warn" [mat-dialog-close]="true">
       <mat-icon>restart_alt</mat-icon> Limpiar todo
     </button>
+  </mat-dialog-actions>
+</ng-template>
+
+<!-- Session statistics dialog -->
+<ng-template #statsDialog>
+  <h2 mat-dialog-title>
+    <mat-icon style="vertical-align: middle; margin-right: 6px;">bar_chart</mat-icon>
+    Estadísticas de sesión
+  </h2>
+  <mat-dialog-content class="stats-content">
+    <div class="stats-summary">
+      <div class="stat-item">
+        <span class="stat-label">Primera carga</span>
+        <span class="stat-value">{{ firstLoadedAt() | date:'dd/MM/yyyy HH:mm' }}</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Descargas realizadas</span>
+        <span class="stat-value">{{ totalDownloads() }}</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Progreso actual</span>
+        <span class="stat-value">{{ annotatedCount() }} / {{ cases().length }} casos ({{ progressPct() }}%)</span>
+      </div>
+      @if (completedAt()) {
+        <div class="stat-item stat-done">
+          <span class="stat-label">Completado en</span>
+          <span class="stat-value">{{ completedAt() | date:'dd/MM/yyyy HH:mm' }}</span>
+        </div>
+      }
+    </div>
+
+    <h3 class="stats-log-title">Historial de acciones</h3>
+    <div class="stats-log">
+      @for (entry of sessionMeta()?.sessions ?? []; track $index) {
+        <div class="log-entry" [class.log-upload]="entry.action === 'upload'" [class.log-download]="entry.action === 'download'">
+          <mat-icon class="log-icon">{{ entry.action === 'upload' ? 'upload_file' : 'download' }}</mat-icon>
+          <div class="log-details">
+            <span class="log-action">{{ entry.action === 'upload' ? 'Carga' : 'Descarga' }}</span>
+            <span class="log-time">{{ entry.timestamp | date:'dd/MM/yyyy HH:mm:ss' }}</span>
+            <span class="log-progress">{{ entry.annotatedCount }}/{{ entry.totalCases }} casos</span>
+          </div>
+        </div>
+      }
+    </div>
+  </mat-dialog-content>
+  <mat-dialog-actions align="end">
+    <button mat-flat-button color="primary" mat-dialog-close>Cerrar</button>
   </mat-dialog-actions>
 </ng-template>
