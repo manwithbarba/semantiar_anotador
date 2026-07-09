@@ -9,14 +9,13 @@ Pensada para el flujo de calibración de anotadores del proyecto SEMANTIAR
 > 📄 Descripción técnica detallada (integración con el servidor de terminología,
 > autocompletado, búsqueda multi-prefijo, FHIR API): [`docs/IMPLEMENTACION.md`](docs/IMPLEMENTACION.md).
 
-## Flujo
+## Flujo de Trabajo
 
-1. **Cargar JSON** con los textos a anotar (o **Ejemplo** para probar con los 15
-   casos de calibración incluidos).
-2. Por cada concepto clínico del texto: elegir **Categoría** (jerarquía SNOMED),
-   buscar y seleccionar el concepto, y completar **Texto literal** + contexto
-   (Polaridad / Certeza / Temporalidad / Sujeto). Hasta 10 conceptos por caso.
-3. **Descargar** el JSON anotado.
+1. **Cargar JSON** con los textos a anotar (o **Ejemplo** para probar con los 15 casos de calibración incluidos).
+2. **Reanudar progreso:** Si el archivo JSON ya contiene anotaciones de una sesión anterior, se recuperan automáticamente. La aplicación informa el progreso consolidado y permite saltar directamente al primer caso pendiente usando el botón **"Ir al pendiente"**.
+3. **Completar las anotaciones:** Por cada caso, seleccionar la categoría (jerarquía de SNOMED), buscar y seleccionar el código correspondiente, y completar el texto literal y el contexto clínico (Polaridad, Certeza, Temporalidad, Sujeto).
+4. **Descargar resultado:** Genera un JSON que incluye el trabajo realizado. Si la anotación no está terminada, el anotador puede descargar el archivo, cerrar el navegador y cargarlo nuevamente en otra sesión para continuar.
+5. **Auditoría de Esfuerzo:** Cada ciclo de carga y descarga queda registrado en los metadatos internos del archivo (`_meta`), lo que permite realizar análisis del esfuerzo de anotación (tiempos, pausas y sesiones requeridas).
 
 ## Formato de entrada (JSON)
 
@@ -32,18 +31,19 @@ Pensada para el flujo de calibración de anotadores del proyecto SEMANTIAR
 }
 ```
 
-Solo `cases[].id` y `cases[].text` son obligatorios. El ejemplo
-(`public/example-input.json`) se generó a partir de `SEMANTIAR_CAL_A048.xlsx`.
+Solo `cases[].id` y `cases[].text` son obligatorios. El ejemplo (`public/example-input.json`) se generó a partir de `SEMANTIAR_CAL_A048.xlsx`.
 
 ## Formato de salida (JSON)
 
-Igual que la entrada + metadatos de exportación y, por caso, un array
-`concepts[]`. Los bloques de concepto vacíos se descartan al exportar.
+Igual que la entrada + metadatos de exportación, un array `concepts[]` por cada caso y el objeto de auditoría `_meta` que rastrea las sesiones de trabajo. Los bloques de concepto vacíos se descartan al exportar.
 
 ```json
 {
+  "project": "SEMANTIAR - ...",
+  "batch": "CALIBRACIÓN_ANOTADOR",
   "annotatorId": "A048",
-  "exportedAt": "2026-07-08T12:51:59.480Z",
+  "sourceFile": "SEMANTIAR_CAL_A048.xlsx",
+  "exportedAt": "2026-07-09T09:30:00.000Z",
   "terminologyServer": "https://implementation-demo.snomedtools.org/fhir",
   "editionUri": "http://snomed.info/sct",
   "cases": [
@@ -64,12 +64,50 @@ Igual que la entrada + metadatos de exportación y, por caso, un array
       ],
       "comentarios": ""
     }
-  ]
+  ],
+  "_meta": {
+    "sessions": [
+      {
+        "action": "upload",
+        "timestamp": "2026-07-09T09:10:00.000Z",
+        "annotatedCount": 0,
+        "totalCases": 15
+      },
+      {
+        "action": "download",
+        "timestamp": "2026-07-09T09:25:00.000Z",
+        "annotatedCount": 8,
+        "totalCases": 15
+      },
+      {
+        "action": "upload",
+        "timestamp": "2026-07-09T09:28:00.000Z",
+        "annotatedCount": 8,
+        "totalCases": 15
+      },
+      {
+        "action": "download",
+        "timestamp": "2026-07-09T09:30:00.000Z",
+        "annotatedCount": 15,
+        "totalCases": 15
+      }
+    ],
+    "totalDownloads": 2,
+    "firstLoadedAt": "2026-07-09T09:10:00.000Z",
+    "completedAt": "2026-07-09T09:30:00.000Z"
+  }
 }
 ```
 
-> Un JSON de salida puede volver a cargarse: las anotaciones existentes se
-> recuperan (la selección previa se muestra como chip; para cambiarla, re-buscar).
+### Análisis del esfuerzo y auditoría (`_meta`)
+
+El objeto `_meta` viaja encapsulado dentro del propio archivo JSON. Esto permite a los investigadores analizar retrospectivamente:
+* **Sesiones de trabajo:** La cantidad de veces que el archivo fue cargado (`upload`) y descargado (`download`).
+* **Progreso por sesión:** El número de casos anotados al inicio y al final de cada sesión (`annotatedCount`).
+* **Tiempos de ejecución:** Fecha/hora precisa de la primera carga (`firstLoadedAt`) y de la finalización total (`completedAt`).
+
+Este historial puede ser inspeccionado en vivo en la aplicación haciendo clic en el botón de estadísticas (📊) de la barra superior.
+
 
 ## Categorías → jerarquía SNOMED (ECL)
 
