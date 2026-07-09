@@ -1,4 +1,4 @@
-import { Component, computed, inject, OnInit, signal, TemplateRef, ViewChild } from '@angular/core';
+import { Component, computed, HostListener, inject, OnInit, signal, TemplateRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
@@ -122,6 +122,16 @@ export class AnnotatorComponent implements OnInit {
 
   ngOnInit(): void {
     this.detectEdition();
+  }
+
+  /** Warn before leaving/refreshing the page if there is undownloaded work. */
+  @HostListener('window:beforeunload', ['$event'])
+  onBeforeUnload(event: BeforeUnloadEvent): void {
+    if (this.dirty()) {
+      event.preventDefault();
+      // Required by Chrome/Safari to trigger the native confirmation prompt.
+      event.returnValue = '';
+    }
   }
 
   /** Auto-select the Argentina edition (Spanish) if present, else International (English). */
