@@ -14,6 +14,8 @@ export interface AnnotationDocument {
   annotatorId?: string;
   sourceFile?: string;
   cases: ClinicalCase[];
+  /** Session metadata preserved across upload/download cycles. */
+  _meta?: AnnotationMeta;
 }
 
 /** SNOMED CT hierarchy categories currently enabled for annotation. */
@@ -45,6 +47,34 @@ export interface CaseAnnotation extends ClinicalCase {
   comentarios: string;
 }
 
+/** A single upload or download event for audit trail purposes. */
+export interface SessionEntry {
+  /** 'upload' when the file was loaded into the tool; 'download' when saved. */
+  action: 'upload' | 'download';
+  timestamp: string;
+  annotatedCount: number;
+  totalCases: number;
+}
+
+/**
+ * Session-level metadata embedded in the JSON output.
+ * Persists and accumulates across multiple upload/download cycles,
+ * enabling calculation of annotation effort in post-hoc analysis.
+ */
+export interface AnnotationMeta {
+  /** Ordered log of every upload and download action performed on this file. */
+  sessions: SessionEntry[];
+  /** Total number of completed download cycles (upload+work+download). */
+  totalDownloads: number;
+  /** ISO timestamp of the very first upload of this file. */
+  firstLoadedAt: string;
+  /**
+   * ISO timestamp of the download that resulted in all cases being annotated.
+   * Null until the file is fully complete and downloaded.
+   */
+  completedAt?: string;
+}
+
 /** Full output document produced on download. */
 export interface AnnotationOutput {
   project?: string;
@@ -55,6 +85,8 @@ export interface AnnotationOutput {
   terminologyServer: string;
   editionUri: string;
   cases: CaseAnnotation[];
+  /** Session metadata for audit and effort analysis. */
+  _meta: AnnotationMeta;
 }
 
 /** Categories currently enabled, with their SNOMED hierarchy ECL constraint. */

@@ -13,11 +13,14 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatChipsModule } from '@angular/material/chips';
+import { MatBadgeModule } from '@angular/material/badge';
 
 import { AutocompleteBindingComponent } from '../bindings/autocomplete-binding/autocomplete-binding.component';
 import { TerminologyService } from '../services/terminology.service';
 import {
   AnnotationDocument,
+  AnnotationMeta,
   AnnotationOutput,
   CaseAnnotation,
   Category,
@@ -30,6 +33,7 @@ import {
   MAX_CONCEPTS_PER_CASE,
   newConcept,
   POLARITIES,
+  SessionEntry,
   SUBJECTS,
   TEMPORALITIES,
 } from '../models/annotation.model';
@@ -51,6 +55,8 @@ import {
     MatProgressBarModule,
     MatDialogModule,
     MatSnackBarModule,
+    MatChipsModule,
+    MatBadgeModule,
     AutocompleteBindingComponent,
   ],
   templateUrl: './annotator.component.html',
@@ -64,6 +70,7 @@ export class AnnotatorComponent implements OnInit {
 
   @ViewChild('confirmClear') confirmClearTpl!: TemplateRef<unknown>;
   @ViewChild('settingsDialog') settingsTpl!: TemplateRef<unknown>;
+  @ViewChild('statsDialog') statsTpl!: TemplateRef<unknown>;
 
   readonly categories = CATEGORIES;
   readonly polarities = POLARITIES;
@@ -86,6 +93,9 @@ export class AnnotatorComponent implements OnInit {
   // Working set
   cases = signal<CaseAnnotation[]>([]);
 
+  /** Session metadata (upload/download audit trail). */
+  sessionMeta = signal<AnnotationMeta | null>(null);
+
   /** True when there are annotation changes not yet downloaded. */
   dirty = signal<boolean>(false);
 
@@ -93,11 +103,22 @@ export class AnnotatorComponent implements OnInit {
   annotatedCount = computed(
     () => this.cases().filter((c) => c.concepts.some((cc) => !!cc.sctid)).length
   );
+  pendingCount = computed(() => this.cases().length - this.annotatedCount());
   progressPct = computed(() => {
     const total = this.cases().length;
     return total ? Math.round((this.annotatedCount() / total) * 100) : 0;
   });
   complete = computed(() => this.loaded() && this.annotatedCount() === this.cases().length);
+
+  /** Index of the first pending (unannotated) case. -1 if none. */
+  firstPendingIdx = computed(() =>
+    this.cases().findIndex((c) => !c.concepts.some((cc) => !!cc.sctid))
+  );
+
+  /** Session summary stats for display in the dialog. */
+  totalDownloads = computed(() => this.sessionMeta()?.totalDownloads ?? 0);
+  firstLoadedAt = computed(() => this.sessionMeta()?.firstLoadedAt ?? '—');
+  completedAt = computed(() => this.sessionMeta()?.completedAt ?? null);
 
   ngOnInit(): void {
     this.detectEdition();
@@ -122,6 +143,19 @@ export class AnnotatorComponent implements OnInit {
 
   openSettings(): void {
     this.dialog.open(this.settingsTpl, { width: '540px' });
+  }
+
+  openStats(): void {
+    this.dialog.open(this.statsTpl, { width: '560px' });
+  }
+
+  /** Scroll smoothly to the first unannotated case card. */
+  scrollToFirstPending(): void {
+    const idx = this.firstPendingIdx();
+    if (idx < 0) return;
+    const cards = document.querySelectorAll('.case-card');
+    const el = cards[idx] as HTMLElement | undefined;
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   // ---- Loading ----
@@ -171,8 +205,36 @@ export class AnnotatorComponent implements OnInit {
       comentarios: String(c.comentarios ?? ''),
     }));
     this.cases.set(cases);
+
+    // --- Session metadata: preserve existing or initialise ---
+    const now = new Date().toISOString();
+    const existingMeta: AnnotationMeta = doc._meta ?? {
+      sessions: [],
+      totalDownloads: 0,
+      firstLoadedAt: now,
+    };
+    const annotated = cases.filter((c) => c.concepts.some((cc) => !!cc.sctid)).length;
+    const uploadEntry: SessionEntry = {
+      action: 'upload',
+      timestamp: now,
+      annotatedCount: annotated,
+      totalCases: cases.length,
+    };
+    existingMeta.sessions = [...existingMeta.sessions, uploadEntry];
+    this.sessionMeta.set(existingMeta);
+
     this.dirty.set(false);
-    this.snackBar.open(`Cargados ${cases.length} casos.`, 'OK', { duration: 2500 });
+
+    // Inform the user whether this is a fresh start or a resumption.
+    const resuming = annotated > 0;
+    const msg = resuming
+      ? `Retomando: ${annotated} de ${cases.length} casos ya anotados. Pendientes: ${cases.length - annotated}.`
+      : `Cargados ${cases.length} casos. Comenzá por el primero.`;
+    const action = resuming && this.firstPendingIdx() >= 0 ? 'Ir al pendiente' : 'OK';
+    this.snackBar
+      .open(msg, action, { duration: 6000 })
+      .onAction()
+      .subscribe(() => this.scrollToFirstPending());
   }
 
   // ---- Clear / start over ----
@@ -196,6 +258,7 @@ export class AnnotatorComponent implements OnInit {
     this.project.set('');
     this.batch.set('');
     this.sourceFile.set('');
+    this.sessionMeta.set(null);
     this.dirty.set(false);
     this.snackBar.open('Espacio de trabajo limpio.', 'OK', { duration: 2000 });
   }
@@ -287,12 +350,37 @@ export class AnnotatorComponent implements OnInit {
   // ---- Export ----
 
   download(): void {
+    const now = new Date().toISOString();
+    const annotated = this.annotatedCount();
+    const total = this.cases().length;
+
+    // Build updated session metadata for this download event.
+    const currentMeta = this.sessionMeta() ?? {
+      sessions: [],
+      totalDownloads: 0,
+      firstLoadedAt: now,
+    };
+    const downloadEntry: SessionEntry = {
+      action: 'download',
+      timestamp: now,
+      annotatedCount: annotated,
+      totalCases: total,
+    };
+    const updatedMeta: AnnotationMeta = {
+      ...currentMeta,
+      sessions: [...currentMeta.sessions, downloadEntry],
+      totalDownloads: currentMeta.totalDownloads + 1,
+      completedAt: this.complete() ? (currentMeta.completedAt ?? now) : currentMeta.completedAt,
+    };
+    // Persist updated meta in the signal so it survives if the user re-uploads this file.
+    this.sessionMeta.set(updatedMeta);
+
     const output: AnnotationOutput = {
       project: this.project() || undefined,
       batch: this.batch() || undefined,
       annotatorId: this.annotatorId() || undefined,
       sourceFile: this.sourceFile() || undefined,
-      exportedAt: new Date().toISOString(),
+      exportedAt: now,
       terminologyServer: this.terminologyServer(),
       editionUri: this.editionUri(),
       cases: this.cases().map((c) => ({
@@ -302,11 +390,12 @@ export class AnnotatorComponent implements OnInit {
         concepts: c.concepts.filter((x) => x.sctid || x.textoLiteral || x.cat),
         comentarios: c.comentarios,
       })),
+      _meta: updatedMeta,
     };
     const blob = new Blob([JSON.stringify(output, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const stamp = new Date().toISOString().slice(0, 10);
+    const stamp = now.slice(0, 10);
     const idPart = this.annotatorId() ? `_${this.annotatorId()}` : '';
     a.href = url;
     a.download = `SEMANTIAR_anotado${idPart}_${stamp}.json`;

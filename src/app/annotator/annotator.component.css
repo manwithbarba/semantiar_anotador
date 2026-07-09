@@ -1,6 +1,8 @@
 :host {
   display: block;
   --brand: #2d3e5f;
+  --done-color: #1e7d34;
+  --pending-color: #8a94a6;
 }
 
 .app-toolbar {
@@ -47,7 +49,11 @@
   color: var(--brand);
 }
 .progress-pct.done {
-  color: #1e7d34;
+  color: var(--done-color);
+}
+.pending-label {
+  font-weight: 400;
+  opacity: 0.8;
 }
 .progress-pct mat-icon {
   font-size: 15px;
@@ -222,8 +228,15 @@
 /* Cases */
 .case-card {
   margin-bottom: 12px;
-  border-left: 4px solid var(--brand);
+  border-left: 4px solid var(--pending-color);
   padding: 12px 14px;
+  transition: border-color 0.3s ease;
+}
+.case-card.case-annotated {
+  border-left-color: var(--done-color);
+}
+.case-card.case-pending {
+  border-left-color: var(--pending-color);
 }
 .case-card mat-card-header {
   padding: 0;
@@ -233,6 +246,31 @@
   font-size: 14px;
   font-weight: 600;
   color: var(--brand);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.case-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border-radius: 12px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.case-status-badge mat-icon {
+  font-size: 13px;
+  height: 13px;
+  width: 13px;
+}
+.done-badge {
+  background: #e6f4ea;
+  color: var(--done-color);
+}
+.pending-badge {
+  background: #f0f2f6;
+  color: var(--pending-color);
 }
 .case-text {
   font-size: 17px;
@@ -341,4 +379,88 @@
   .concept-fields {
     grid-template-columns: 1fr;
   }
+}
+
+/* Session statistics dialog */
+.stats-content {
+  min-width: 440px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.stats-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #f8f9fc;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+.stat-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+.stat-item.stat-done {
+  color: var(--done-color);
+  font-weight: 600;
+}
+.stat-label {
+  color: #6a7488;
+}
+.stat-value {
+  font-weight: 600;
+  color: #1b2436;
+}
+.stats-log-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #4a5468;
+  margin: 0 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.stats-log {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.log-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.log-entry.log-upload {
+  background: #eef2fb;
+}
+.log-entry.log-download {
+  background: #e6f4ea;
+}
+.log-icon {
+  font-size: 18px;
+  height: 18px;
+  width: 18px;
+  color: var(--brand);
+}
+.log-download .log-icon {
+  color: var(--done-color);
+}
+.log-details {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.log-action {
+  font-weight: 700;
+  min-width: 64px;
+}
+.log-time {
+  color: #4a5468;
+}
+.log-progress {
+  color: #6a7488;
 }
