@@ -30,7 +30,6 @@ import {
   DEFAULT_EDITION_URI,
   DEFAULT_TERMINOLOGY_SERVER,
   eclForCategory,
-  MAX_CONCEPTS_PER_CASE,
   newConcept,
   POLARITIES,
   SessionEntry,
@@ -77,7 +76,6 @@ export class AnnotatorComponent implements OnInit {
   readonly certainties = CERTAINTIES;
   readonly temporalities = TEMPORALITIES;
   readonly subjects = SUBJECTS;
-  readonly maxConcepts = MAX_CONCEPTS_PER_CASE;
 
   // Document metadata
   project = signal<string>('');
@@ -285,8 +283,10 @@ export class AnnotatorComponent implements OnInit {
   }
 
   addConcept(caseIdx: number): void {
+    // Prepend so the newest block appears right below the clinical text; a long
+    // list then grows downward and never pushes the writing area off-screen.
     this.mutateCase(caseIdx, (c) => {
-      if (c.concepts.length < this.maxConcepts) c.concepts.push(newConcept());
+      c.concepts.unshift(newConcept());
     });
   }
 
@@ -396,8 +396,10 @@ export class AnnotatorComponent implements OnInit {
       cases: this.cases().map((c) => ({
         id: c.id,
         text: c.text,
-        // Drop fully-empty concept blocks on export
-        concepts: c.concepts.filter((x) => x.sctid || x.textoLiteral || x.cat),
+        // Drop fully-empty concept blocks and the client-only uid on export
+        concepts: c.concepts
+          .filter((x) => x.sctid || x.textoLiteral || x.cat)
+          .map(({ uid, ...rest }) => rest),
         comentarios: c.comentarios,
       })),
       _meta: updatedMeta,

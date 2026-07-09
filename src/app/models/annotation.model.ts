@@ -29,8 +29,10 @@ export type Certainty = 'Confirmado' | 'Sospecha' | 'Diferencial';
 export type Temporality = 'Actual' | 'Histórico';
 export type Subject = 'Paciente' | 'Familiar';
 
-/** One annotated concept block (maps to a C1..C10 block in the spreadsheet). */
+/** One annotated concept block. */
 export interface ConceptAnnotation {
+  /** Stable client-side id for list tracking; stripped on export. */
+  uid: string;
   cat: Category | '';
   sctid: string;
   term: string;
@@ -75,6 +77,12 @@ export interface AnnotationMeta {
   completedAt?: string;
 }
 
+/** A case as written to the output file (concepts without the client-only uid). */
+export interface ExportedCase extends ClinicalCase {
+  concepts: Omit<ConceptAnnotation, 'uid'>[];
+  comentarios: string;
+}
+
 /** Full output document produced on download. */
 export interface AnnotationOutput {
   project?: string;
@@ -84,7 +92,7 @@ export interface AnnotationOutput {
   exportedAt: string;
   terminologyServer: string;
   editionUri: string;
-  cases: CaseAnnotation[];
+  cases: ExportedCase[];
   /** Session metadata for audit and effort analysis. */
   _meta: AnnotationMeta;
 }
@@ -101,8 +109,6 @@ export const CERTAINTIES: Certainty[] = ['Confirmado', 'Sospecha', 'Diferencial'
 export const TEMPORALITIES: Temporality[] = ['Actual', 'Histórico'];
 export const SUBJECTS: Subject[] = ['Paciente', 'Familiar'];
 
-export const MAX_CONCEPTS_PER_CASE = 10;
-
 // Terminology defaults come from the Angular environment.
 export const DEFAULT_TERMINOLOGY_SERVER = environment.terminologyServer;
 export const DEFAULT_EDITION_URI = environment.editionUri;
@@ -115,8 +121,11 @@ export const AR_DISPLAY_LANGUAGE = 'es';
 export const INTL_EDITION_URI = 'http://snomed.info/sct';
 export const INTL_DISPLAY_LANGUAGE = 'en';
 
+let conceptUidCounter = 0;
+
 export function newConcept(): ConceptAnnotation {
   return {
+    uid: `c${++conceptUidCounter}`,
     cat: '',
     sctid: '',
     term: '',

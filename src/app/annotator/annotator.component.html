@@ -126,7 +126,7 @@
         <p class="case-text">{{ caseItem.text }}</p>
 
         <div class="concepts">
-          @for (concept of caseItem.concepts; track $index; let cj = $index) {
+          @for (concept of caseItem.concepts; track concept.uid; let cj = $index) {
             <div class="concept-block">
               <div class="concept-head">
                 <span class="concept-num">C{{ cj + 1 }}</span>
@@ -216,7 +216,8 @@
 
         <div class="case-actions">
           <button mat-stroked-button color="primary"
-                  [disabled]="caseItem.concepts.length >= maxConcepts"
+                  [disabled]="!caseItem.concepts[0]?.sctid"
+                  [matTooltip]="!caseItem.concepts[0]?.sctid ? 'Seleccioná un concepto en el bloque actual antes de agregar otro' : ''"
                   (click)="addConcept(ci)">
             <mat-icon>add</mat-icon> Agregar concepto
           </button>
