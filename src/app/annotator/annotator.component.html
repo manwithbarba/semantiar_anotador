@@ -152,6 +152,7 @@
                 <div class="f-search">
                   <app-autocomplete-binding
                     [binding]="bindingFor(concept.cat)"
+                    [term]="concept.term"
                     [terminologyServer]="terminologyServer()"
                     [editionUri]="editionUri()"
                     [readonly]="!concept.cat"

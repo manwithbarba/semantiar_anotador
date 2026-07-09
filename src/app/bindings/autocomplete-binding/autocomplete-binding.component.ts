@@ -292,11 +292,13 @@ export class AutocompleteBindingComponent implements OnInit, OnChanges, AfterVie
     if (changes['term']) {
         this.term = changes['term'].currentValue;
 
+        // Prefill the displayed value without emitting, so restoring a saved
+        // concept does not trigger a background search.
         if (this.term && typeof this.term === 'object' && this.term["display"]) {
-            this.formControl.setValue(this.term["display"]);
+            this.formControl.setValue(this.term["display"], { emitEvent: false });
             this.selectedConcept = this.term; // Store the full concept object
         } else {
-            this.formControl.setValue(this.term);
+            this.formControl.setValue(this.term, { emitEvent: false });
             this.selectedConcept = {};
         }
     }
