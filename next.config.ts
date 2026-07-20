@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
-  basePath: isGithubActions ? "/semantiar_anotador" : undefined,
+  basePath: isGithubActions ? "/semantiar_anotador/juego" : undefined,
 };
 
 export default nextConfig;
