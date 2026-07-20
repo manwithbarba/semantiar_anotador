@@ -1,0 +1,68 @@
+{
+  "project": "SEMANTIAR - Sistema de anotación clínica (corpus español rioplatense)",
+  "batch": "CALIBRACIÓN_ANOTADOR",
+  "annotatorId": "A048",
+  "sourceFile": "SEMANTIAR_CAL_A048.xlsx",
+  "cases": [
+    {
+      "id": "CAL-001",
+      "text": "Paciente con fiebre, tos productiva y diagnóstico de neumonía."
+    },
+    {
+      "id": "CAL-002",
+      "text": "Antecedente de hipertensión arterial en tratamiento con enalapril. Consulta por disnea de esfuerzo."
+    },
+    {
+      "id": "CAL-003",
+      "text": "Paciente con diabetes mellitus tipo 2, en tratamiento con metformina. Refiere parestesias en ambos pies."
+    },
+    {
+      "id": "CAL-004",
+      "text": "Dolor en hipocondrio derecho, náuseas y diagnóstico de colecistitis aguda."
+    },
+    {
+      "id": "CAL-005",
+      "text": "Disuria y polaquiuria. Urocultivo positivo para Escherichia coli. Diagnóstico de infección urinaria."
+    },
+    {
+      "id": "CAL-006",
+      "text": "Dolor precordial. Se realiza electrocardiograma. Diagnóstico de infarto agudo de miocardio."
+    },
+    {
+      "id": "CAL-007",
+      "text": "Paciente con antecedente de asma. Consulta por crisis asmática con sibilancias."
+    },
+    {
+      "id": "CAL-008",
+      "text": "Paciente con EPOC, tabaquismo activo y disnea. SatO2 91%."
+    },
+    {
+      "id": "CAL-009",
+      "text": "Sospecha inicial de COVID-19. Hisopado positivo para SARS-CoV-2."
+    },
+    {
+      "id": "CAL-010",
+      "text": "Herida cortante en mano derecha. Se realiza sutura de la herida."
+    },
+    {
+      "id": "CAL-011",
+      "text": "Diagnóstico de apendicitis aguda. Se indica apendicectomía."
+    },
+    {
+      "id": "CAL-012",
+      "text": "Paciente con enfermedad renal crónica en hemodiálisis."
+    },
+    {
+      "id": "CAL-013",
+      "text": "Antecedente de accidente cerebrovascular hace 3 años. Consulta actual por cefalea."
+    },
+    {
+      "id": "CAL-014",
+      "text": "Celulitis en pierna izquierda. Se indica cefalexina 500 mg."
+    },
+    {
+      "id": "CAL-015",
+      "text": "Sepsis secundaria a neumonía. Hemocultivo positivo para Staphylococcus aureus."
+    }
+  ]
+}
