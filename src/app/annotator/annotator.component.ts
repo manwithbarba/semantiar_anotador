@@ -20,10 +20,15 @@ import { AutocompleteBindingComponent } from '../bindings/autocomplete-binding/a
 import { TerminologyService } from '../services/terminology.service';
 import {
   AnnotationDocument,
+  annotationCategory,
   AnnotationMeta,
   AnnotationOutput,
   CaseAnnotation,
   Category,
+  buildTextSegments,
+  normalizePremarkedSpans,
+  PremarkedSpan,
+  TextSegment,
   CATEGORIES,
   CERTAINTIES,
   ConceptAnnotation,
@@ -84,6 +89,8 @@ export class AnnotatorComponent implements OnInit {
   batch = signal<string>('');
   annotatorId = signal<string>('');
   sourceFile = signal<string>('');
+  premarking = signal<Record<string, unknown> | undefined>(undefined);
+  trace = signal<Record<string, unknown> | undefined>(undefined);
 
   // Terminology configuration (editable)
   terminologyServer = signal<string>(DEFAULT_TERMINOLOGY_SERVER);
@@ -92,6 +99,7 @@ export class AnnotatorComponent implements OnInit {
 
   // Working set
   cases = signal<CaseAnnotation[]>([]);
+  selectedSpan = signal<{ caseIndex: number; spanId: string } | null>(null);
 
   /** Session metadata (upload/download audit trail). */
   sessionMeta = signal<AnnotationMeta | null>(null);
@@ -119,6 +127,20 @@ export class AnnotatorComponent implements OnInit {
   totalDownloads = computed(() => this.sessionMeta()?.totalDownloads ?? 0);
   firstLoadedAt = computed(() => this.sessionMeta()?.firstLoadedAt ?? '—');
   completedAt = computed(() => this.sessionMeta()?.completedAt ?? null);
+  eligibleSpanCount = computed(() =>
+    this.cases().reduce(
+      (total, caseItem) =>
+        total + caseItem.spans.filter((span) => span.review?.disposition !== 'excluido').length,
+      0
+    )
+  );
+  excludedSpanCount = computed(() =>
+    this.cases().reduce(
+      (total, caseItem) =>
+        total + caseItem.spans.filter((span) => span.review?.disposition === 'excluido').length,
+      0
+    )
+  );
 
   ngOnInit(): void {
     this.detectEdition();
@@ -194,17 +216,29 @@ export class AnnotatorComponent implements OnInit {
     this.annotatorId.set(doc.annotatorId ?? '');
     this.sourceFile.set(doc.sourceFile ?? fileName);
 
-    const cases: CaseAnnotation[] = doc.cases.map((c: any) => ({
-      id: String(c.id ?? ''),
-      text: String(c.text ?? ''),
-      // Preserve annotations if the JSON already carried them; otherwise start with one empty block
-      concepts:
-        Array.isArray(c.concepts) && c.concepts.length
-          ? c.concepts.map((x: any) => ({ ...newConcept(), ...x }))
-          : [newConcept()],
-      comentarios: String(c.comentarios ?? ''),
-    }));
+    let invalidSpans = 0;
+    const cases: CaseAnnotation[] = doc.cases.map((c) => {
+      const text = String(c.text ?? '');
+      const textNorm = String(c.textNorm ?? text);
+      const normalizedSpans = normalizePremarkedSpans(c.spans, textNorm);
+      invalidSpans += normalizedSpans.invalidCount;
+      const concepts = Array.isArray(c.concepts)
+        ? c.concepts.map((concept) => ({ ...newConcept(), ...concept }))
+        : [];
+
+      return {
+        id: String(c.id ?? ''),
+        text,
+        textNorm,
+        spans: normalizedSpans.spans,
+        concepts: concepts.length || normalizedSpans.spans.length ? concepts : [newConcept()],
+        comentarios: String(c.comentarios ?? ''),
+      };
+    });
     this.cases.set(cases);
+    this.premarking.set(doc._premarking);
+    this.trace.set(doc._trace);
+    this.selectedSpan.set(null);
 
     // --- Session metadata: preserve existing or initialise ---
     const now = new Date().toISOString();
@@ -224,6 +258,13 @@ export class AnnotatorComponent implements OnInit {
     this.sessionMeta.set(existingMeta);
 
     this.dirty.set(false);
+    if (invalidSpans) {
+      this.snackBar.open(
+        `Se omitieron ${invalidSpans} spans inválidos: revisá offsets, texto y solapamientos.`,
+        'OK',
+        { duration: 6000 }
+      );
+    }
 
     // Inform the user whether this is a fresh start or a resumption.
     const resuming = annotated > 0;
@@ -258,6 +299,9 @@ export class AnnotatorComponent implements OnInit {
     this.project.set('');
     this.batch.set('');
     this.sourceFile.set('');
+    this.premarking.set(undefined);
+    this.trace.set(undefined);
+    this.selectedSpan.set(null);
     this.sessionMeta.set(null);
     this.dirty.set(false);
     this.snackBar.open('Espacio de trabajo limpio.', 'OK', { duration: 2000 });
@@ -267,7 +311,11 @@ export class AnnotatorComponent implements OnInit {
 
   private mutateCase(caseIdx: number, fn: (c: CaseAnnotation) => void): void {
     this.cases.update((list) => {
-      const copy = list.map((c) => ({ ...c, concepts: c.concepts.map((x) => ({ ...x })) }));
+      const copy = list.map((c) => ({
+        ...c,
+        spans: c.spans.map((span) => ({ ...span, suggest: span.suggest ? { ...span.suggest } : undefined })),
+        concepts: c.concepts.map((x) => ({ ...x })),
+      }));
       fn(copy[caseIdx]);
       return copy;
     });
@@ -278,6 +326,63 @@ export class AnnotatorComponent implements OnInit {
     this.mutateCase(caseIdx, (c) => {
       if (c.concepts.length < this.maxConcepts) c.concepts.push(newConcept());
     });
+  }
+
+  textSegments(caseItem: CaseAnnotation): TextSegment[] {
+    return buildTextSegments(caseItem.textNorm, caseItem.spans);
+  }
+
+  selectedSpanFor(caseIdx: number): PremarkedSpan | null {
+    const selected = this.selectedSpan();
+    if (!selected || selected.caseIndex !== caseIdx) return null;
+    return this.cases()[caseIdx]?.spans.find((span) => span.spanId === selected.spanId) ?? null;
+  }
+
+  selectSpan(caseIdx: number, span: PremarkedSpan): void {
+    if (span.status === 'descartado') return;
+    this.selectedSpan.set({ caseIndex: caseIdx, spanId: span.spanId });
+  }
+
+  confirmSelectedSpan(caseIdx: number): void {
+    const span = this.selectedSpanFor(caseIdx);
+    if (!span) return;
+
+    this.mutateCase(caseIdx, (caseItem) => {
+      const fixedSpan = caseItem.spans.find((item) => item.spanId === span.spanId);
+      if (!fixedSpan) return;
+      fixedSpan.status = 'confirmado';
+
+      const existing = caseItem.concepts.find((concept) => concept.spanId === fixedSpan.spanId);
+      if (existing) return;
+      if (caseItem.concepts.length >= this.maxConcepts) {
+        this.snackBar.open(`Máximo de ${this.maxConcepts} conceptos por caso.`, 'OK', { duration: 4000 });
+        return;
+      }
+
+      caseItem.concepts.push({
+        ...newConcept(),
+        spanId: fixedSpan.spanId,
+        textoLiteral: fixedSpan.textoLiteral,
+        cat: annotationCategory(fixedSpan.suggest?.category),
+        pol: fixedSpan.suggest?.pol ?? 'Activo',
+        cert: fixedSpan.suggest?.cert ?? 'Confirmado',
+        temp: fixedSpan.suggest?.temp ?? 'Actual',
+        suj: fixedSpan.suggest?.suj ?? 'Paciente',
+      });
+    });
+  }
+
+  discardSelectedSpan(caseIdx: number): void {
+    const span = this.selectedSpanFor(caseIdx);
+    if (!span) return;
+
+    this.mutateCase(caseIdx, (caseItem) => {
+      const fixedSpan = caseItem.spans.find((item) => item.spanId === span.spanId);
+      if (!fixedSpan) return;
+      fixedSpan.status = 'descartado';
+      caseItem.concepts = caseItem.concepts.filter((concept) => concept.spanId !== fixedSpan.spanId);
+    });
+    this.selectedSpan.set(null);
   }
 
   removeConcept(caseIdx: number, conceptIdx: number): void {
@@ -386,11 +491,15 @@ export class AnnotatorComponent implements OnInit {
       cases: this.cases().map((c) => ({
         id: c.id,
         text: c.text,
+        textNorm: c.textNorm,
+        spans: c.spans,
         // Drop fully-empty concept blocks on export
         concepts: c.concepts.filter((x) => x.sctid || x.textoLiteral || x.cat),
         comentarios: c.comentarios,
       })),
       _meta: updatedMeta,
+      _premarking: this.premarking(),
+      _trace: this.trace(),
     };
     const blob = new Blob([JSON.stringify(output, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);

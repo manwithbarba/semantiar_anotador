@@ -11,6 +11,11 @@
           @else { {{ progressPct() }}% · <span class="pending-label">{{ pendingCount() }} pendientes</span> }
         </span>
       </div>
+      @if (excludedSpanCount()) {
+        <span class="span-review-summary">
+          {{ eligibleSpanCount() }} candidatos · {{ excludedSpanCount() }} excluidos por regla
+        </span>
+      }
       <mat-progress-bar
         class="progress-bar"
         [class.done]="complete()"
@@ -123,13 +128,58 @@
         </mat-card-title>
       </mat-card-header>
       <mat-card-content>
-        <p class="case-text">{{ caseItem.text }}</p>
+        <div class="case-text" [class.has-spans]="caseItem.spans.length">
+          @for (segment of textSegments(caseItem); track $index) {
+            @if (segment.kind === 'text') {
+              <span>{{ segment.value }}</span>
+            } @else {
+              <button
+                type="button"
+                class="premarked-span"
+                [class.selected]="selectedSpanFor(ci)?.spanId === segment.span.spanId"
+                [class.confirmed]="segment.span.status === 'confirmado'"
+                [class.discarded]="segment.span.status === 'descartado'"
+                [disabled]="segment.span.status === 'descartado'"
+                (click)="selectSpan(ci, segment.span)">
+                {{ segment.value }}
+              </button>
+            }
+          }
+        </div>
+
+        @if (selectedSpanFor(ci); as span) {
+          <div class="span-panel">
+            <div>
+              <span class="span-panel-label">Span fijo</span>
+              <strong>{{ span.textoLiteral }}</strong>
+              <span class="span-origin">{{ span.origin }} · confianza {{ span.confidence | number:'1.0-2' }}</span>
+              @if (span.suggest?.category || span.suggest?.expansionAbbrev || span.suggest?.section) {
+                <span class="span-hints">
+                  Preclasificación editable:
+                  {{ span.suggest?.category ?? span.suggest?.expansionAbbrev ?? span.suggest?.section }}
+                </span>
+              }
+              <span class="span-review-reason">{{ span.review?.reason }}</span>
+            </div>
+            <div class="span-actions">
+              <button mat-stroked-button color="primary" (click)="confirmSelectedSpan(ci)">
+                <mat-icon>check</mat-icon> Confirmar y anotar
+              </button>
+              <button mat-stroked-button color="warn" (click)="discardSelectedSpan(ci)">
+                <mat-icon>block</mat-icon> Descartar
+              </button>
+            </div>
+          </div>
+        }
 
         <div class="concepts">
           @for (concept of caseItem.concepts; track $index; let cj = $index) {
             <div class="concept-block">
               <div class="concept-head">
                 <span class="concept-num">C{{ cj + 1 }}</span>
+                @if (concept.spanId) {
+                  <span class="concept-span-id">Span {{ concept.spanId }}</span>
+                }
                 <button mat-icon-button color="warn" class="remove-btn"
                         matTooltip="Quitar concepto" (click)="removeConcept(ci, cj)">
                   <mat-icon>close</mat-icon>

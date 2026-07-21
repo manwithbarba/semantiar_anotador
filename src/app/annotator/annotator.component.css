@@ -60,6 +60,11 @@
   height: 15px;
   width: 15px;
 }
+.span-review-summary {
+  color: #4a5468;
+  font-size: 11px;
+  white-space: nowrap;
+}
 .progress-bar {
   border-radius: 4px;
   --mat-progress-bar-active-indicator-color: var(--brand);
@@ -283,6 +288,75 @@
   border-radius: 8px;
   padding: 12px 16px;
   margin: 2px 0 14px;
+  white-space: pre-wrap;
+}
+.case-text.has-spans {
+  background: #f8fbff;
+  border-color: #bfd7ef;
+  border-left-color: #3b82b6;
+}
+.premarked-span {
+  border: 0;
+  border-bottom: 2px solid #0f766e;
+  border-radius: 2px;
+  background: #ccfbf1;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  line-height: inherit;
+  padding: 0 2px;
+}
+.premarked-span:hover,
+.premarked-span.selected {
+  background: #99f6e4;
+  outline: 2px solid #0f766e;
+  outline-offset: 1px;
+}
+.premarked-span.confirmed {
+  border-bottom-color: #1e7d34;
+  background: #e6f4ea;
+}
+.premarked-span.discarded {
+  cursor: not-allowed;
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+.span-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -4px 0 14px;
+  border: 1px solid #a7d7d0;
+  border-radius: 8px;
+  background: #f0fdfa;
+  padding: 10px 12px;
+}
+.span-panel-label,
+.span-origin,
+.span-hints,
+.span-review-reason {
+  font-size: 12px;
+  color: #4a5468;
+}
+.span-panel-label {
+  display: block;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.span-origin,
+.span-hints {
+  margin-left: 8px;
+}
+.span-review-reason {
+  display: block;
+  margin-top: 3px;
+}
+.span-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
 }
 
 /* Concept blocks */
@@ -306,6 +380,12 @@
   background: var(--brand);
   border-radius: 6px;
   padding: 1px 7px;
+}
+.concept-span-id {
+  margin-left: 8px;
+  color: #4a5468;
+  font-size: 11px;
+  font-weight: 600;
 }
 .remove-btn {
   transform: scale(0.75);
@@ -378,6 +458,10 @@
 @media (max-width: 760px) {
   .concept-fields {
     grid-template-columns: 1fr;
+  }
+  .span-panel {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 
