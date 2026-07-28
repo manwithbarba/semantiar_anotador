@@ -40,6 +40,7 @@ yarn-error.log
 testem.log
 /typings
 __screenshots__/
+docs/SEMANTIAR_anotado_2026-07-28_corregido.json
 
 # System files
 .DS_Store
