@@ -1,4 +1,15 @@
-import { Component, computed, inject, OnInit, signal, TemplateRef, ViewChild } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  HostListener,
+  inject,
+  OnDestroy,
+  OnInit,
+  signal,
+  TemplateRef,
+  ViewChild,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
@@ -16,15 +27,40 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatBadgeModule } from '@angular/material/badge';
 
-import { AutocompleteBindingComponent } from '../bindings/autocomplete-binding/autocomplete-binding.component';
+import {
+  AutocompleteBindingComponent,
+  AutocompleteTelemetryEvent,
+} from '../bindings/autocomplete-binding/autocomplete-binding.component';
 import { TerminologyService } from '../services/terminology.service';
 import {
   AnnotationDocument,
-  annotationCategory,
+  ASSISTED_ANNOTATION_PROTOCOL,
+  CORE_BLIND_PROTOCOL,
   AnnotationMeta,
+  AnnotationProtocol,
   AnnotationOutput,
   CaseAnnotation,
+  CaseReviewOutcome,
+  CaseTelemetry,
   Category,
+  lexicalMentionComplete,
+  LexicalAnnotation,
+  LexicalDecisionStatus,
+  LEXICAL_DECISIONS,
+  LEXICAL_EVIDENCE_CODES,
+  LEXICAL_FORM_TYPES,
+  LEXICAL_FUNCTIONS,
+  LEXICAL_SECTIONS,
+  LEXICAL_UNCLASSIFIED_FUNCTION,
+  LexicalInventory,
+  LexicalMention,
+  LexicalSenseOption,
+  newHumanLexicalMention,
+  newLexicalReview,
+  normalizeEvidenceCodes,
+  normalizeLexicalAnnotation,
+  normalizeLexicalMentions,
+  normalizeLexicalReview,
   buildTextSegments,
   normalizePremarkedSpans,
   PremarkedSpan,
@@ -34,18 +70,20 @@ import {
   ConceptAnnotation,
   DEFAULT_EDITION_URI,
   DEFAULT_TERMINOLOGY_SERVER,
+  createAnnotationTelemetry,
   eclForCategory,
-  MAX_CONCEPTS_PER_CASE,
   newConcept,
   POLARITIES,
   SessionEntry,
   SUBJECTS,
+  TELEMETRY_APP_BUILD,
+  TELEMETRY_IDLE_THRESHOLD_MS,
   TEMPORALITIES,
 } from '../models/annotation.model';
 
 @Component({
   selector: 'app-annotator',
-  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule,
     FormsModule,
@@ -67,11 +105,15 @@ import {
   templateUrl: './annotator.component.html',
   styleUrl: './annotator.component.css',
 })
-export class AnnotatorComponent implements OnInit {
+export class AnnotatorComponent implements OnInit, OnDestroy {
   private http = inject(HttpClient);
   private terminologyService = inject(TerminologyService);
   private snackBar = inject(MatSnackBar);
   private dialog = inject(MatDialog);
+  private timingCaseIndex: number | null = null;
+  private lastActivityMarkMs = 0;
+  private timingActive = false;
+  private pendingActiveMs = new Map<number, number>();
 
   @ViewChild('confirmClear') confirmClearTpl!: TemplateRef<unknown>;
   @ViewChild('settingsDialog') settingsTpl!: TemplateRef<unknown>;
@@ -82,7 +124,12 @@ export class AnnotatorComponent implements OnInit {
   readonly certainties = CERTAINTIES;
   readonly temporalities = TEMPORALITIES;
   readonly subjects = SUBJECTS;
-  readonly maxConcepts = MAX_CONCEPTS_PER_CASE;
+  readonly lexicalDecisions = LEXICAL_DECISIONS;
+  readonly lexicalFormTypes = LEXICAL_FORM_TYPES;
+  readonly lexicalFunctions = LEXICAL_FUNCTIONS;
+  readonly lexicalSections = LEXICAL_SECTIONS;
+  readonly lexicalEvidenceCodes = LEXICAL_EVIDENCE_CODES;
+  readonly lexicalUnclassifiedFunction = LEXICAL_UNCLASSIFIED_FUNCTION;
 
   // Document metadata
   project = signal<string>('');
@@ -91,6 +138,8 @@ export class AnnotatorComponent implements OnInit {
   sourceFile = signal<string>('');
   premarking = signal<Record<string, unknown> | undefined>(undefined);
   trace = signal<Record<string, unknown> | undefined>(undefined);
+  annotationProtocol = signal<AnnotationProtocol>(ASSISTED_ANNOTATION_PROTOCOL);
+  lexicalInventory = signal<LexicalInventory | undefined>(undefined);
 
   // Terminology configuration (editable)
   terminologyServer = signal<string>(DEFAULT_TERMINOLOGY_SERVER);
@@ -99,7 +148,12 @@ export class AnnotatorComponent implements OnInit {
 
   // Working set
   cases = signal<CaseAnnotation[]>([]);
+  activeCaseIndex = signal<number>(0);
+  caseSearch = signal<string>('');
   selectedSpan = signal<{ caseIndex: number; spanId: string } | null>(null);
+  humanSpanDraft = signal<{ caseIndex: number; start: number; end: number; textoLiteral: string } | null>(
+    null
+  );
 
   /** Session metadata (upload/download audit trail). */
   sessionMeta = signal<AnnotationMeta | null>(null);
@@ -108,25 +162,59 @@ export class AnnotatorComponent implements OnInit {
   dirty = signal<boolean>(false);
 
   loaded = computed(() => this.cases().length > 0);
+  coreBlindMode = computed(() => this.annotationProtocol().mode === 'core-blind');
+  lexicalLayerEnabled = computed(() => this.annotationProtocol().lexicalLayerEnabled === true);
+  filteredCaseEntries = computed(() => {
+    const query = this.caseSearch().trim().toLocaleLowerCase('es-AR');
+    return this.cases()
+      .map((caseItem, index) => ({ caseItem, index }))
+      .filter(({ caseItem }) => {
+        if (!query) return true;
+        return (
+          caseItem.id.toLocaleLowerCase('es-AR').includes(query) ||
+          caseItem.textNorm.toLocaleLowerCase('es-AR').includes(query)
+        );
+      });
+  });
+  activeCase = computed(() => this.cases()[this.activeCaseIndex()] ?? null);
+  activeCasePosition = computed(() =>
+    this.filteredCaseEntries().findIndex((entry) => entry.index === this.activeCaseIndex())
+  );
   annotatedCount = computed(
     () => this.cases().filter((c) => c.concepts.some((cc) => !!cc.sctid)).length
   );
-  pendingCount = computed(() => this.cases().length - this.annotatedCount());
+  reviewedCount = computed(
+    () => this.cases().filter((c) => c.review?.status === 'finalized').length
+  );
+  pendingCount = computed(() => this.cases().length - this.reviewedCount());
   progressPct = computed(() => {
     const total = this.cases().length;
-    return total ? Math.round((this.annotatedCount() / total) * 100) : 0;
+    return total ? Math.round((this.reviewedCount() / total) * 100) : 0;
   });
-  complete = computed(() => this.loaded() && this.annotatedCount() === this.cases().length);
+  complete = computed(() => this.loaded() && this.reviewedCount() === this.cases().length);
 
-  /** Index of the first pending (unannotated) case. -1 if none. */
+  /** Index of the first case that has not been explicitly finalized. */
   firstPendingIdx = computed(() =>
-    this.cases().findIndex((c) => !c.concepts.some((cc) => !!cc.sctid))
+    this.cases().findIndex((c) => c.review?.status !== 'finalized')
   );
 
   /** Session summary stats for display in the dialog. */
   totalDownloads = computed(() => this.sessionMeta()?.totalDownloads ?? 0);
   firstLoadedAt = computed(() => this.sessionMeta()?.firstLoadedAt ?? '—');
   completedAt = computed(() => this.sessionMeta()?.completedAt ?? null);
+  totalActiveMs = computed(() => this.sessionMeta()?.telemetry?.totalActiveMs ?? 0);
+  totalSearchRequests = computed(() =>
+    this.sessionMeta()?.telemetry?.cases.reduce((total, item) => total + item.search.requests, 0) ?? 0
+  );
+  totalSearchEpisodes = computed(() =>
+    this.sessionMeta()?.telemetry?.cases.reduce((total, item) => total + item.search.episodes, 0) ?? 0
+  );
+  totalZeroResultSearches = computed(() =>
+    this.sessionMeta()?.telemetry?.cases.reduce((total, item) => total + item.search.zeroResults, 0) ?? 0
+  );
+  totalSearchErrors = computed(() =>
+    this.sessionMeta()?.telemetry?.cases.reduce((total, item) => total + item.search.errors, 0) ?? 0
+  );
   eligibleSpanCount = computed(() =>
     this.cases().reduce(
       (total, caseItem) =>
@@ -144,6 +232,175 @@ export class AnnotatorComponent implements OnInit {
 
   ngOnInit(): void {
     this.detectEdition();
+  }
+
+  ngOnDestroy(): void {
+    this.flushActiveTime();
+    this.flushPendingActiveTime();
+  }
+
+  @HostListener('document:pointerdown', ['$event'])
+  @HostListener('document:keydown', ['$event'])
+  @HostListener('window:scroll', ['$event'])
+  onUserActivity(event: Event): void {
+    if (!this.loaded() || document.hidden) return;
+    const caseIndex = this.caseIndexFromEvent(event);
+    if (caseIndex !== null) this.activateCase(caseIndex);
+
+    const now = performance.now();
+    if (this.timingActive) {
+      this.accrueActiveTime(now);
+    } else {
+      this.timingActive = true;
+    }
+    this.lastActivityMarkMs = now;
+  }
+
+  @HostListener('document:visibilitychange')
+  onVisibilityChange(): void {
+    if (document.hidden) {
+      this.pauseActivityTracking();
+    } else {
+      this.resumeActivityTracking();
+    }
+  }
+
+  @HostListener('window:blur')
+  onWindowBlur(): void {
+    this.pauseActivityTracking();
+  }
+
+  @HostListener('window:focus')
+  onWindowFocus(): void {
+    this.resumeActivityTracking();
+  }
+
+  private caseIndexFromEvent(event: Event): number | null {
+    const target = event.target;
+    if (!(target instanceof Element)) return null;
+    const card = target.closest<HTMLElement>('[data-case-index]');
+    if (!card) return null;
+    const index = Number(card.dataset['caseIndex']);
+    return Number.isInteger(index) ? index : null;
+  }
+
+  private accrueActiveTime(now = performance.now()): void {
+    if (!this.timingActive || this.timingCaseIndex === null || !this.loaded()) return;
+    const threshold =
+      this.sessionMeta()?.telemetry?.idleThresholdMs ?? TELEMETRY_IDLE_THRESHOLD_MS;
+    const elapsed = Math.min(Math.max(0, now - this.lastActivityMarkMs), threshold);
+    if (elapsed > 0) {
+      this.pendingActiveMs.set(
+        this.timingCaseIndex,
+        (this.pendingActiveMs.get(this.timingCaseIndex) ?? 0) + elapsed
+      );
+    }
+    this.lastActivityMarkMs = now;
+  }
+
+  private flushActiveTime(): void {
+    this.accrueActiveTime(performance.now());
+  }
+
+  private flushPendingActiveTime(): void {
+    if (!this.pendingActiveMs.size) return;
+    const pending = new Map(this.pendingActiveMs);
+    this.pendingActiveMs.clear();
+    this.sessionMeta.update((meta) => {
+      if (!meta) return meta;
+      const telemetry = createAnnotationTelemetry(
+        this.cases().map((item) => item.id),
+        meta.telemetry
+      );
+      const cases = telemetry.cases.map((item, index) => ({
+        ...item,
+        activeMs: Math.round(item.activeMs + (pending.get(index) ?? 0)),
+      }));
+      return {
+        ...meta,
+        telemetry: {
+          ...telemetry,
+          cases,
+          totalActiveMs: cases.reduce((total, item) => total + item.activeMs, 0),
+        },
+      };
+    });
+  }
+
+  private pauseActivityTracking(): void {
+    if (!this.timingActive) return;
+    this.flushActiveTime();
+    this.flushPendingActiveTime();
+    this.timingActive = false;
+  }
+
+  private resumeActivityTracking(): void {
+    if (!this.loaded() || document.hidden) return;
+    this.lastActivityMarkMs = performance.now();
+    this.timingActive = true;
+  }
+
+  private updateCaseTelemetry(
+    caseIdx: number,
+    mutate: (item: CaseTelemetry) => void
+  ): void {
+    this.sessionMeta.update((meta) => {
+      if (!meta) return meta;
+      const telemetry = createAnnotationTelemetry(
+        this.cases().map((item) => item.id),
+        meta.telemetry
+      );
+      const cases = telemetry.cases.map((item, index) => {
+        if (index !== caseIdx) return item;
+        const copy: CaseTelemetry = {
+          ...item,
+          search: {
+            ...item.search,
+            selectedRanks: [...item.search.selectedRanks],
+            queries: item.search.queries.map((query) => ({ ...query })),
+          },
+        };
+        mutate(copy);
+        return copy;
+      });
+      return {
+        ...meta,
+        telemetry: {
+          ...telemetry,
+          cases,
+          totalActiveMs: cases.reduce((total, item) => total + item.activeMs, 0),
+        },
+      };
+    });
+  }
+
+  activateCase(caseIdx: number): void {
+    if (caseIdx < 0 || caseIdx >= this.cases().length) return;
+    if (this.timingCaseIndex === caseIdx) return;
+
+    this.flushActiveTime();
+    this.flushPendingActiveTime();
+    this.activeCaseIndex.set(caseIdx);
+    this.timingCaseIndex = caseIdx;
+    this.lastActivityMarkMs = performance.now();
+    this.timingActive = !document.hidden;
+
+    const now = new Date().toISOString();
+    this.updateCaseTelemetry(caseIdx, (item) => {
+      item.visits += 1;
+      item.firstOpenedAt ??= now;
+      item.lastOpenedAt = now;
+    });
+  }
+
+  formatDuration(milliseconds: number): string {
+    const totalSeconds = Math.max(0, Math.round(milliseconds / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return hours
+      ? `${hours} h ${String(minutes).padStart(2, '0')} min`
+      : `${minutes} min ${String(seconds).padStart(2, '0')} s`;
   }
 
   /** Auto-select the Argentina edition (Spanish) if present, else International (English). */
@@ -168,6 +425,8 @@ export class AnnotatorComponent implements OnInit {
   }
 
   openStats(): void {
+    this.flushActiveTime();
+    this.flushPendingActiveTime();
     this.dialog.open(this.statsTpl, { width: '560px' });
   }
 
@@ -175,8 +434,9 @@ export class AnnotatorComponent implements OnInit {
   scrollToFirstPending(): void {
     const idx = this.firstPendingIdx();
     if (idx < 0) return;
+    this.selectCase(idx);
     const cards = document.querySelectorAll('.case-card');
-    const el = cards[idx] as HTMLElement | undefined;
+    const el = cards[0] as HTMLElement | undefined;
     el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
@@ -211,48 +471,101 @@ export class AnnotatorComponent implements OnInit {
       this.snackBar.open('El JSON no contiene "cases".', 'OK', { duration: 4000 });
       return;
     }
+    this.pauseActivityTracking();
+    this.timingCaseIndex = null;
+    this.pendingActiveMs.clear();
     this.project.set(doc.project ?? '');
     this.batch.set(doc.batch ?? '');
     this.annotatorId.set(doc.annotatorId ?? '');
     this.sourceFile.set(doc.sourceFile ?? fileName);
 
+    const resolvedProtocol =
+      doc._annotationProtocol?.mode === 'core-blind'
+        ? { ...CORE_BLIND_PROTOCOL, ...doc._annotationProtocol }
+        : { ...ASSISTED_ANNOTATION_PROTOCOL, ...doc._annotationProtocol };
+    this.annotationProtocol.set(resolvedProtocol);
+    this.lexicalInventory.set(doc._lexicalInventory);
+    const lexicalLayerEnabled = resolvedProtocol.lexicalLayerEnabled === true;
+
     let invalidSpans = 0;
+    let invalidLexicalMentions = 0;
     const cases: CaseAnnotation[] = doc.cases.map((c) => {
       const text = String(c.text ?? '');
       const textNorm = String(c.textNorm ?? text);
       const normalizedSpans = normalizePremarkedSpans(c.spans, textNorm);
       invalidSpans += normalizedSpans.invalidCount;
+      const normalizedLexicalMentions = normalizeLexicalMentions(c.lexicalMentions, textNorm);
+      invalidLexicalMentions += normalizedLexicalMentions.invalidCount;
+
       const concepts = Array.isArray(c.concepts)
-        ? c.concepts.map((concept) => ({ ...newConcept(), ...concept }))
+        ? c.concepts.map((concept, index) => {
+            const sequence = typeof concept.sequence === 'number' ? concept.sequence : index + 1;
+            return { ...newConcept(sequence), ...concept, sequence };
+          })
         : [];
+      const hasCodedConcept = concepts.some((concept) => !!concept.sctid);
+      const lexicalReview = lexicalLayerEnabled
+        ? normalizeLexicalReview(
+            c.lexicalReview,
+            normalizedLexicalMentions.mentions,
+            doc._lexicalInventory?.inventoryVersion ?? null
+          )
+        : c.lexicalReview
+          ? normalizeLexicalReview(
+              c.lexicalReview,
+              normalizedLexicalMentions.mentions,
+              doc._lexicalInventory?.inventoryVersion ?? null
+            )
+          : undefined;
+      const review =
+        c.review?.status === 'finalized' &&
+        (!lexicalLayerEnabled || lexicalReview?.status === 'completed')
+          ? { ...c.review }
+          : hasCodedConcept && !lexicalLayerEnabled
+            ? { status: 'finalized' as const, outcome: 'coded' as const }
+            : { status: 'pending' as const };
 
       return {
         id: String(c.id ?? ''),
         text,
         textNorm,
         spans: normalizedSpans.spans,
-        concepts: concepts.length || normalizedSpans.spans.length ? concepts : [newConcept()],
+        concepts,
         comentarios: String(c.comentarios ?? ''),
+        review,
+        lexicalMentions: normalizedLexicalMentions.mentions,
+        lexicalReview,
       };
     });
     this.cases.set(cases);
     this.premarking.set(doc._premarking);
     this.trace.set(doc._trace);
+    this.activeCaseIndex.set(0);
+    this.caseSearch.set('');
     this.selectedSpan.set(null);
+    this.humanSpanDraft.set(null);
 
     // --- Session metadata: preserve existing or initialise ---
     const now = new Date().toISOString();
-    const existingMeta: AnnotationMeta = doc._meta ?? {
-      sessions: [],
-      totalDownloads: 0,
-      firstLoadedAt: now,
+    const existingMeta: AnnotationMeta = {
+      sessions: [...(doc._meta?.sessions ?? [])],
+      totalDownloads: doc._meta?.totalDownloads ?? 0,
+      firstLoadedAt: doc._meta?.firstLoadedAt ?? now,
+      completedAt: doc._meta?.completedAt,
+      telemetry: createAnnotationTelemetry(
+        cases.map((item) => item.id),
+        doc._meta?.telemetry
+      ),
     };
     const annotated = cases.filter((c) => c.concepts.some((cc) => !!cc.sctid)).length;
+    const reviewed = cases.filter((c) => c.review?.status === 'finalized').length;
     const uploadEntry: SessionEntry = {
       action: 'upload',
       timestamp: now,
       annotatedCount: annotated,
+      reviewedCount: reviewed,
       totalCases: cases.length,
+      appBuild: TELEMETRY_APP_BUILD,
     };
     existingMeta.sessions = [...existingMeta.sessions, uploadEntry];
     this.sessionMeta.set(existingMeta);
@@ -265,17 +578,28 @@ export class AnnotatorComponent implements OnInit {
         { duration: 6000 }
       );
     }
+    if (invalidLexicalMentions) {
+      this.snackBar.open(
+        `Se omitieron ${invalidLexicalMentions} formas sugeridas porque no coincidían correctamente con la nota.`,
+        'OK',
+        { duration: 6500 }
+      );
+    }
 
     // Inform the user whether this is a fresh start or a resumption.
-    const resuming = annotated > 0;
+    const resuming = reviewed > 0 || annotated > 0;
     const msg = resuming
-      ? `Retomando: ${annotated} de ${cases.length} casos ya anotados. Pendientes: ${cases.length - annotated}.`
+      ? `Retomando: ${reviewed} de ${cases.length} notas revisadas. Pendientes: ${cases.length - reviewed}.`
       : `Cargados ${cases.length} casos. Comenzá por el primero.`;
     const action = resuming && this.firstPendingIdx() >= 0 ? 'Ir al pendiente' : 'OK';
     this.snackBar
       .open(msg, action, { duration: 6000 })
       .onAction()
       .subscribe(() => this.scrollToFirstPending());
+    if (resuming && this.firstPendingIdx() >= 0) {
+      this.activeCaseIndex.set(this.firstPendingIdx());
+    }
+    this.activateCase(this.activeCaseIndex());
   }
 
   // ---- Clear / start over ----
@@ -295,41 +619,450 @@ export class AnnotatorComponent implements OnInit {
   }
 
   private doClear(): void {
+    this.pauseActivityTracking();
     this.cases.set([]);
     this.project.set('');
     this.batch.set('');
     this.sourceFile.set('');
     this.premarking.set(undefined);
     this.trace.set(undefined);
+    this.lexicalInventory.set(undefined);
     this.selectedSpan.set(null);
+    this.humanSpanDraft.set(null);
+    this.activeCaseIndex.set(0);
+    this.caseSearch.set('');
     this.sessionMeta.set(null);
+    this.timingCaseIndex = null;
+    this.pendingActiveMs.clear();
     this.dirty.set(false);
     this.snackBar.open('Espacio de trabajo limpio.', 'OK', { duration: 2000 });
   }
 
   // ---- Concept block editing ----
 
-  private mutateCase(caseIdx: number, fn: (c: CaseAnnotation) => void): void {
+  private mutateCase(
+    caseIdx: number,
+    fn: (c: CaseAnnotation) => void,
+    options: { preserveReview?: boolean; recordEdit?: boolean } = {}
+  ): void {
+    const wasFinalized = this.cases()[caseIdx]?.review?.status === 'finalized';
     this.cases.update((list) => {
       const copy = list.map((c) => ({
         ...c,
-        spans: c.spans.map((span) => ({ ...span, suggest: span.suggest ? { ...span.suggest } : undefined })),
+        review: c.review ? { ...c.review } : { status: 'pending' as const },
+        spans: c.spans.map((span) => ({
+          ...span,
+          suggest: span.suggest ? { ...span.suggest } : undefined,
+          review: span.review ? { ...span.review } : undefined,
+          humanAudit: span.humanAudit ? { ...span.humanAudit } : undefined,
+        })),
+        lexicalMentions: (c.lexicalMentions ?? []).map((mention) => ({
+          ...mention,
+          candidateSenseIds: [...mention.candidateSenseIds],
+          annotation: { ...mention.annotation, evidenceCodes: [...mention.annotation.evidenceCodes] },
+        })),
+        lexicalReview: c.lexicalReview ? { ...c.lexicalReview } : undefined,
         concepts: c.concepts.map((x) => ({ ...x })),
       }));
       fn(copy[caseIdx]);
+      if (wasFinalized && !options.preserveReview) {
+        copy[caseIdx].review = { status: 'pending' };
+      }
       return copy;
     });
+    if (options.recordEdit !== false) {
+      const editedAt = new Date().toISOString();
+      this.updateCaseTelemetry(caseIdx, (item) => {
+        item.firstEditedAt ??= editedAt;
+        item.lastEditedAt = editedAt;
+        if (wasFinalized && !options.preserveReview) {
+          item.reopenedCount += 1;
+          item.finalizedAt = undefined;
+          item.finalizationOutcome = undefined;
+        }
+      });
+    }
     this.dirty.set(true);
   }
 
   addConcept(caseIdx: number): void {
     this.mutateCase(caseIdx, (c) => {
-      if (c.concepts.length < this.maxConcepts) c.concepts.push(newConcept());
+      c.concepts.push(newConcept(this.nextConceptSequence(c)));
     });
+    this.updateCaseTelemetry(caseIdx, (item) => (item.conceptsAdded += 1));
   }
 
   textSegments(caseItem: CaseAnnotation): TextSegment[] {
     return buildTextSegments(caseItem.textNorm, caseItem.spans);
+  }
+
+  /** Source offset for a rendered segment, used by manual span selection. */
+  textSegmentStart(caseItem: CaseAnnotation, segmentIndex: number): number {
+    return this.textSegments(caseItem)
+      .slice(0, segmentIndex)
+      .reduce((offset, segment) => offset + segment.value.length, 0);
+  }
+
+  conceptsInDescendingOrder(caseItem: CaseAnnotation): { concept: ConceptAnnotation; index: number }[] {
+    return caseItem.concepts
+      .map((concept, index) => ({ concept, index }))
+      .sort((left, right) => (right.concept.sequence ?? right.index) - (left.concept.sequence ?? left.index));
+  }
+
+  captureTextSelection(caseIdx: number, element: HTMLElement): void {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      this.humanSpanDraft.set(null);
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    if (!element.contains(range.startContainer) || !element.contains(range.endContainer)) {
+      this.humanSpanDraft.set(null);
+      return;
+    }
+
+    const textoLiteral = range.toString();
+    if (!textoLiteral.trim()) {
+      this.humanSpanDraft.set(null);
+      return;
+    }
+
+    const caseItem = this.cases()[caseIdx];
+    const start = this.selectionSourceOffset(element, range.startContainer, range.startOffset);
+    const end = this.selectionSourceOffset(element, range.endContainer, range.endOffset);
+
+    if (start === null || end === null || end <= start || !caseItem) {
+      this.humanSpanDraft.set(null);
+      this.snackBar.open('Seleccioná texto dentro de la nota clínica.', 'OK', { duration: 3500 });
+      return;
+    }
+
+    const sourceLiteral = caseItem.textNorm.slice(start, end);
+    const normalizeWhitespace = (value: string) =>
+      value.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+
+    if (sourceLiteral !== textoLiteral && normalizeWhitespace(sourceLiteral) !== normalizeWhitespace(textoLiteral)) {
+      this.humanSpanDraft.set(null);
+      this.snackBar.open('No se pudo calcular la posición del texto seleccionado.', 'OK', { duration: 3500 });
+      return;
+    }
+
+    // Store the source literal so the new span remains offset-valid after export.
+    this.humanSpanDraft.set({ caseIndex: caseIdx, start, end, textoLiteral: sourceLiteral });
+  }
+
+  private selectionSourceOffset(root: HTMLElement, node: Node, offset: number): number | null {
+    let current: Node | null = node;
+    while (current && current !== root) {
+      if (current instanceof HTMLElement && current.hasAttribute('data-source-start')) {
+        const segmentStart = Number(current.getAttribute('data-source-start'));
+        if (!Number.isFinite(segmentStart)) return null;
+        const localRange = document.createRange();
+        try {
+          localRange.selectNodeContents(current);
+          localRange.setEnd(node, offset);
+          return segmentStart + localRange.toString().length;
+        } catch {
+          return null;
+        }
+      }
+      current = current.parentNode;
+    }
+
+    // Fallback for an endpoint represented directly by the root element.
+    try {
+      const prefixRange = document.createRange();
+      prefixRange.selectNodeContents(root);
+      prefixRange.setEnd(node, offset);
+      return prefixRange.toString().length;
+    } catch {
+      return null;
+    }
+  }
+
+  addHumanSpan(caseIdx: number): void {
+    const draft = this.humanSpanDraft();
+    const caseItem = this.cases()[caseIdx];
+    if (!draft || draft.caseIndex !== caseIdx || !caseItem) return;
+
+    const spanId = this.nextHumanSpanId(caseItem);
+    this.mutateCase(caseIdx, (targetCase) => {
+      targetCase.spans.push({
+        spanId,
+        start: draft.start,
+        end: draft.end,
+        textoLiteral: draft.textoLiteral,
+        origin: 'human',
+        confidence: 1,
+        status: 'pendiente',
+        review: { disposition: 'elegible', reason: 'Span agregado manualmente por el anotador.' },
+        humanAudit: {
+          createdManually: true,
+          createdAt: new Date().toISOString(),
+          lastAction: 'created',
+          lastActionAt: new Date().toISOString(),
+        },
+      });
+      targetCase.spans.sort((left, right) => left.start - right.start || left.end - right.end);
+    });
+    this.selectedSpan.set({ caseIndex: caseIdx, spanId });
+    this.humanSpanDraft.set(null);
+    window.getSelection()?.removeAllRanges();
+    this.updateCaseTelemetry(caseIdx, (item) => (item.manualSpansAdded += 1));
+  }
+
+  addHumanLexicalMention(caseIdx: number): void {
+    const draft = this.humanSpanDraft();
+    const caseItem = this.cases()[caseIdx];
+    if (!draft || draft.caseIndex !== caseIdx || !caseItem || !this.lexicalLayerEnabled()) return;
+    const duplicate = (caseItem.lexicalMentions ?? []).some(
+      (mention) => mention.start === draft.start && mention.end === draft.end
+    );
+    if (duplicate) {
+      this.snackBar.open('Esa forma breve ya está incorporada en la revisión.', 'OK', {
+        duration: 3500,
+      });
+      return;
+    }
+
+    const mention = newHumanLexicalMention(
+      this.nextHumanLexicalMentionId(caseItem),
+      draft.start,
+      draft.end,
+      draft.textoLiteral
+    );
+    this.mutateCase(caseIdx, (targetCase) => {
+      targetCase.lexicalMentions ??= [];
+      targetCase.lexicalMentions.push(mention);
+      targetCase.lexicalMentions.sort(
+        (left, right) => left.start - right.start || left.end - right.end
+      );
+      this.reopenLexicalReview(targetCase);
+    });
+    this.humanSpanDraft.set(null);
+    window.getSelection()?.removeAllRanges();
+  }
+
+  lexicalSenseOptions(mention: LexicalMention): LexicalSenseOption[] {
+    if (!mention.candidateSenseIds.length) return [];
+    const allowed = new Set(mention.candidateSenseIds);
+    return (this.lexicalInventory()?.abbreviations ?? [])
+      .flatMap((entry) => entry.senses)
+      .filter((sense) => allowed.has(sense.senseId))
+      .sort((left, right) => left.senseId.localeCompare(right.senseId));
+  }
+
+  lexicalOriginLabel(origin: LexicalMention['origin']): string {
+    switch (origin) {
+      case 'human':
+        return 'Agregada por vos';
+      case 'sense_inventory':
+        return 'Sugerida por una lista de formas conocidas';
+      case 'legacy_dictionary':
+        return 'Sugerida por coincidencia con una forma conocida';
+      default:
+        return 'Sugerida por su escritura';
+    }
+  }
+
+  lexicalFormSuggestion(mention: LexicalMention): string {
+    if (/\d/u.test(mention.surface)) {
+      return 'Sugerencia automática por letras y números: revisala; la escritura no determina el significado.';
+    }
+    if (/^[A-ZÁÉÍÓÚÜÑ]{2,}$/u.test(mention.surface)) {
+      return 'Sugerencia automática por mayúsculas: revisala; las mayúsculas no prueban que sea una sigla.';
+    }
+    return 'El tipo está preseleccionado como ayuda inicial: revisalo antes de cerrar.';
+  }
+
+  lexicalFormLabel(value: string | null): string {
+    return this.lexicalFormTypes.find((option) => option.value === value)?.label ?? 'Sin seleccionar';
+  }
+
+  lexicalDecisionLabel(value: string | null): string {
+    return this.lexicalDecisions.find((option) => option.value === value)?.label ?? 'Sin seleccionar';
+  }
+
+  lexicalFunctionLabel(value: string | null): string {
+    if (value === this.lexicalUnclassifiedFunction.value) {
+      return this.lexicalUnclassifiedFunction.label;
+    }
+    return this.lexicalFunctions.find((option) => option.value === value)?.label ?? 'Sin clasificar';
+  }
+
+  lexicalSenseLabel(mention: LexicalMention): string {
+    return (
+      this.lexicalSenseOptions(mention).find(
+        (option) => option.senseId === mention.annotation.senseId,
+      )?.expansion ?? 'Sin seleccionar'
+    );
+  }
+
+  lexicalSectionLabel(value: string | null): string {
+    if (!value) return 'Sin especificar';
+    return this.lexicalSections.find((option) => option.value === value)?.label ?? `Valor existente: ${value}`;
+  }
+
+  lexicalEvidenceSummary(values: readonly string[]): string {
+    if (!values.length) return 'Sin pistas seleccionadas';
+    const labels = values.map(
+      (value) => this.lexicalEvidenceCodes.find((option) => option.value === value)?.label ?? value,
+    );
+    if (labels.length <= 2) return labels.join(', ');
+    return `${labels.slice(0, 2).join(', ')} y ${labels.length - 2} más`;
+  }
+
+  isKnownLexicalSection(section: string | null): boolean {
+    return !!section && this.lexicalSections.some((option) => option.value === section);
+  }
+
+  unlistedLexicalEvidenceCodes(mention: LexicalMention): string[] {
+    const listed = new Set(this.lexicalEvidenceCodes.map((option) => option.value));
+    return mention.annotation.evidenceCodes.filter((code) => !listed.has(code));
+  }
+
+  updateLexicalAnnotation(
+    caseIdx: number,
+    mentionId: string,
+    field: keyof LexicalAnnotation,
+    value: string | null
+  ): void {
+    this.mutateCase(caseIdx, (caseItem) => {
+      const mention = (caseItem.lexicalMentions ?? []).find((item) => item.mentionId === mentionId);
+      if (!mention) return;
+      (mention.annotation as unknown as Record<string, unknown>)[field] = value;
+      if (field === 'decisionStatus') {
+        const status = value as LexicalDecisionStatus;
+        if (status !== 'resolved') mention.annotation.senseId = null;
+        if (status !== 'new_sense_proposed') mention.annotation.proposedExpansion = null;
+        if (status !== 'form_error') mention.annotation.correctedForm = null;
+      }
+      mention.annotation.annotatorId = this.annotatorId() || null;
+      mention.annotation.annotatedAt = new Date().toISOString();
+      if (field === 'decisionStatus') {
+        mention.annotation = normalizeLexicalAnnotation(mention.annotation, mention.surface);
+      }
+      this.reopenLexicalReview(caseItem);
+    });
+  }
+
+  updateLexicalEvidence(caseIdx: number, mentionId: string, value: string | string[]): void {
+    this.mutateCase(caseIdx, (caseItem) => {
+      const mention = (caseItem.lexicalMentions ?? []).find((item) => item.mentionId === mentionId);
+      if (!mention) return;
+      mention.annotation.evidenceCodes = normalizeEvidenceCodes(value);
+      mention.annotation.annotatorId = this.annotatorId() || null;
+      mention.annotation.annotatedAt = new Date().toISOString();
+      mention.annotation = normalizeLexicalAnnotation(mention.annotation, mention.surface);
+      this.reopenLexicalReview(caseItem);
+    });
+  }
+
+  removeHumanLexicalMention(caseIdx: number, mentionId: string): void {
+    this.mutateCase(caseIdx, (caseItem) => {
+      const mention = (caseItem.lexicalMentions ?? []).find((item) => item.mentionId === mentionId);
+      if (!mention || mention.origin !== 'human') return;
+      caseItem.lexicalMentions = (caseItem.lexicalMentions ?? []).filter(
+        (item) => item.mentionId !== mentionId
+      );
+      this.reopenLexicalReview(caseItem);
+    });
+  }
+
+  lexicalPendingCount(caseItem: CaseAnnotation): number {
+    return (caseItem.lexicalMentions ?? []).filter((mention) => !lexicalMentionComplete(mention))
+      .length;
+  }
+
+  isLexicalMentionComplete(mention: LexicalMention): boolean {
+    return lexicalMentionComplete(mention);
+  }
+
+  lexicalReviewReady(caseItem: CaseAnnotation): boolean {
+    if (!this.lexicalLayerEnabled()) return true;
+    return caseItem.lexicalReview?.status === 'completed' && this.lexicalPendingCount(caseItem) === 0;
+  }
+
+  completeLexicalReview(caseIdx: number): void {
+    const caseItem = this.cases()[caseIdx];
+    if (!caseItem || !this.lexicalLayerEnabled()) return;
+    const pending = this.lexicalPendingCount(caseItem);
+    if (pending) {
+      this.snackBar.open(
+        `Falta decidir qué hacer con ${pending} formas breves. También podés usar “ambigua” o “no puedo determinarla”.`,
+        'OK',
+        { duration: 5500 }
+      );
+      return;
+    }
+    const completedAt = new Date().toISOString();
+    this.mutateCase(caseIdx, (target) => {
+      target.lexicalReview = {
+        status: 'completed',
+        exhaustiveReviewRequired: true,
+        annotatorId: this.annotatorId() || null,
+        completedAt,
+        inventoryVersion:
+          this.lexicalInventory()?.inventoryVersion ??
+          this.annotationProtocol().lexicalInventoryVersion ??
+          null,
+      };
+    });
+    this.snackBar.open('Revisión de formas breves completada.', 'OK', { duration: 3000 });
+  }
+
+  private reopenLexicalReview(caseItem: CaseAnnotation): void {
+    if (!this.lexicalLayerEnabled()) return;
+    caseItem.lexicalReview = {
+      ...newLexicalReview(
+        this.lexicalInventory()?.inventoryVersion ??
+          this.annotationProtocol().lexicalInventoryVersion ??
+          null
+      ),
+      ...(caseItem.lexicalReview ?? {}),
+      status: 'pending',
+      completedAt: null,
+      annotatorId: null,
+      exhaustiveReviewRequired: true,
+    };
+  }
+
+  adjustSelectedSpanBounds(caseIdx: number): void {
+    const draft = this.humanSpanDraft();
+    const selected = this.selectedSpanFor(caseIdx);
+    const caseItem = this.cases()[caseIdx];
+    if (!draft || draft.caseIndex !== caseIdx || !selected || !caseItem) return;
+
+    const changedAt = new Date().toISOString();
+    this.mutateCase(caseIdx, (targetCase) => {
+      const targetSpan = targetCase.spans.find((span) => span.spanId === selected.spanId);
+      if (!targetSpan) return;
+      const existingAudit = targetSpan.humanAudit ?? {};
+      targetSpan.humanAudit = {
+        ...existingAudit,
+        originalStart: existingAudit.originalStart ?? targetSpan.start,
+        originalEnd: existingAudit.originalEnd ?? targetSpan.end,
+        originalTextoLiteral: existingAudit.originalTextoLiteral ?? targetSpan.textoLiteral,
+        boundaryAdjusted: true,
+        lastAction: 'boundary_adjusted',
+        lastActionAt: changedAt,
+      };
+      targetSpan.start = draft.start;
+      targetSpan.end = draft.end;
+      targetSpan.textoLiteral = draft.textoLiteral;
+      targetSpan.status = 'pendiente';
+      targetCase.concepts
+        .filter((concept) => concept.spanId === targetSpan.spanId)
+        .forEach((concept) => (concept.textoLiteral = draft.textoLiteral));
+      targetCase.spans.sort((left, right) => left.start - right.start || left.end - right.end);
+    });
+    this.humanSpanDraft.set(null);
+    window.getSelection()?.removeAllRanges();
+    this.updateCaseTelemetry(caseIdx, (item) => (item.spanBoundaryAdjustments += 1));
+    this.snackBar.open('Límites actualizados. Confirmá la mención para continuar.', 'OK', {
+      duration: 3500,
+    });
   }
 
   selectedSpanFor(caseIdx: number): PremarkedSpan | null {
@@ -343,6 +1076,125 @@ export class AnnotatorComponent implements OnInit {
     this.selectedSpan.set({ caseIndex: caseIdx, spanId: span.spanId });
   }
 
+  selectCase(caseIdx: number): void {
+    if (caseIdx < 0 || caseIdx >= this.cases().length) return;
+    this.activateCase(caseIdx);
+    this.selectedSpan.set(null);
+    this.humanSpanDraft.set(null);
+  }
+
+  goToAdjacentCase(direction: -1 | 1): void {
+    const entries = this.filteredCaseEntries();
+    const currentPosition = this.activeCasePosition();
+    if (currentPosition < 0) return;
+    const nextEntry = entries[currentPosition + direction];
+    if (nextEntry) this.selectCase(nextEntry.index);
+  }
+
+  hasAnnotatedConcept(caseItem: CaseAnnotation): boolean {
+    return caseItem.concepts.some((concept) => !!concept.sctid);
+  }
+
+  caseEligibleSpanCount(caseItem: CaseAnnotation): number {
+    return caseItem.spans.filter((span) => span.review?.disposition !== 'excluido').length;
+  }
+
+  caseExcludedSpanCount(caseItem: CaseAnnotation): number {
+    return caseItem.spans.filter((span) => span.review?.disposition === 'excluido').length;
+  }
+
+  caseProgressLabel(caseItem: CaseAnnotation): string {
+    const coded = caseItem.concepts.filter((concept) => !!concept.sctid).length;
+    const total = caseItem.concepts.length;
+    if (!total) return 'Sin conceptos';
+    return `${coded}/${total} codificados`;
+  }
+
+  isCaseFinalized(caseItem: CaseAnnotation): boolean {
+    return caseItem.review?.status === 'finalized';
+  }
+
+  finalizeCase(caseIdx: number, outcome: CaseReviewOutcome): void {
+    const caseItem = this.cases()[caseIdx];
+    if (!caseItem) return;
+    const codedConcepts = caseItem.concepts.filter((concept) => !!concept.sctid);
+    const conceptHasContent = (concept: ConceptAnnotation) =>
+      !!(concept.cat || concept.sctid || concept.term || concept.textoLiteral.trim());
+    const pendingSpans = caseItem.spans.filter(
+      (span) => span.review?.disposition !== 'excluido' && span.status === 'pendiente'
+    );
+
+    if (!this.lexicalReviewReady(caseItem)) {
+      const pending = this.lexicalPendingCount(caseItem);
+      this.snackBar.open(
+        pending
+          ? `Decidí qué hacer con las ${pending} formas breves pendientes y cerrá esa revisión.`
+          : 'Marcá como completa la revisión de formas breves antes de finalizar la nota.',
+        'OK',
+        { duration: 5500 }
+      );
+      return;
+    }
+
+    if (pendingSpans.length) {
+      this.snackBar.open(
+        `Revisá los ${pendingSpans.length} candidatos pendientes antes de finalizar la nota.`,
+        'OK',
+        { duration: 5000 }
+      );
+      return;
+    }
+
+    if (outcome === 'coded') {
+      if (!codedConcepts.length) {
+        this.snackBar.open('Agregá y codificá al menos un concepto antes de finalizar.', 'OK', {
+          duration: 4500,
+        });
+        return;
+      }
+      const incompleteConcept = caseItem.concepts.some(
+        (concept) =>
+          conceptHasContent(concept) &&
+          (!concept.cat || !concept.sctid || !concept.textoLiteral.trim())
+      );
+      if (incompleteConcept) {
+        this.snackBar.open(
+          'Completá categoría, concepto SNOMED CT y texto literal en todos los bloques iniciados.',
+          'OK',
+          { duration: 5500 }
+        );
+        return;
+      }
+    } else if (caseItem.concepts.some(conceptHasContent)) {
+      this.snackBar.open(
+        'Esta nota tiene conceptos iniciados. Completalos o quitálos antes de marcarla sin conceptos anotables.',
+        'OK',
+        { duration: 5500 }
+      );
+      return;
+    }
+
+    const finalizedAt = new Date().toISOString();
+    this.mutateCase(
+      caseIdx,
+      (target) => {
+        target.review = { status: 'finalized', outcome, finalizedAt };
+      },
+      { preserveReview: true, recordEdit: false }
+    );
+    this.updateCaseTelemetry(caseIdx, (item) => {
+      item.finalizedAt = finalizedAt;
+      item.finalizationOutcome = outcome;
+    });
+    this.snackBar.open(
+      outcome === 'coded'
+        ? 'Nota marcada como revisada.'
+        : 'Nota registrada sin conceptos anotables.',
+      'OK',
+      { duration: 3000 }
+    );
+  }
+
   confirmSelectedSpan(caseIdx: number): void {
     const span = this.selectedSpanFor(caseIdx);
     if (!span) return;
@@ -351,25 +1203,24 @@ export class AnnotatorComponent implements OnInit {
       const fixedSpan = caseItem.spans.find((item) => item.spanId === span.spanId);
       if (!fixedSpan) return;
       fixedSpan.status = 'confirmado';
+      fixedSpan.humanAudit = {
+        ...(fixedSpan.humanAudit ?? {}),
+        lastAction: 'accepted',
+        lastActionAt: new Date().toISOString(),
+      };
 
       const existing = caseItem.concepts.find((concept) => concept.spanId === fixedSpan.spanId);
       if (existing) return;
-      if (caseItem.concepts.length >= this.maxConcepts) {
-        this.snackBar.open(`Máximo de ${this.maxConcepts} conceptos por caso.`, 'OK', { duration: 4000 });
-        return;
-      }
-
       caseItem.concepts.push({
         ...newConcept(),
+        sequence: this.nextConceptSequence(caseItem),
         spanId: fixedSpan.spanId,
         textoLiteral: fixedSpan.textoLiteral,
-        cat: annotationCategory(fixedSpan.suggest?.category),
-        pol: fixedSpan.suggest?.pol ?? 'Activo',
-        cert: fixedSpan.suggest?.cert ?? 'Confirmado',
-        temp: fixedSpan.suggest?.temp ?? 'Actual',
-        suj: fixedSpan.suggest?.suj ?? 'Paciente',
       });
     });
+    this.selectedSpan.set(null);
+    this.humanSpanDraft.set(null);
+    this.updateCaseTelemetry(caseIdx, (item) => (item.spansAccepted += 1));
   }
 
   discardSelectedSpan(caseIdx: number): void {
@@ -380,19 +1231,51 @@ export class AnnotatorComponent implements OnInit {
       const fixedSpan = caseItem.spans.find((item) => item.spanId === span.spanId);
       if (!fixedSpan) return;
       fixedSpan.status = 'descartado';
+      fixedSpan.humanAudit = {
+        ...(fixedSpan.humanAudit ?? {}),
+        lastAction: 'discarded',
+        lastActionAt: new Date().toISOString(),
+      };
       caseItem.concepts = caseItem.concepts.filter((concept) => concept.spanId !== fixedSpan.spanId);
     });
     this.selectedSpan.set(null);
+    this.updateCaseTelemetry(caseIdx, (item) => (item.spansDiscarded += 1));
   }
 
   removeConcept(caseIdx: number, conceptIdx: number): void {
     this.mutateCase(caseIdx, (c) => {
       c.concepts.splice(conceptIdx, 1);
-      if (c.concepts.length === 0) c.concepts.push(newConcept());
     });
+    this.updateCaseTelemetry(caseIdx, (item) => (item.conceptsRemoved += 1));
+  }
+
+  private nextConceptSequence(caseItem: CaseAnnotation): number {
+    return (
+      Math.max(
+        0,
+        ...caseItem.concepts.map((concept, index) => concept.sequence ?? index + 1)
+      ) + 1
+    );
+  }
+
+  private nextHumanSpanId(caseItem: CaseAnnotation): string {
+    const maxId = caseItem.spans.reduce((maximum, span) => {
+      const match = /^human-(\d+)$/.exec(span.spanId);
+      return match ? Math.max(maximum, Number(match[1])) : maximum;
+    }, 0);
+    return `human-${String(maxId + 1).padStart(3, '0')}`;
+  }
+
+  private nextHumanLexicalMentionId(caseItem: CaseAnnotation): string {
+    const maxId = (caseItem.lexicalMentions ?? []).reduce((maximum, mention) => {
+      const match = /^lex-human-(\d+)$/.exec(mention.mentionId);
+      return match ? Math.max(maximum, Number(match[1])) : maximum;
+    }, 0);
+    return `lex-human-${String(maxId + 1).padStart(3, '0')}`;
   }
 
   onCategoryChange(caseIdx: number, conceptIdx: number, cat: Category): void {
+    const previousCategory = this.cases()[caseIdx]?.concepts[conceptIdx]?.cat;
     this.mutateCase(caseIdx, (c) => {
       const concept = c.concepts[conceptIdx];
       concept.cat = cat;
@@ -400,6 +1283,9 @@ export class AnnotatorComponent implements OnInit {
       concept.sctid = '';
       concept.term = '';
     });
+    if (previousCategory && previousCategory !== cat) {
+      this.updateCaseTelemetry(caseIdx, (item) => (item.categoryChanges += 1));
+    }
   }
 
   onConceptSelected(
@@ -407,10 +1293,77 @@ export class AnnotatorComponent implements OnInit {
     conceptIdx: number,
     selection: { code?: string; display?: string }
   ): void {
+    const previousCode = this.cases()[caseIdx]?.concepts[conceptIdx]?.sctid ?? '';
     this.mutateCase(caseIdx, (c) => {
       const concept = c.concepts[conceptIdx];
       concept.sctid = selection?.code ?? '';
       concept.term = selection?.display ?? '';
+    });
+    if (previousCode && selection?.code && previousCode !== selection.code) {
+      this.updateCaseTelemetry(caseIdx, (item) => (item.conceptsReplaced += 1));
+    }
+  }
+
+  recordSearchTelemetry(
+    caseIdx: number,
+    conceptIdx: number,
+    event: AutocompleteTelemetryEvent
+  ): void {
+    this.activateCase(caseIdx);
+    const category = this.cases()[caseIdx]?.concepts[conceptIdx]?.cat ?? '';
+    this.updateCaseTelemetry(caseIdx, (item) => {
+      const search = item.search;
+      const queryMetric = () => {
+        let query = search.queries.find(
+          (candidate) => candidate.query === event.query && candidate.category === category
+        );
+        if (!query) {
+          query = {
+            query: event.query,
+            category,
+            requests: 0,
+            zeroResults: 0,
+            errors: 0,
+            selections: 0,
+          };
+          search.queries.push(query);
+        }
+        return query;
+      };
+
+      switch (event.type) {
+        case 'episode-start':
+          search.episodes += 1;
+          break;
+        case 'reformulation':
+          search.reformulations += 1;
+          break;
+        case 'request':
+          search.requests += 1;
+          if (event.query) queryMetric().requests += 1;
+          break;
+        case 'result':
+          search.completedRequests += 1;
+          search.totalLatencyMs += event.latencyMs ?? 0;
+          if ((event.resultCount ?? 0) === 0) {
+            search.zeroResults += 1;
+            if (event.query) queryMetric().zeroResults += 1;
+          }
+          break;
+        case 'error':
+          search.errors += 1;
+          search.totalLatencyMs += event.latencyMs ?? 0;
+          if (event.query) queryMetric().errors += 1;
+          break;
+        case 'cancelled':
+          search.cancelled += 1;
+          break;
+        case 'selection':
+          search.selections += 1;
+          if (event.selectedRank) search.selectedRanks.push(event.selectedRank);
+          if (event.query) queryMetric().selections += 1;
+          break;
+      }
     });
   }
 
@@ -455,21 +1408,27 @@ export class AnnotatorComponent implements OnInit {
   // ---- Export ----
 
   download(): void {
+    this.flushActiveTime();
+    this.flushPendingActiveTime();
     const now = new Date().toISOString();
     const annotated = this.annotatedCount();
+    const reviewed = this.reviewedCount();
     const total = this.cases().length;
 
     // Build updated session metadata for this download event.
-    const currentMeta = this.sessionMeta() ?? {
+    const currentMeta: AnnotationMeta = this.sessionMeta() ?? {
       sessions: [],
       totalDownloads: 0,
       firstLoadedAt: now,
+      telemetry: createAnnotationTelemetry(this.cases().map((item) => item.id)),
     };
     const downloadEntry: SessionEntry = {
       action: 'download',
       timestamp: now,
       annotatedCount: annotated,
+      reviewedCount: reviewed,
       totalCases: total,
+      appBuild: TELEMETRY_APP_BUILD,
     };
     const updatedMeta: AnnotationMeta = {
       ...currentMeta,
@@ -496,10 +1455,19 @@ export class AnnotatorComponent implements OnInit {
         // Drop fully-empty concept blocks on export
         concepts: c.concepts.filter((x) => x.sctid || x.textoLiteral || x.cat),
         comentarios: c.comentarios,
+        review: c.review,
+        lexicalMentions: (c.lexicalMentions ?? []).map((mention) => ({
+          ...mention,
+          candidateSenseIds: [...mention.candidateSenseIds],
+          annotation: normalizeLexicalAnnotation(mention.annotation, mention.surface),
+        })),
+        lexicalReview: c.lexicalReview,
       })),
       _meta: updatedMeta,
       _premarking: this.premarking(),
       _trace: this.trace(),
+      _annotationProtocol: this.annotationProtocol(),
+      _lexicalInventory: this.lexicalInventory(),
     };
     const blob = new Blob([JSON.stringify(output, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);

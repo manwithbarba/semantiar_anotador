@@ -1,7 +1,7 @@
 import { Component, ElementRef, EventEmitter, Input, OnChanges, OnInit, Output, SimpleChanges, ViewChild, forwardRef, DoCheck, Injector, AfterViewInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR, ReactiveFormsModule, UntypedFormControl, NgControl } from '@angular/forms';
-import { debounceTime, distinctUntilChanged, finalize, map, switchMap, catchError } from 'rxjs/operators';
+import { debounceTime, distinctUntilChanged, finalize, map, switchMap, catchError, tap } from 'rxjs/operators';
 import { concat, Observable, of, Subject } from 'rxjs';
 import { TerminologyService } from '../../services/terminology.service';
 import { MatFormFieldAppearance, MatFormFieldControl, MatFormFieldModule } from '@angular/material/form-field';
@@ -10,6 +10,21 @@ import { MatAutocompleteModule } from '@angular/material/autocomplete';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
+
+export interface AutocompleteTelemetryEvent {
+  type:
+    | 'episode-start'
+    | 'request'
+    | 'result'
+    | 'error'
+    | 'cancelled'
+    | 'reformulation'
+    | 'selection';
+  query: string;
+  resultCount?: number;
+  latencyMs?: number;
+  selectedRank?: number;
+}
 
 @Component({
     selector: 'app-autocomplete-binding',
@@ -49,6 +64,7 @@ export class AutocompleteBindingComponent implements OnInit, OnChanges, AfterVie
   @Input() allowWildcard = false;
   @Output() selectionChange = new EventEmitter<any>();
   @Output() cleared = new EventEmitter<any>();
+  @Output() searchTelemetry = new EventEmitter<AutocompleteTelemetryEvent>();
   @ViewChild('inputElement') inputElement!: ElementRef<HTMLInputElement>;
 
   formControl = new UntypedFormControl();
@@ -65,6 +81,10 @@ export class AutocompleteBindingComponent implements OnInit, OnChanges, AfterVie
   describedBy = '';
   private ngControl: NgControl | null = null;
   private hasAttemptedNgControlInjection = false;
+  private searchEpisodeOpen = false;
+  private lastRequestedQuery = '';
+  private latestQuery = '';
+  private latestResults: any[] = [];
 
   constructor(
     private terminologyService: TerminologyService,
@@ -232,23 +252,62 @@ export class AutocompleteBindingComponent implements OnInit, OnChanges, AfterVie
       debounceTime(300),
       distinctUntilChanged(),
       /** 1️⃣  Launch request only when term ≥ 3 chars */
-      switchMap((term: string) => {
+      switchMap((term: unknown) => {
         if (this.readonly) {
           return of([]); // Don't search if readonly
         }
-        if (term?.length >= 3) {
+        const query = this.normalizeQuery(term);
+        if (query.length >= 3) {
+          if (!this.searchEpisodeOpen) {
+            this.searchEpisodeOpen = true;
+            this.searchTelemetry.emit({ type: 'episode-start', query });
+          } else if (this.lastRequestedQuery && this.lastRequestedQuery !== query) {
+            this.searchTelemetry.emit({ type: 'reformulation', query });
+          }
+          this.lastRequestedQuery = query;
+          this.latestQuery = query;
+          this.latestResults = [];
           this.loading = true;
+          const startedAt = performance.now();
+          let settled = false;
+          this.searchTelemetry.emit({ type: 'request', query });
           /** 2️⃣  Emit [] immediately, then emit the server result */
           return concat(
             of([]),                                                   // clears the panel
-            this.getExpansionObservable(term)
+            this.getExpansionObservable(query)
               .pipe(
                 map(r => r?.expansion?.contains ?? []),               // extract concepts, handle undefined safely
+                tap((results: any[]) => {
+                  settled = true;
+                  this.latestResults = results;
+                  this.searchTelemetry.emit({
+                    type: 'result',
+                    query,
+                    resultCount: results.length,
+                    latencyMs: Math.round(performance.now() - startedAt),
+                  });
+                }),
                 catchError(err => {
+                  settled = true;
                   console.error('Error expanding value set:', err);
+                  this.latestResults = [];
+                  this.searchTelemetry.emit({
+                    type: 'error',
+                    query,
+                    latencyMs: Math.round(performance.now() - startedAt),
+                  });
                   return of([]); // Return empty array on error
                 }),
-                finalize(() => (this.loading = false))              // turn spinner off
+                finalize(() => {
+                  if (!settled) {
+                    this.searchTelemetry.emit({
+                      type: 'cancelled',
+                      query,
+                      latencyMs: Math.round(performance.now() - startedAt),
+                    });
+                  }
+                  this.loading = false;
+                })
               )
           );
         }
@@ -256,6 +315,12 @@ export class AutocompleteBindingComponent implements OnInit, OnChanges, AfterVie
         return of([]);
       })
     );
+  }
+
+  private normalizeQuery(value: unknown): string {
+    return typeof value === 'string'
+      ? value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('es-AR')
+      : '';
   }
 
   private getExpansionObservable(term: string): Observable<any> {
@@ -293,10 +358,10 @@ export class AutocompleteBindingComponent implements OnInit, OnChanges, AfterVie
         this.term = changes['term'].currentValue;
 
         if (this.term && typeof this.term === 'object' && this.term["display"]) {
-            this.formControl.setValue(this.term["display"]);
+            this.formControl.setValue(this.term["display"], { emitEvent: false });
             this.selectedConcept = this.term; // Store the full concept object
         } else {
-            this.formControl.setValue(this.term);
+            this.formControl.setValue(this.term, { emitEvent: false });
             this.selectedConcept = {};
         }
     }
@@ -317,19 +382,28 @@ export class AutocompleteBindingComponent implements OnInit, OnChanges, AfterVie
   }
 
   clearInput() {
-    this.formControl.reset();
+    this.formControl.reset('', { emitEvent: false });
     this.selectedConcept = { code: '', display:''};
     this.selectionChange.emit(this.selectedConcept);
     this.cleared.emit(null);
+    this.closeSearchEpisode();
   }
 
   change(event: any) {
     const item = event?.option?.value;
     if (item) {
       const concept = { code: item.code, display: item.display };
+      const selectedRank = this.latestResults.findIndex((result) => result?.code === item.code) + 1;
+      this.searchTelemetry.emit({
+        type: 'selection',
+        query: this.latestQuery,
+        resultCount: this.latestResults.length,
+        ...(selectedRank > 0 ? { selectedRank } : {}),
+      });
       this.selectedConcept = concept; // Update selectedConcept before calling optionSelected
       this.optionSelected(concept);
-      this.formControl.setValue(item.display); // Set the form control's value to the selected option's display
+      this.formControl.setValue(item.display, { emitEvent: false });
+      this.closeSearchEpisode();
       this.updateErrorState();
     }
   }
@@ -337,6 +411,7 @@ export class AutocompleteBindingComponent implements OnInit, OnChanges, AfterVie
   onBlur(): void {
     this.focused = false;
     this.onTouched();
+    this.closeSearchEpisode();
 
     const rawValue = (this.formControl.value ?? '').toString().trim();
     if (this.allowWildcard && rawValue === '*') {
@@ -365,6 +440,11 @@ export class AutocompleteBindingComponent implements OnInit, OnChanges, AfterVie
   onFocus(): void {
     this.focused = true;
     this.stateChanges.next();
+  }
+
+  private closeSearchEpisode(): void {
+    this.searchEpisodeOpen = false;
+    this.lastRequestedQuery = '';
   }
 
   focus(): void {

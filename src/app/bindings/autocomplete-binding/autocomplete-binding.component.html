@@ -1,6 +1,6 @@
 <mat-form-field [appearance]="appearance" [class.compact-field]="compact" subscriptSizing="dynamic">
   @if (binding.title) {
-    <mat-label>{{ binding.title }}</mat-label>
+    <mat-label>2. {{ binding.title }}</mat-label>
   }
   <input #inputElement type="text" placeholder="{{ formControl.value?.display || binding.title || 'Search...' }}" matInput [formControl]="formControl" [matAutocomplete]="auto" [readonly]="readonly" (blur)="onBlur()" (focus)="onFocus()">
   <!-- [value]="(formControl.value?.display) ? formControl.value.display : ''"> -->

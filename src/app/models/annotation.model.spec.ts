@@ -1,7 +1,24 @@
-import { buildTextSegments, normalizePremarkedSpans } from './annotation.model';
+import {
+  ASSISTED_ANNOTATION_PROTOCOL,
+  buildTextSegments,
+  CORE_BLIND_PROTOCOL,
+  LEXICAL_DECISIONS,
+  LEXICAL_FORM_TYPES,
+  LEXICAL_FUNCTIONS,
+  LEXICAL_UNCLASSIFIED_FUNCTION,
+  lexicalMentionComplete,
+  NONCODED_SEMANTICS_COMMENT,
+  newHumanLexicalMention,
+  newConcept,
+  normalizeEvidenceCodes,
+  normalizeLexicalAnnotation,
+  normalizeLexicalMentions,
+  normalizeLexicalReview,
+  normalizePremarkedSpans,
+} from './annotation.model';
 
 describe('premarked span helpers', () => {
-  it('keeps verified non-overlapping offsets and builds interactive segments', () => {
+  it('keeps verified offsets and builds interactive segments', () => {
     const text = 'FX DE RODILLA con dolor';
     const result = normalizePremarkedSpans(
       [
@@ -20,12 +37,12 @@ describe('premarked span helpers', () => {
 
     expect(result.invalidCount).toBe(0);
     expect(buildTextSegments(text, result.spans)).toEqual([
-      { kind: 'span', value: 'FX DE RODILLA', span: result.spans[0] },
+      { kind: 'span', value: 'FX DE RODILLA', spans: [result.spans[0]] },
       { kind: 'text', value: ' con dolor' },
     ]);
   });
 
-  it('reports malformed, duplicate and overlapping spans without rendering them', () => {
+  it('reports malformed spans while preserving valid overlapping spans', () => {
     const result = normalizePremarkedSpans(
       [
         {
@@ -59,9 +76,18 @@ describe('premarked span helpers', () => {
       'FX DE RODILLA con dolor'
     );
 
-    expect(result.spans).toHaveLength(1);
+    expect(result.spans).toHaveLength(2);
     expect(result.spans[0].spanId).toBe('s001');
-    expect(result.invalidCount).toBe(2);
+    expect(result.spans[1].spanId).toBe('s002');
+    expect(result.invalidCount).toBe(1);
+    expect(buildTextSegments('FX DE RODILLA con dolor', result.spans)).toContainEqual({
+      kind: 'span',
+      value: 'FX',
+      spans: expect.arrayContaining([
+        expect.objectContaining({ spanId: 's001' }),
+        expect.objectContaining({ spanId: 's002' }),
+      ]),
+    });
   });
 
   it('excludes isolated laboratory results but retains vital signs with values', () => {
@@ -200,5 +226,384 @@ describe('premarked span helpers', () => {
     expect(result.spans[0].suggest?.category).toBe('Procedimiento');
     expect(result.spans[1].suggest?.category).toBe('Hallazgo clínico');
     expect(result.spans[2].suggest?.category).toBe('Hallazgo clínico');
+  });
+
+  it('excludes LDL followed by a numeric result and classifies physical examination as procedure', () => {
+    const text = 'LDL 153. examen fisico completo.';
+    const result = normalizePremarkedSpans(
+      [
+        {
+          spanId: 's1',
+          start: 0,
+          end: 3,
+          textoLiteral: 'LDL',
+          origin: 'dict',
+          confidence: 0.9,
+          status: 'pendiente',
+        },
+        {
+          spanId: 's2',
+          start: 9,
+          end: 22,
+          textoLiteral: 'examen fisico',
+          origin: 'matcher',
+          confidence: 0.8,
+          status: 'pendiente',
+        },
+      ],
+      text
+    );
+
+    expect(result.spans[0].review?.disposition).toBe('excluido');
+    expect(result.spans[1].review?.disposition).toBe('elegible');
+    expect(result.spans[1].suggest?.category).toBe('Procedimiento');
+  });
+
+  it('retains human spans as eligible, including their origin and manual review reason', () => {
+    const text = 'Ictericia de piel y mucosas.';
+    const result = normalizePremarkedSpans(
+      [
+        {
+          spanId: 'human-001',
+          start: 0,
+          end: 17,
+          textoLiteral: 'Ictericia de piel',
+          origin: 'human',
+          confidence: 1,
+          status: 'pendiente',
+          review: { disposition: 'elegible', reason: 'Span agregado manualmente por el anotador.' },
+        },
+      ],
+      text
+    );
+
+    expect(result.invalidCount).toBe(0);
+    expect(result.spans[0]).toMatchObject({
+      spanId: 'human-001',
+      origin: 'human',
+      review: { disposition: 'elegible' },
+    });
+  });
+
+  it('assigns an optional stable sequence when creating a concept block', () => {
+    expect(newConcept(3)).toMatchObject({ sequence: 3, cat: '', sctid: '' });
+    expect(newConcept().sequence).toBeUndefined();
+  });
+
+  it('distinguishes assisted annotation from a Core Blind lot', () => {
+    expect(ASSISTED_ANNOTATION_PROTOCOL).toMatchObject({
+      mode: 'assisted-span-review',
+      preannotationsPresent: true,
+      coreBlindIncluded: false,
+    });
+    expect(CORE_BLIND_PROTOCOL).toMatchObject({
+      mode: 'core-blind',
+      preannotationsPresent: false,
+      coreBlindIncluded: true,
+    });
+  });
+
+  it('keeps excluded spans as ordinary text without changing selectable offsets', () => {
+    const text = 'GOT 38, ictericia de piel.';
+    const result = normalizePremarkedSpans(
+      [
+        {
+          spanId: 's001',
+          start: 0,
+          end: 3,
+          textoLiteral: 'GOT',
+          origin: 'dict',
+          confidence: 0.9,
+          status: 'pendiente',
+        },
+      ],
+      text
+    );
+
+    const renderedText = buildTextSegments(text, result.spans)
+      .map((segment) => segment.value)
+      .join('');
+    expect(renderedText).toBe(text);
+    expect(renderedText.indexOf('ictericia de piel')).toBe(8);
+  });
+
+  it('normalizes valid lexical appearances and rejects invalid offsets and duplicate ids', () => {
+    const text = 'AP: asma. AP en atención primaria.';
+    const result = normalizeLexicalMentions(
+      [
+        {
+          mentionId: 'lex-001',
+          start: 0,
+          end: 2,
+          surface: 'AP',
+          normalizedKey: 'AP',
+          origin: 'sense_inventory',
+          candidateSenseIds: ['AP.personal_history', 'AP.primary_care'],
+          annotation: {
+            decisionStatus: 'pending',
+            formType: 'initialism',
+            correctedForm: null,
+            senseId: null,
+            proposedExpansion: null,
+            function: null,
+            section: null,
+            evidenceCodes: [],
+            comment: null,
+            annotatorId: null,
+            annotatedAt: null,
+          },
+        },
+        {
+          mentionId: 'lex-001',
+          start: 10,
+          end: 12,
+          surface: 'AP',
+          origin: 'sense_inventory',
+          candidateSenseIds: [],
+          annotation: {},
+        },
+        {
+          mentionId: 'lex-003',
+          start: 10,
+          end: 12,
+          surface: 'ZZ',
+          origin: 'orthographic_heuristic',
+          candidateSenseIds: [],
+          annotation: {},
+        },
+      ],
+      text
+    );
+
+    expect(result.mentions).toHaveLength(1);
+    expect(result.invalidCount).toBe(2);
+    expect(result.mentions[0].candidateSenseIds).toEqual([
+      'AP.personal_history',
+      'AP.primary_care',
+    ]);
+  });
+
+  it('requires the decision-specific evidence before considering a lexical mention complete', () => {
+    const mention = newHumanLexicalMention('lex-human-001', 0, 3, 'ACO');
+    expect(lexicalMentionComplete(mention)).toBe(false);
+
+    mention.annotation.decisionStatus = 'resolved';
+    expect(lexicalMentionComplete(mention)).toBe(false);
+    mention.annotation.senseId = 'ACO.oral_contraceptive';
+    expect(lexicalMentionComplete(mention)).toBe(true);
+
+    mention.annotation.decisionStatus = 'new_sense_proposed';
+    mention.annotation.senseId = null;
+    expect(lexicalMentionComplete(mention)).toBe(false);
+    mention.annotation.proposedExpansion = 'expansión propuesta';
+    expect(lexicalMentionComplete(mention)).toBe(true);
+  });
+
+  it('permits explicit abstention without forcing a guessed sense', () => {
+    const mention = newHumanLexicalMention('lex-human-002', 0, 2, 'SV');
+    mention.annotation.decisionStatus = 'unknown';
+    expect(lexicalMentionComplete(mention)).toBe(true);
+    expect(mention.annotation.senseId).toBeNull();
+  });
+
+  it('keeps the exact v2 codes and clinician-facing labels in one contract', () => {
+    expect(LEXICAL_FORM_TYPES.map(({ value, label }) => [value, label])).toEqual([
+      ['abbreviation', 'Abreviatura'],
+      ['acronym', 'Acrónimo pronunciable'],
+      ['initialism', 'Sigla / inicialismo'],
+      ['alphanumeric', 'Forma alfanumérica'],
+      ['symbolic_abbreviation', 'Abreviatura simbólica'],
+      ['other', 'Otra forma léxica'],
+    ]);
+    expect(LEXICAL_DECISIONS.map(({ value, label }) => [value, label])).toEqual([
+      ['pending', 'Pendiente'],
+      ['resolved', 'Sentido resuelto'],
+      ['ambiguous', 'Ambigua aun con contexto'],
+      ['unknown', 'No puedo determinarla'],
+      ['new_sense_proposed', 'Proponer sentido nuevo'],
+      ['form_error', 'Forma errónea o corrupta'],
+      ['nonclinical', 'Uso no clínico/estructural'],
+      ['rejected', 'No es abreviatura ni acrónimo'],
+    ]);
+    expect(LEXICAL_FUNCTIONS.map(({ value, label }) => [value, label])).toEqual([
+      ['header', 'Encabezado'],
+      ['entity', 'Entidad clínica'],
+      ['value', 'Valor'],
+      ['result', 'Resultado'],
+      ['modifier', 'Modificador'],
+      ['structural', 'Marca estructural'],
+      ['other', 'Otra función'],
+    ]);
+    expect(LEXICAL_UNCLASSIFIED_FUNCTION).toMatchObject({
+      value: null,
+      label: 'Sin clasificar',
+    });
+  });
+
+  it('canonicalizes clues and keeps the non-coded-semantics marker only in comment', () => {
+    expect(normalizeEvidenceCodes(' valor cercano, , encabezado, valor cercano ')).toEqual([
+      'valor cercano',
+      'encabezado',
+    ]);
+
+    const annotation = normalizeLexicalAnnotation(
+      {
+        decisionStatus: 'unknown',
+        formType: 'other',
+        function: null,
+        section: '  antecedentes  ',
+        evidenceCodes: [
+          '  valor cercano ',
+          '',
+          'valor cercano',
+          NONCODED_SEMANTICS_COMMENT,
+        ],
+        comment: '  revisar en adjudicación ',
+      },
+      'TA'
+    );
+
+    expect(annotation.evidenceCodes).toEqual(['valor cercano']);
+    expect(annotation.section).toBe('antecedentes');
+    expect(annotation.comment).toBe(
+      `revisar en adjudicación\n${NONCODED_SEMANTICS_COMMENT}`
+    );
+  });
+
+  it('clears every conditional field that is incompatible with the imported decision', () => {
+    const common = {
+      formType: 'initialism',
+      senseId: 'sense-1',
+      proposedExpansion: 'propuesta',
+      correctedForm: 'forma',
+    };
+
+    expect(
+      normalizeLexicalAnnotation({ ...common, decisionStatus: 'resolved' }, 'FC')
+    ).toMatchObject({
+      senseId: 'sense-1',
+      proposedExpansion: null,
+      correctedForm: null,
+    });
+    expect(
+      normalizeLexicalAnnotation({ ...common, decisionStatus: 'new_sense_proposed' }, 'FC')
+    ).toMatchObject({
+      senseId: null,
+      proposedExpansion: 'propuesta',
+      correctedForm: null,
+    });
+    expect(
+      normalizeLexicalAnnotation({ ...common, decisionStatus: 'form_error' }, 'FC')
+    ).toMatchObject({
+      senseId: null,
+      proposedExpansion: null,
+      correctedForm: 'forma',
+    });
+    expect(
+      normalizeLexicalAnnotation({ ...common, decisionStatus: 'ambiguous' }, 'FC')
+    ).toMatchObject({
+      senseId: null,
+      proposedExpansion: null,
+      correctedForm: null,
+    });
+  });
+
+  it('distinguishes a missing functional decision from explicit other', () => {
+    expect(normalizeLexicalAnnotation({ function: null }, 'FC').function).toBeNull();
+    expect(normalizeLexicalAnnotation({ function: 'other' }, 'FC').function).toBe('other');
+  });
+
+  it('reopens a v2 lexical review when any appearance is not actually complete', () => {
+    const mention = newHumanLexicalMention('lex-v2-001', 0, 2, 'FC');
+    const inconsistent = normalizeLexicalReview(
+      {
+        status: 'completed',
+        exhaustiveReviewRequired: true,
+        annotatorId: 'A001',
+        completedAt: '2026-07-27T00:00:00.000Z',
+        inventoryVersion: 'SEMANTIAR-LEXICAL-SENSES-2.0',
+      },
+      [mention],
+      'SEMANTIAR-LEXICAL-SENSES-2.0'
+    );
+    expect(inconsistent).toMatchObject({
+      status: 'pending',
+      annotatorId: null,
+      completedAt: null,
+    });
+
+    mention.annotation.decisionStatus = 'ambiguous';
+    expect(
+      normalizeLexicalReview(
+        { status: 'completed', completedAt: '2026-07-27T00:00:00.000Z' },
+        [mention]
+      ).status
+    ).toBe('completed');
+  });
+
+  it('supports resolution, ambiguity, rejection and abstention for FC, RHA, EG, TA and SG without deriving expansions', () => {
+    const text = 'FC RHA EG TA SG';
+    const surfaces = ['FC', 'RHA', 'EG', 'TA', 'SG'];
+    const decisions = ['resolved', 'ambiguous', 'rejected', 'unknown', 'pending'] as const;
+    const result = normalizeLexicalMentions(
+      surfaces.map((surface, index) => {
+        const start = text.indexOf(surface);
+        return {
+          mentionId: `lex-form-${index + 1}`,
+          start,
+          end: start + surface.length,
+          surface,
+          origin: 'orthographic_heuristic',
+          candidateSenseIds: surface === 'FC' ? ['sense:fc:contextual'] : [],
+          annotation: {
+            decisionStatus: decisions[index],
+            formType: 'initialism',
+            senseId: surface === 'FC' ? 'sense:fc:contextual' : null,
+            evidenceCodes: [],
+          },
+        };
+      }),
+      text
+    );
+
+    expect(result.invalidCount).toBe(0);
+    expect(result.mentions.map((mention) => mention.surface)).toEqual(surfaces);
+    expect(result.mentions.slice(0, 4).every(lexicalMentionComplete)).toBe(true);
+    expect(lexicalMentionComplete(result.mentions[4])).toBe(false);
+    expect(
+      result.mentions.slice(1).every((mention) => mention.annotation.senseId === null)
+    ).toBe(true);
+  });
+
+  it('preserves offsets in the required dense note and leaves every meaning unresolved by default', () => {
+    const text =
+      '29 GI P0 1C  FUM:  MAC ACO  AQ:CESAREA  AP: ASMA  AO: ABO CA GSTRICO  // EX MAMARIO: NORMAL AXILAS NEG //TRAE ECOTV /¡(1/23) : DLN  //  PAP PENDIENTE';
+    const surfaces = ['GI', 'P0', '1C', 'FUM', 'MAC', 'ACO', 'AQ', 'AP', 'AO', 'ABO', 'CA', 'ECOTV', 'DLN', 'PAP'];
+    const result = normalizeLexicalMentions(
+      surfaces.map((surface, index) => {
+        const start = text.indexOf(surface);
+        return {
+          mentionId: `lex-dense-${index + 1}`,
+          start,
+          end: start + surface.length,
+          surface,
+          origin: 'orthographic_heuristic',
+          candidateSenseIds: [],
+          annotation: {},
+        };
+      }),
+      text
+    );
+
+    expect(result.invalidCount).toBe(0);
+    expect(result.mentions).toHaveLength(surfaces.length);
+    expect(
+      result.mentions.every(
+        (mention) =>
+          text.slice(mention.start, mention.end) === mention.surface &&
+          mention.annotation.decisionStatus === 'pending' &&
+          mention.annotation.senseId === null
+      )
+    ).toBe(true);
   });
 });

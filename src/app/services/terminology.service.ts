@@ -130,12 +130,9 @@ export class TerminologyService {
       'Accept-Language': lang,
     });
 
-    return this.http.get<any>(requestUrl, { headers }).pipe(
-      catchError((err) => {
-        console.error('ValueSet $expand failed:', err);
-        return of({ expansion: { contains: [] } });
-      })
-    );
+    // The autocomplete component owns error recovery so it can distinguish a
+    // real zero-result response from a network/server failure in local metrics.
+    return this.http.get<any>(requestUrl, { headers });
   }
 
   /**

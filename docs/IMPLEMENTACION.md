@@ -313,6 +313,18 @@ para estudios de cobertura terminológica y de sinónimos locales— y un campo 
 - **Metadatos de exportación**: cada archivo de salida incluye la fecha/hora, el
   servidor y la edición utilizados, dejando registro del contexto terminológico
   de la anotación.
+- **Finalización explícita**: cada nota se cierra como `coded` o
+  `no-eligible-concepts`. Cualquier edición posterior la reabre, por lo que una
+  nota revisada sin conceptos no se confunde con una nota aún pendiente.
+- **Telemetría local comparable**: `_meta.telemetry` registra el mismo conjunto
+  de métricas en Core Blind y en anotación con spans. Incluye tiempo activo por
+  nota, visitas, reaperturas, operaciones de edición y episodios/peticiones de
+  búsqueda con latencia, resultados vacíos, errores y rango seleccionado.
+  La inactividad se corta a los 120 segundos y la pestaña oculta no acumula
+  tiempo.
+- **Privacidad operativa**: no se envían métricas a un backend. Las consultas
+  terminológicas se resumen normalizadas por término y jerarquía exclusivamente
+  dentro del JSON que descarga el anotador.
 
 ---
 
@@ -361,7 +373,64 @@ GET https://implementation-demo.snomedtools.org/fhir/CodeSystem/$lookup
 
 ---
 
-## 10. Limitaciones y trabajo futuro
+## 10. Capa léxica v2 por aparición
+
+La capa léxica se ejecuta en paralelo con la anotación clínica SNOMED CT, pero
+conserva una unidad de decisión diferente: **cada aparición textual** de una
+abreviatura, sigla o acrónimo. Una misma forma puede recibir sentidos distintos
+en una misma nota si cambian la sección, la plantilla o el contexto local.
+
+Cada caso de un lote v2 contiene:
+
+- `lexicalMentions`: apariciones con identificador estable, offsets exactos,
+  literal, origen del candidato, sentidos posibles no ordenados y una
+  `annotation` editable;
+- `lexicalReview`: cierre explícito de la revisión exhaustiva de la nota;
+- `_lexicalInventory` en el documento: inventario provisional único de sentidos
+  posibles, sin probabilidades, ranking ni sentido preferido.
+
+Las decisiones admitidas son `resolved`, `ambiguous`, `unknown`,
+`new_sense_proposed`, `form_error`, `nonclinical` y `rejected`, además del estado
+transitorio `pending`. La interfaz exige información adicional sólo cuando la
+decisión la necesita: `senseId` para `resolved`, expansión para un sentido nuevo
+y forma corregida para un error de escritura. La abstención explícita evita
+forzar una expansión cuando el contexto no alcanza.
+
+El anotador puede seleccionar texto de la nota e incorporarlo directamente a la
+capa léxica. Esto permite recuperar omisiones de los candidatos automáticos y
+hace posible una revisión exhaustiva tanto en los lotes asistidos como en el
+Core Blind. Las apariciones agregadas manualmente pueden eliminarse; los
+candidatos distribuidos se conservan en el registro y pueden marcarse
+`rejected` o `nonclinical`.
+
+La nota no puede finalizarse hasta que:
+
+1. todas las apariciones léxicas tengan una decisión válida;
+2. el anotador confirme el cierre de `lexicalReview`;
+3. también se hayan resuelto los candidatos y conceptos de la capa clínica.
+
+En los lotes asistidos se premarcan candidatos mediante inventario, diccionario
+filtrado y una heurística ortográfica conservadora. Esas fuentes sólo proponen
+**dónde mirar**: no asignan un sentido, no muestran puntajes y no aplican una
+prioridad por especialidad. En el Core Blind del investigador principal no se
+incluyen candidatos léxicos y todas las apariciones se crean manualmente desde
+cero.
+
+Las liberaciones v2 son derivados bloqueados: mantienen intactos los lotes v1,
+registran el hash del padre y publican su propio manifiesto SHA-256. El control
+de acceso exclusivo del Core Blind se expresa como política de liberación; la
+aplicación no sustituye los permisos del sistema de archivos ni la gestión de
+identidades.
+
+El contrato ejecutable completo —códigos, preguntas visibles, normalización,
+dependencias entre estados y compatibilidad de recarga— se mantiene en
+[`CONTRATO_CAPA_LEXICA_V2.md`](CONTRATO_CAPA_LEXICA_V2.md). El JSON Schema
+canónico está en `schemas/lexical-layer-v2.schema.json`; el generador lo copia a
+las tres releases para evitar divergencias.
+
+---
+
+## 11. Limitaciones y trabajo futuro
 
 - **Idioma dependiente de la edición**: mientras la edición argentina no esté
   disponible en el servidor, la búsqueda opera sobre la edición Internacional en
@@ -377,4 +446,3 @@ GET https://implementation-demo.snomedtools.org/fhir/CodeSystem/$lookup
   span literal) está diseñada para permitir el cálculo posterior de acuerdo
   inter-anotador (p. ej. índices de concordancia sobre SCTID y sobre atributos de
   contexto).
-```

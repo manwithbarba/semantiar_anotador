@@ -10,9 +10,12 @@ export interface ClinicalCase {
   spans?: PremarkedSpan[];
   concepts?: ConceptAnnotation[];
   comentarios?: string;
+  review?: CaseReview;
+  lexicalMentions?: LexicalMention[];
+  lexicalReview?: LexicalReview;
 }
 
-export type SpanOrigin = 'dict' | 'matcher' | 'ner' | 'rescue' | 'human';
+export type SpanOrigin = 'candidate' | 'dict' | 'matcher' | 'ner' | 'spancat' | 'rescue' | 'human';
 export type SpanStatus = 'pendiente' | 'confirmado' | 'descartado';
 
 /** Contextual hints generated with a span. They intentionally exclude an SCTID. */
@@ -32,6 +35,18 @@ export interface SpanReview {
   reason: string;
 }
 
+/** Human actions retained for audit but never shown as model guidance. */
+export interface SpanHumanAudit {
+  createdManually?: boolean;
+  createdAt?: string;
+  originalStart?: number;
+  originalEnd?: number;
+  originalTextoLiteral?: string;
+  boundaryAdjusted?: boolean;
+  lastAction?: 'created' | 'boundary_adjusted' | 'accepted' | 'discarded';
+  lastActionAt?: string;
+}
+
 /** A fixed, premarked text span shared by all annotators. */
 export interface PremarkedSpan {
   spanId: string;
@@ -45,11 +60,12 @@ export interface PremarkedSpan {
   suggest?: SpanSuggestion;
   status: SpanStatus;
   review?: SpanReview;
+  humanAudit?: SpanHumanAudit;
 }
 
 export type TextSegment =
   | { kind: 'text'; value: string }
-  | { kind: 'span'; value: string; span: PremarkedSpan };
+  | { kind: 'span'; value: string; spans: PremarkedSpan[] };
 
 export interface SpanNormalizationResult {
   spans: PremarkedSpan[];
@@ -57,7 +73,8 @@ export interface SpanNormalizationResult {
 }
 
 /**
- * Keeps only non-overlapping spans whose offsets and literal match `textNorm`.
+ * Keeps spans whose offsets and literal match `textNorm`. Spans may overlap:
+ * different valid clinical mentions can share part of the same source text.
  * Invalid input is counted so callers can surface it rather than treating it as valid.
  */
 export function normalizePremarkedSpans(
@@ -82,14 +99,13 @@ export function normalizePremarkedSpans(
 
   const spans: PremarkedSpan[] = [];
   let invalidCount = rawSpans.length - candidates.length;
-  let previousEnd = 0;
   const ids = new Set<string>();
 
   for (const span of candidates) {
     const validOffsets =
       Number.isInteger(span.start) &&
       Number.isInteger(span.end) &&
-      span.start >= previousEnd &&
+      span.start >= 0 &&
       span.start < span.end &&
       span.end <= textNorm.length &&
       textNorm.slice(span.start, span.end) === span.textoLiteral;
@@ -101,30 +117,35 @@ export function normalizePremarkedSpans(
 
     spans.push(reviewPremarkedSpan({ ...span, status: span.status ?? 'pendiente' }, textNorm));
     ids.add(span.spanId);
-    previousEnd = span.end;
   }
 
   return { spans, invalidCount };
 }
 
-/** Turns verified offsets into text and interactive-span segments for safe rendering. */
+/**
+ * Turns verified offsets into text segments. Each marked segment carries every
+ * active span covering it, so partially or fully overlapping spans remain
+ * independently selectable without duplicating source text.
+ */
 export function buildTextSegments(textNorm: string, spans: readonly PremarkedSpan[]): TextSegment[] {
+  const activeSpans = spans
+    .filter((span) => span.review?.disposition !== 'excluido')
+    .sort((left, right) => left.start - right.start || left.end - right.end || left.spanId.localeCompare(right.spanId));
+  const boundaries = [...new Set([0, textNorm.length, ...activeSpans.flatMap((span) => [span.start, span.end])])]
+    .sort((left, right) => left - right);
   const segments: TextSegment[] = [];
-  let cursor = 0;
-
-  for (const span of spans) {
-    if (span.review?.disposition === 'excluido') continue;
-    if (span.start > cursor) {
-      segments.push({ kind: 'text', value: textNorm.slice(cursor, span.start) });
+  for (let index = 0; index < boundaries.length - 1; index += 1) {
+    const start = boundaries[index];
+    const end = boundaries[index + 1];
+    if (end <= start) continue;
+    const covering = activeSpans.filter((span) => span.start < end && span.end > start);
+    const value = textNorm.slice(start, end);
+    if (covering.length) {
+      segments.push({ kind: 'span', value, spans: covering });
+    } else {
+      segments.push({ kind: 'text', value });
     }
-    segments.push({ kind: 'span', value: span.textoLiteral, span });
-    cursor = span.end;
   }
-
-  if (cursor < textNorm.length) {
-    segments.push({ kind: 'text', value: textNorm.slice(cursor) });
-  }
-
   return segments;
 }
 
@@ -142,11 +163,14 @@ const LABORATORY_ANALYTES = new Set([
   // enzymes / liver
   'aldolasa', 'ck', 'cpk', 'fa', 'fal', 'ggt', 'got', 'gpt', 'ldh', 'tgo', 'tgp',
   // haematology
-  'gb', 'gr', 'hto', 'hcto', 'plaq',
+  'gb', 'gr', 'hb', 'hemoglobina', 'hto', 'hcto', 'plaq', 'plaquetas',
   // inflammatory
   'pcr', 'vsg',
   // metabolic
-  'colesterol', 'creat', 'creatinina', 'glucemia', 'trigliceridos', 'urea', 'uremia',
+  'albumina', 'beab', 'bilirrubina', 'colesterol', 'creat', 'creatinina',
+  'ferritina', 'fructosamina', 'glucemia', 'glucosa', 'hdl', 'hierro', 'ldl',
+  'lipasa', 'potasio', 'procalcitonina', 'sodio', 'transaminasas', 'transferrina',
+  'trigliceridos', 'tromboplastina', 'urea', 'uremia',
   // thyroid
   't3', 't4', 'tsh',
 ]);
@@ -180,7 +204,7 @@ const DEVICES = new Set(['avp', 'sng']);
  */
 const PROCEDURES = new Set([
   'csv',                        // control de signos vitales
-  'ecg', 'eco', 'pap', 'rmn', 'tac',
+  'ecg', 'eco', 'examen fisico', 'pap', 'rmn', 'tac',
   'chagas', 'hiv', 'toxo', 'vdrl',  // serology panels
 ]);
 
@@ -437,6 +461,544 @@ export interface AnnotationDocument {
   _meta?: AnnotationMeta;
   _premarking?: Record<string, unknown>;
   _trace?: Record<string, unknown>;
+  _annotationProtocol?: AnnotationProtocol;
+  _lexicalInventory?: LexicalInventory;
+}
+
+export interface AnnotationProtocol {
+  mode: 'assisted-span-review' | 'core-blind';
+  instructionsVersion: string;
+  candidateMetadataVisible: boolean;
+  candidateMetadataStripped: boolean;
+  suggestedSctidVisible: boolean;
+  suggestedCategoryApplied: boolean;
+  exhaustiveReviewRequired: boolean;
+  coreBlindIncluded: boolean;
+  preannotationsPresent: boolean;
+  lexicalLayerEnabled?: boolean;
+  lexicalLayerVersion?: string;
+  lexicalInventoryVersion?: string;
+  lexicalInventoryStatus?: string;
+  lexicalCandidatePolicy?: string;
+  lexicalCandidateMetadataVisible?: boolean;
+  lexicalPreferredSenseVisible?: boolean;
+  lexicalSenseRankingVisible?: boolean;
+  lexicalSenseCodebookAvailable?: boolean;
+  lexicalExhaustiveReviewRequired?: boolean;
+  manualLexicalMentionCreationEnabled?: boolean;
+  lexicalAbstentionEnabled?: boolean;
+  accessPolicy?: string;
+}
+
+export type LexicalOrigin =
+  | 'sense_inventory'
+  | 'legacy_dictionary'
+  | 'orthographic_heuristic'
+  | 'human';
+
+export type LexicalDecisionStatus =
+  | 'pending'
+  | 'resolved'
+  | 'ambiguous'
+  | 'unknown'
+  | 'new_sense_proposed'
+  | 'form_error'
+  | 'nonclinical'
+  | 'rejected';
+
+export type LexicalFormType =
+  | 'abbreviation'
+  | 'acronym'
+  | 'initialism'
+  | 'alphanumeric'
+  | 'symbolic_abbreviation'
+  | 'other';
+
+export type LexicalFunction =
+  | 'header'
+  | 'entity'
+  | 'value'
+  | 'result'
+  | 'modifier'
+  | 'structural'
+  | 'other';
+
+export interface LexicalAnnotation {
+  decisionStatus: LexicalDecisionStatus;
+  formType: LexicalFormType;
+  correctedForm: string | null;
+  senseId: string | null;
+  proposedExpansion: string | null;
+  function: LexicalFunction | null;
+  section: string | null;
+  evidenceCodes: string[];
+  comment: string | null;
+  annotatorId: string | null;
+  annotatedAt: string | null;
+}
+
+export interface LexicalMention {
+  mentionId: string;
+  start: number;
+  end: number;
+  surface: string;
+  normalizedKey: string;
+  origin: LexicalOrigin;
+  candidateSenseIds: string[];
+  annotation: LexicalAnnotation;
+}
+
+export interface LexicalReview {
+  status: 'pending' | 'completed';
+  exhaustiveReviewRequired: true;
+  annotatorId: string | null;
+  completedAt: string | null;
+  inventoryVersion: string | null;
+}
+
+export interface LexicalSenseOption {
+  senseId: string;
+  expansion: string;
+  semanticType?: string | null;
+  resolutionPolicy?: string | null;
+}
+
+export interface LexicalInventoryEntry {
+  key: string;
+  caseSensitiveForms: string[];
+  senses: LexicalSenseOption[];
+}
+
+export interface LexicalInventory {
+  schemaVersion: string;
+  layerVersion: string;
+  inventoryVersion: string;
+  locale: string;
+  status: string;
+  rankingPresent: boolean;
+  probabilitiesPresent: boolean;
+  annotatorMayProposeNewSense: boolean;
+  annotatorMayAbstain: boolean;
+  abbreviations: LexicalInventoryEntry[];
+}
+
+export interface LexicalNormalizationResult {
+  mentions: LexicalMention[];
+  invalidCount: number;
+}
+
+export interface LexicalChoice<T> {
+  value: T;
+  label: string;
+  description: string;
+  example?: string;
+}
+
+export const LEXICAL_DECISIONS: LexicalChoice<LexicalDecisionStatus>[] = [
+  {
+    value: 'pending',
+    label: 'Pendiente',
+    description: 'Todavía no decidiste. Es el estado inicial y bloquea el cierre.',
+    example: 'No lo uses para registrar una duda final.',
+  },
+  {
+    value: 'resolved',
+    label: 'Sentido resuelto',
+    description: 'La nota permite elegir un significado concreto de la lista.',
+  },
+  {
+    value: 'ambiguous',
+    label: 'Ambigua aun con contexto',
+    description: 'Quedan dos o más significados posibles después de leer el contexto.',
+    example: 'Es una abstención final válida.',
+  },
+  {
+    value: 'unknown',
+    label: 'No puedo determinarla',
+    description: 'El contexto no alcanza para saber qué significa.',
+    example: 'Es una abstención final válida; no hace falta adivinar.',
+  },
+  {
+    value: 'new_sense_proposed',
+    label: 'Proponer sentido nuevo',
+    description: 'El significado se entiende, pero no aparece entre las opciones.',
+  },
+  {
+    value: 'form_error',
+    label: 'Forma errónea o corrupta',
+    description: 'La escritura parece tener un error y podés indicar la forma corregida.',
+  },
+  {
+    value: 'nonclinical',
+    label: 'Uso no clínico/estructural',
+    description: 'La forma organiza la nota o cumple un uso administrativo, no clínico.',
+  },
+  {
+    value: 'rejected',
+    label: 'No es abreviatura ni acrónimo',
+    description: 'El candidato fue marcado por error y debe excluirse de la capa léxica.',
+  },
+];
+
+export const LEXICAL_FORM_TYPES: LexicalChoice<LexicalFormType>[] = [
+  {
+    value: 'abbreviation',
+    label: 'Abreviatura',
+    description: 'Una palabra escrita de forma acortada.',
+    example: 'Ejemplo de escritura: “temp.”.',
+  },
+  {
+    value: 'acronym',
+    label: 'Acrónimo pronunciable',
+    description: 'Varias letras que se leen juntas como una palabra.',
+    example: 'Contraste: no se deletrea letra por letra.',
+  },
+  {
+    value: 'initialism',
+    label: 'Sigla / inicialismo',
+    description: 'Varias iniciales que normalmente se leen letra por letra.',
+    example: 'Las mayúsculas solas no prueban que sea una sigla.',
+  },
+  {
+    value: 'alphanumeric',
+    label: 'Forma alfanumérica',
+    description: 'Combina letras y números en una misma forma.',
+    example: 'Ejemplo de escritura: “B12”.',
+  },
+  {
+    value: 'symbolic_abbreviation',
+    label: 'Abreviatura simbólica',
+    description: 'Usa signos o símbolos como parte esencial de la forma.',
+    example: 'Ejemplo de escritura: “SatO₂%”.',
+  },
+  {
+    value: 'other',
+    label: 'Otra forma léxica',
+    description: 'Es una forma abreviada, pero no encaja en las opciones anteriores.',
+  },
+];
+
+export const LEXICAL_UNCLASSIFIED_FUNCTION: LexicalChoice<null> = {
+  value: null,
+  label: 'Sin clasificar',
+  description: 'Todavía no asignaste un papel. No equivale a “Otra función”.',
+};
+
+export const LEXICAL_FUNCTIONS: LexicalChoice<LexicalFunction>[] = [
+  {
+    value: 'header',
+    label: 'Encabezado',
+    description: 'Presenta una parte de la nota, como antecedentes o examen.',
+  },
+  {
+    value: 'entity',
+    label: 'Entidad clínica',
+    description: 'Nombra algo clínico en el texto.',
+    example: 'Esta elección no crea por sí sola una entidad SNOMED CT.',
+  },
+  {
+    value: 'value',
+    label: 'Valor',
+    description: 'Expresa una cantidad, nivel o valor observado.',
+  },
+  {
+    value: 'result',
+    label: 'Resultado',
+    description: 'Resume la conclusión de un estudio, examen o evaluación.',
+  },
+  {
+    value: 'modifier',
+    label: 'Modificador',
+    description: 'Cambia o precisa el significado de otra expresión cercana.',
+  },
+  {
+    value: 'structural',
+    label: 'Marca estructural',
+    description: 'Ordena o separa partes de la nota sin nombrar un dato clínico.',
+  },
+  {
+    value: 'other',
+    label: 'Otra función',
+    description: 'El papel está identificado, pero no encaja en las opciones anteriores.',
+  },
+];
+
+/** Local note sections offered to annotators; stored as readable values in JSON. */
+export const LEXICAL_SECTIONS: LexicalChoice<string>[] = [
+  { value: 'motivo de consulta', label: 'Motivo de consulta', description: 'Consulta, síntoma o razón principal.' },
+  { value: 'antecedentes', label: 'Antecedentes', description: 'Personales, familiares u otros antecedentes.' },
+  { value: 'medicación o tratamiento', label: 'Medicación o tratamiento', description: 'Fármacos, dosis, vía o tratamiento indicado.' },
+  { value: 'examen físico', label: 'Examen físico', description: 'Hallazgos del examen o evaluación clínica.' },
+  { value: 'signos vitales', label: 'Signos vitales', description: 'Constantes, mediciones o controles.' },
+  { value: 'estudios o resultados', label: 'Estudios o resultados', description: 'Laboratorio, imágenes u otros estudios.' },
+  { value: 'evolución', label: 'Evolución', description: 'Cambios, seguimiento o curso clínico.' },
+  { value: 'conducta o plan', label: 'Conducta o plan', description: 'Indicaciones, procedimientos o plan terapéutico.' },
+  { value: 'alta', label: 'Alta', description: 'Egreso, indicaciones o condición de alta.' },
+  { value: 'encabezado', label: 'Encabezado', description: 'Etiqueta que organiza la nota.' },
+  { value: 'otra parte de la nota', label: 'Otra parte de la nota', description: 'Ubicación no incluida en las opciones anteriores.' },
+];
+
+/** Standardized contextual clues. Multiple clues may be chosen for one appearance. */
+export const LEXICAL_EVIDENCE_CODES: LexicalChoice<string>[] = [
+  { value: 'encabezado cercano', label: 'Encabezado cercano', description: 'Un título o rótulo local orienta el sentido.' },
+  { value: 'posición en la plantilla', label: 'Posición en la plantilla', description: 'La ubicación fija dentro del formulario aporta contexto.' },
+  { value: 'palabras cercanas', label: 'Palabras cercanas', description: 'Las expresiones vecinas apoyan la interpretación.' },
+  { value: 'valor o medición cercana', label: 'Valor o medición cercana', description: 'Número, unidad o formato de medición asociado.' },
+  { value: 'medicación, dosis o vía', label: 'Medicación, dosis o vía', description: 'Contexto farmacológico, de dosis o vía de administración.' },
+  { value: 'procedimiento cercano', label: 'Procedimiento cercano', description: 'La forma aparece junto a una práctica o estudio.' },
+  { value: 'anatomía cercana', label: 'Anatomía cercana', description: 'Una región anatómica restringe el sentido.' },
+  { value: 'negación', label: 'Negación', description: 'La expresión está afectada por una negación.' },
+  { value: 'marca temporal', label: 'Marca temporal', description: 'Fecha, duración o secuencia temporal relevante.' },
+  { value: 'antecedente personal', label: 'Antecedente personal', description: 'La información corresponde a antecedentes del paciente.' },
+  { value: 'antecedente familiar', label: 'Antecedente familiar', description: 'La información se atribuye a familiares.' },
+  { value: 'contexto obstétrico', label: 'Contexto obstétrico', description: 'Gestación, paridad o puerperio orientan el sentido.' },
+];
+
+const LEXICAL_DECISION_VALUES = new Set(LEXICAL_DECISIONS.map((item) => item.value));
+const LEXICAL_FORM_VALUES = new Set(LEXICAL_FORM_TYPES.map((item) => item.value));
+const LEXICAL_FUNCTION_VALUES = new Set(LEXICAL_FUNCTIONS.map((item) => item.value));
+const LEXICAL_ORIGINS = new Set<LexicalOrigin>([
+  'sense_inventory',
+  'legacy_dictionary',
+  'orthographic_heuristic',
+  'human',
+]);
+
+function inferredLexicalForm(surface: string): LexicalFormType {
+  if (/\d/u.test(surface)) return 'alphanumeric';
+  if (/^[A-ZÁÉÍÓÚÜÑ]{2,}$/u.test(surface)) return 'initialism';
+  return 'abbreviation';
+}
+
+export const NONCODED_SEMANTICS_COMMENT = 'POSIBLE_SEMANTICA_NO_CODIFICADA';
+
+function nullableTrimmedString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+export function normalizeEvidenceCodes(value: unknown): string[] {
+  const values = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : [];
+  return [
+    ...new Set(
+      values
+        .filter((item): item is string => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    ),
+  ];
+}
+
+function commentWithNoncodedSemantics(value: unknown, markerPresent: boolean): string | null {
+  const comment = nullableTrimmedString(value);
+  if (!markerPresent || comment?.includes(NONCODED_SEMANTICS_COMMENT)) return comment;
+  return comment ? `${comment}\n${NONCODED_SEMANTICS_COMMENT}` : NONCODED_SEMANTICS_COMMENT;
+}
+
+export function newLexicalAnnotation(
+  surface = '',
+  formType?: LexicalFormType
+): LexicalAnnotation {
+  return {
+    decisionStatus: 'pending',
+    formType: formType ?? inferredLexicalForm(surface),
+    correctedForm: null,
+    senseId: null,
+    proposedExpansion: null,
+    function: null,
+    section: null,
+    evidenceCodes: [],
+    comment: null,
+    annotatorId: null,
+    annotatedAt: null,
+  };
+}
+
+/**
+ * Canonical representation used at every JSON boundary. Besides preserving v2
+ * codes, it removes state that is incompatible with the contextual decision.
+ */
+export function normalizeLexicalAnnotation(
+  rawAnnotation: unknown,
+  surface = ''
+): LexicalAnnotation {
+  const raw =
+    rawAnnotation && typeof rawAnnotation === 'object'
+      ? (rawAnnotation as Partial<LexicalAnnotation>)
+      : {};
+  const defaults = newLexicalAnnotation(surface);
+  const requestedDecisionStatus = LEXICAL_DECISION_VALUES.has(raw.decisionStatus as LexicalDecisionStatus)
+    ? (raw.decisionStatus as LexicalDecisionStatus)
+    : defaults.decisionStatus;
+  // "Resolved" is only valid when the chosen inventory sense is retained.
+  // Downgrading an incomplete legacy value to pending preserves the fact that
+  // it still needs a clinician decision without inventing an abstention.
+  const decisionStatus =
+    requestedDecisionStatus === 'resolved' && !nullableTrimmedString(raw.senseId)
+      ? 'pending'
+      : requestedDecisionStatus;
+  const formType = LEXICAL_FORM_VALUES.has(raw.formType as LexicalFormType)
+    ? (raw.formType as LexicalFormType)
+    : defaults.formType;
+  const lexicalFunction = LEXICAL_FUNCTION_VALUES.has(raw.function as LexicalFunction)
+    ? (raw.function as LexicalFunction)
+    : null;
+  const rawEvidenceCodes = normalizeEvidenceCodes(raw.evidenceCodes);
+  const noncodedMarkerPresent = rawEvidenceCodes.includes(NONCODED_SEMANTICS_COMMENT);
+
+  return {
+    decisionStatus,
+    formType,
+    correctedForm:
+      decisionStatus === 'form_error' ? nullableTrimmedString(raw.correctedForm) : null,
+    senseId: decisionStatus === 'resolved' ? nullableTrimmedString(raw.senseId) : null,
+    proposedExpansion:
+      decisionStatus === 'new_sense_proposed'
+        ? nullableTrimmedString(raw.proposedExpansion)
+        : null,
+    function: lexicalFunction,
+    section: nullableTrimmedString(raw.section),
+    evidenceCodes: rawEvidenceCodes.filter((code) => code !== NONCODED_SEMANTICS_COMMENT),
+    comment: commentWithNoncodedSemantics(raw.comment, noncodedMarkerPresent),
+    annotatorId: nullableTrimmedString(raw.annotatorId),
+    annotatedAt: nullableTrimmedString(raw.annotatedAt),
+  };
+}
+
+export function newLexicalReview(inventoryVersion: string | null = null): LexicalReview {
+  return {
+    status: 'pending',
+    exhaustiveReviewRequired: true,
+    annotatorId: null,
+    completedAt: null,
+    inventoryVersion,
+  };
+}
+
+export function newHumanLexicalMention(
+  mentionId: string,
+  start: number,
+  end: number,
+  surface: string
+): LexicalMention {
+  return {
+    mentionId,
+    start,
+    end,
+    surface,
+    normalizedKey: surface.trim().toLocaleUpperCase('es-AR'),
+    origin: 'human',
+    candidateSenseIds: [],
+    annotation: newLexicalAnnotation(surface),
+  };
+}
+
+export function normalizeLexicalMentions(
+  rawMentions: unknown,
+  textNorm: string
+): LexicalNormalizationResult {
+  if (!Array.isArray(rawMentions)) return { mentions: [], invalidCount: 0 };
+  const mentions: LexicalMention[] = [];
+  const ids = new Set<string>();
+  let invalidCount = 0;
+
+  for (const raw of rawMentions) {
+    if (!raw || typeof raw !== 'object') {
+      invalidCount += 1;
+      continue;
+    }
+    const item = raw as Partial<LexicalMention>;
+    const valid =
+      typeof item.mentionId === 'string' &&
+      item.mentionId.trim().length > 0 &&
+      Number.isInteger(item.start) &&
+      Number.isInteger(item.end) &&
+      typeof item.surface === 'string' &&
+      (item.start ?? -1) >= 0 &&
+      (item.end ?? 0) > (item.start ?? -1) &&
+      (item.end ?? textNorm.length + 1) <= textNorm.length &&
+      textNorm.slice(item.start, item.end) === item.surface &&
+      !ids.has(item.mentionId);
+    if (!valid) {
+      invalidCount += 1;
+      continue;
+    }
+    const mentionId = item.mentionId as string;
+    const surface = item.surface as string;
+
+    const origin = LEXICAL_ORIGINS.has(item.origin as LexicalOrigin)
+      ? (item.origin as LexicalOrigin)
+      : 'human';
+
+    mentions.push({
+      mentionId,
+      start: item.start as number,
+      end: item.end as number,
+      surface,
+      normalizedKey:
+        typeof item.normalizedKey === 'string' && item.normalizedKey.trim()
+          ? item.normalizedKey.trim()
+          : surface.trim().toLocaleUpperCase('es-AR'),
+      origin,
+      candidateSenseIds: Array.isArray(item.candidateSenseIds)
+        ? [
+            ...new Set(
+              item.candidateSenseIds
+                .filter((value): value is string => typeof value === 'string')
+                .map((value) => value.trim())
+                .filter(Boolean)
+            ),
+          ]
+        : [],
+      annotation: normalizeLexicalAnnotation(item.annotation, surface),
+    });
+    ids.add(mentionId);
+  }
+
+  mentions.sort((left, right) => left.start - right.start || left.end - right.end);
+  return { mentions, invalidCount };
+}
+
+export function lexicalMentionComplete(mention: LexicalMention): boolean {
+  const annotation = mention.annotation;
+  switch (annotation.decisionStatus) {
+    case 'resolved':
+      return !!annotation.senseId?.trim();
+    case 'new_sense_proposed':
+      return !!annotation.proposedExpansion?.trim();
+    case 'form_error':
+      return !!annotation.correctedForm?.trim();
+    case 'ambiguous':
+    case 'unknown':
+    case 'nonclinical':
+    case 'rejected':
+      return true;
+    default:
+      return false;
+  }
+}
+
+export function normalizeLexicalReview(
+  rawReview: unknown,
+  mentions: readonly LexicalMention[],
+  inventoryVersion: string | null = null
+): LexicalReview {
+  const raw =
+    rawReview && typeof rawReview === 'object' ? (rawReview as Partial<LexicalReview>) : {};
+  const completedAt = nullableTrimmedString(raw.completedAt);
+  const completed =
+    raw.status === 'completed' &&
+    !!completedAt &&
+    mentions.every((mention) => lexicalMentionComplete(mention));
+  return {
+    status: completed ? 'completed' : 'pending',
+    exhaustiveReviewRequired: true,
+    annotatorId: completed ? nullableTrimmedString(raw.annotatorId) : null,
+    completedAt: completed ? completedAt : null,
+    inventoryVersion:
+      nullableTrimmedString(raw.inventoryVersion) ?? nullableTrimmedString(inventoryVersion),
+  };
 }
 
 /** SNOMED CT hierarchy categories currently enabled for annotation. */
@@ -456,8 +1018,13 @@ export type Certainty = 'Confirmado' | 'Sospecha' | 'Diferencial';
 export type Temporality = 'Actual' | 'Histórico';
 export type Subject = 'Paciente' | 'Familiar';
 
-/** One annotated concept block (maps to a C1..C10 block in the spreadsheet). */
+/** One annotated concept block. A case may contain any number of concepts. */
 export interface ConceptAnnotation {
+  /**
+   * Stable per-case ordinal assigned when the concept block is created.
+   * It is deliberately not recalculated after deletion, so C3 stays C3.
+   */
+  sequence?: number;
   cat: Category | '';
   sctid: string;
   term: string;
@@ -470,12 +1037,23 @@ export interface ConceptAnnotation {
   spanId?: string;
 }
 
+export type CaseReviewOutcome = 'coded' | 'no-eligible-concepts';
+
+export interface CaseReview {
+  status: 'pending' | 'finalized';
+  outcome?: CaseReviewOutcome;
+  finalizedAt?: string;
+}
+
 /** A case together with the concepts the annotator produced for it. */
 export interface CaseAnnotation extends ClinicalCase {
   textNorm: string;
   spans: PremarkedSpan[];
   concepts: ConceptAnnotation[];
   comentarios: string;
+  review?: CaseReview;
+  lexicalMentions?: LexicalMention[];
+  lexicalReview?: LexicalReview;
 }
 
 /** A single upload or download event for audit trail purposes. */
@@ -485,6 +1063,125 @@ export interface SessionEntry {
   timestamp: string;
   annotatedCount: number;
   totalCases: number;
+  reviewedCount?: number;
+  appBuild?: string;
+}
+
+export interface SearchQueryTelemetry {
+  query: string;
+  category: Category | '';
+  requests: number;
+  zeroResults: number;
+  errors: number;
+  selections: number;
+}
+
+export interface SearchTelemetry {
+  episodes: number;
+  reformulations: number;
+  requests: number;
+  completedRequests: number;
+  zeroResults: number;
+  errors: number;
+  cancelled: number;
+  selections: number;
+  totalLatencyMs: number;
+  selectedRanks: number[];
+  queries: SearchQueryTelemetry[];
+}
+
+export interface CaseTelemetry {
+  id: string;
+  activeMs: number;
+  visits: number;
+  firstOpenedAt?: string;
+  lastOpenedAt?: string;
+  firstEditedAt?: string;
+  lastEditedAt?: string;
+  reopenedCount: number;
+  finalizedAt?: string;
+  finalizationOutcome?: CaseReviewOutcome;
+  spansAccepted: number;
+  spansDiscarded: number;
+  manualSpansAdded: number;
+  spanBoundaryAdjustments: number;
+  conceptsAdded: number;
+  conceptsRemoved: number;
+  conceptsReplaced: number;
+  categoryChanges: number;
+  search: SearchTelemetry;
+}
+
+export interface AnnotationTelemetry {
+  schemaVersion: '1.0';
+  collectionMode: 'local-export-only';
+  appBuild: string;
+  idleThresholdMs: number;
+  totalActiveMs: number;
+  cases: CaseTelemetry[];
+}
+
+export const TELEMETRY_APP_BUILD = 'SEMANTIAR-ANNOTATOR-2026.07';
+export const TELEMETRY_IDLE_THRESHOLD_MS = 120_000;
+
+function emptyCaseTelemetry(id: string): CaseTelemetry {
+  return {
+    id,
+    activeMs: 0,
+    visits: 0,
+    reopenedCount: 0,
+    spansAccepted: 0,
+    spansDiscarded: 0,
+    manualSpansAdded: 0,
+    spanBoundaryAdjustments: 0,
+    conceptsAdded: 0,
+    conceptsRemoved: 0,
+    conceptsReplaced: 0,
+    categoryChanges: 0,
+    search: {
+      episodes: 0,
+      reformulations: 0,
+      requests: 0,
+      completedRequests: 0,
+      zeroResults: 0,
+      errors: 0,
+      cancelled: 0,
+      selections: 0,
+      totalLatencyMs: 0,
+      selectedRanks: [],
+      queries: [],
+    },
+  };
+}
+
+export function createAnnotationTelemetry(
+  caseIds: readonly string[],
+  existing?: AnnotationTelemetry
+): AnnotationTelemetry {
+  const prior = new Map((existing?.cases ?? []).map((item) => [item.id, item]));
+  const cases = caseIds.map((id) => {
+    const previous = prior.get(id);
+    if (!previous) return emptyCaseTelemetry(id);
+    return {
+      ...emptyCaseTelemetry(id),
+      ...previous,
+      id,
+      search: {
+        ...emptyCaseTelemetry(id).search,
+        ...previous.search,
+        selectedRanks: [...(previous.search?.selectedRanks ?? [])],
+        queries: (previous.search?.queries ?? []).map((query) => ({ ...query })),
+      },
+    };
+  });
+  return {
+    schemaVersion: '1.0',
+    collectionMode: 'local-export-only',
+    appBuild: existing?.appBuild ?? TELEMETRY_APP_BUILD,
+    idleThresholdMs: existing?.idleThresholdMs ?? TELEMETRY_IDLE_THRESHOLD_MS,
+    totalActiveMs: cases.reduce((total, item) => total + item.activeMs, 0),
+    cases,
+  };
 }
 
 /**
@@ -504,6 +1201,7 @@ export interface AnnotationMeta {
    * Null until the file is fully complete and downloaded.
    */
   completedAt?: string;
+  telemetry?: AnnotationTelemetry;
 }
 
 /** Full output document produced on download. */
@@ -520,7 +1218,33 @@ export interface AnnotationOutput {
   _meta: AnnotationMeta;
   _premarking?: Record<string, unknown>;
   _trace?: Record<string, unknown>;
+  _annotationProtocol: AnnotationProtocol;
+  _lexicalInventory?: LexicalInventory;
 }
+
+export const ASSISTED_ANNOTATION_PROTOCOL: AnnotationProtocol = {
+  mode: 'assisted-span-review',
+  instructionsVersion: 'SEMANTIAR-ASISTIDA-1.0',
+  candidateMetadataVisible: false,
+  candidateMetadataStripped: true,
+  suggestedSctidVisible: false,
+  suggestedCategoryApplied: false,
+  exhaustiveReviewRequired: true,
+  coreBlindIncluded: false,
+  preannotationsPresent: true,
+};
+
+export const CORE_BLIND_PROTOCOL: AnnotationProtocol = {
+  mode: 'core-blind',
+  instructionsVersion: 'SEMANTIAR-CORE-BLIND-1.0',
+  candidateMetadataVisible: false,
+  candidateMetadataStripped: true,
+  suggestedSctidVisible: false,
+  suggestedCategoryApplied: false,
+  exhaustiveReviewRequired: true,
+  coreBlindIncluded: true,
+  preannotationsPresent: false,
+};
 
 /** Categories currently enabled, with their SNOMED hierarchy ECL constraint. */
 export const CATEGORIES: { label: Category; ecl: string; search: string }[] = [
@@ -534,7 +1258,12 @@ export const CERTAINTIES: Certainty[] = ['Confirmado', 'Sospecha', 'Diferencial'
 export const TEMPORALITIES: Temporality[] = ['Actual', 'Histórico'];
 export const SUBJECTS: Subject[] = ['Paciente', 'Familiar'];
 
-export const MAX_CONCEPTS_PER_CASE = 10;
+/**
+ * Retained as a compatibility export for downstream consumers. The annotator
+ * intentionally has no per-case concept cap; this sentinel documents that
+ * policy without imposing a UI or export limit.
+ */
+export const MAX_CONCEPTS_PER_CASE = Number.POSITIVE_INFINITY;
 
 // Terminology defaults come from the Angular environment.
 export const DEFAULT_TERMINOLOGY_SERVER = environment.terminologyServer;
@@ -548,8 +1277,9 @@ export const AR_DISPLAY_LANGUAGE = 'es';
 export const INTL_EDITION_URI = 'http://snomed.info/sct';
 export const INTL_DISPLAY_LANGUAGE = 'en';
 
-export function newConcept(): ConceptAnnotation {
+export function newConcept(sequence?: number): ConceptAnnotation {
   return {
+    ...(sequence === undefined ? {} : { sequence }),
     cat: '',
     sctid: '',
     term: '',

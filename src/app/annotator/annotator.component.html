@@ -3,19 +3,14 @@
   <span class="spacer"></span>
 
   @if (loaded()) {
-    <div class="progress-area" matTooltip="Casos con al menos un concepto codificado">
+    <div class="progress-area" matTooltip="Notas marcadas explícitamente como revisadas">
       <div class="progress-top">
-        <span class="progress-count">{{ annotatedCount() }} / {{ cases().length }} casos</span>
+        <span class="progress-count">{{ reviewedCount() }} / {{ cases().length }} notas</span>
         <span class="progress-pct" [class.done]="complete()">
           @if (complete()) { <mat-icon>check_circle</mat-icon> Completo }
           @else { {{ progressPct() }}% · <span class="pending-label">{{ pendingCount() }} pendientes</span> }
         </span>
       </div>
-      @if (excludedSpanCount()) {
-        <span class="span-review-summary">
-          {{ eligibleSpanCount() }} candidatos · {{ excludedSpanCount() }} excluidos por regla
-        </span>
-      }
       <mat-progress-bar
         class="progress-bar"
         [class.done]="complete()"
@@ -109,16 +104,66 @@
   }
 
   <!-- Cases -->
+  @if (loaded()) {
+    <section class="annotation-protocol" role="note" aria-labelledby="annotation-protocol-title">
+      <div class="annotation-protocol-icon" aria-hidden="true">
+        <mat-icon>fact_check</mat-icon>
+      </div>
+      <div>
+        <h2 id="annotation-protocol-title">Revisión exhaustiva de menciones clínicas</h2>
+        @if (coreBlindMode()) {
+          <p>
+            <strong>Este lote pertenece al conjunto de referencia Core Blind y no contiene preanotaciones.</strong>
+            Revise exhaustivamente la totalidad del texto e incorpore todas las menciones
+            clínicamente relevantes de procedimientos, fármacos y hallazgos clínicos.
+          </p>
+          <p class="annotation-protocol-detail">
+            Seleccione la expresión exacta en la nota y pulse “Incorporar mención omitida”.
+            La jerarquía, el concepto SNOMED CT y el contexto deben decidirse desde cero.
+          </p>
+        } @else {
+          <p>
+            <strong>Los resaltados son candidatos incompletos y pueden ser erróneos.</strong>
+            El anotador debe revisar exhaustivamente la totalidad del texto, agregar todas las
+            menciones clínicamente relevantes omitidas y no limitarse a validar los términos
+            preexistentes.
+          </p>
+          <p class="annotation-protocol-detail">
+            Acepte, ajuste los límites o descarte cada candidato. Para incorporar una omisión,
+            seleccione su expresión exacta en la nota. La jerarquía, el concepto SNOMED CT y el
+            contexto deben decidirse de manera independiente; el sistema no los precarga.
+          </p>
+        }
+        @if (lexicalLayerEnabled()) {
+          <p class="annotation-protocol-detail lexical-protocol-detail">
+            <strong>Revisión de formas breves activa.</strong>
+            Marque todas las abreviaturas, siglas y acrónimos de la nota. Cada uso se decide por
+            su contexto local; la especialidad funciona sólo como pista. El sistema no marca un
+            significado preferido ni muestra puntajes o probabilidades.
+          </p>
+        }
+      </div>
+    </section>
+  }
+
   @for (caseItem of cases(); track caseItem.id; let ci = $index) {
     <mat-card class="case-card"
-              [class.case-annotated]="caseItem.concepts.some(cc => !!cc.sctid)"
-              [class.case-pending]="!caseItem.concepts.some(cc => !!cc.sctid)">
+              [attr.data-case-index]="ci"
+              (pointerenter)="activateCase(ci)"
+              (focusin)="activateCase(ci)"
+              [class.case-annotated]="isCaseFinalized(caseItem)"
+              [class.case-pending]="!isCaseFinalized(caseItem)">
       <mat-card-header>
         <mat-card-title class="case-id">
           {{ caseItem.id }}
-          @if (caseItem.concepts.some(cc => !!cc.sctid)) {
+          @if (caseItem.review?.status === 'finalized') {
             <span class="case-status-badge done-badge">
-              <mat-icon>check_circle</mat-icon> Anotado
+              <mat-icon>check_circle</mat-icon>
+              {{ caseItem.review?.outcome === 'no-eligible-concepts' ? 'Revisada sin conceptos' : 'Revisada' }}
+            </span>
+          } @else if (caseItem.concepts.some(cc => !!cc.sctid)) {
+            <span class="case-status-badge editing-badge">
+              <mat-icon>edit</mat-icon> En edición
             </span>
           } @else {
             <span class="case-status-badge pending-badge">
@@ -128,42 +173,89 @@
         </mat-card-title>
       </mat-card-header>
       <mat-card-content>
-        <div class="case-text" [class.has-spans]="caseItem.spans.length">
-          @for (segment of textSegments(caseItem); track $index) {
+        <div class="case-workspace">
+          <div class="case-source">
+            <p class="case-source-label">Nota clínica · queda visible durante la revisión</p>
+        <div
+          #caseText
+          class="case-text"
+          [class.has-spans]="caseItem.spans.length"
+          (mouseup)="captureTextSelection(ci, caseText)">
+          @for (segment of textSegments(caseItem); track $index; let si = $index) {
             @if (segment.kind === 'text') {
-              <span>{{ segment.value }}</span>
+              <span [attr.data-source-start]="textSegmentStart(caseItem, si)">{{ segment.value }}</span>
             } @else {
-              <button
-                type="button"
-                class="premarked-span"
-                [class.selected]="selectedSpanFor(ci)?.spanId === segment.span.spanId"
-                [class.confirmed]="segment.span.status === 'confirmado'"
-                [class.discarded]="segment.span.status === 'descartado'"
-                [disabled]="segment.span.status === 'descartado'"
-                (click)="selectSpan(ci, segment.span)">
-                {{ segment.value }}
-              </button>
+              <span
+                class="premarked-span-group"
+                [class.overlapping]="segment.spans.length > 1"
+                [attr.data-source-start]="textSegmentStart(caseItem, si)">
+                @for (span of segment.spans; track span.spanId; let spanIndex = $index) {
+                  <button
+                    type="button"
+                    class="premarked-span"
+                    [class.overlap-marker]="segment.spans.length > 1"
+                    [class.selected]="selectedSpanFor(ci)?.spanId === span.spanId"
+                    [class.confirmed]="span.status === 'confirmado'"
+                    [class.discarded]="span.status === 'descartado'"
+                    [disabled]="span.status === 'descartado'"
+                    [attr.aria-label]="'Seleccionar mención: ' + span.textoLiteral"
+                    (click)="selectSpan(ci, span)">
+                    @if (spanIndex === 0) { {{ segment.value }} }
+                    @else { <span class="overlap-choice">{{ spanIndex + 1 }}</span> }
+                  </button>
+                }
+              </span>
             }
           }
         </div>
 
+          @if (caseItem.spans.length > 1) {
+            <p class="overlap-help">
+              Si un resaltado tiene un número, hay varias menciones superpuestas: elegí cada una para revisarla.
+            </p>
+          }
+          </div>
+
+          <div class="case-review">
+
+        @if (humanSpanDraft(); as draft) {
+          @if (draft.caseIndex === ci) {
+            <div class="human-span-draft">
+              <div>
+                <span class="human-span-draft-label">Texto seleccionado</span>
+                <strong>“{{ draft.textoLiteral }}”</strong>
+              </div>
+              <div class="span-actions">
+                @if (selectedSpanFor(ci)) {
+                  <button mat-stroked-button color="primary" (click)="adjustSelectedSpanBounds(ci)">
+                    <mat-icon>border_color</mat-icon> Usar como nuevos límites
+                  </button>
+                }
+                <button mat-stroked-button color="primary" (click)="addHumanSpan(ci)">
+                  <mat-icon>add</mat-icon> Incorporar mención omitida
+                </button>
+                @if (lexicalLayerEnabled()) {
+                  <button mat-stroked-button color="accent" (click)="addHumanLexicalMention(ci)">
+                    <mat-icon>short_text</mat-icon> Incorporar forma breve
+                  </button>
+                }
+              </div>
+            </div>
+          }
+        }
+
         @if (selectedSpanFor(ci); as span) {
           <div class="span-panel">
             <div>
-              <span class="span-panel-label">Span fijo</span>
+              <span class="span-panel-label">Mención candidata pendiente de decisión</span>
               <strong>{{ span.textoLiteral }}</strong>
-              <span class="span-origin">{{ span.origin }} · confianza {{ span.confidence | number:'1.0-2' }}</span>
-              @if (span.suggest?.category || span.suggest?.expansionAbbrev || span.suggest?.section) {
-                <span class="span-hints">
-                  Preclasificación editable:
-                  {{ span.suggest?.category ?? span.suggest?.expansionAbbrev ?? span.suggest?.section }}
-                </span>
-              }
-              <span class="span-review-reason">{{ span.review?.reason }}</span>
+              <span class="span-review-reason">
+                Decida de forma independiente si corresponde anotarla y cuál es su jerarquía.
+              </span>
             </div>
             <div class="span-actions">
               <button mat-stroked-button color="primary" (click)="confirmSelectedSpan(ci)">
-                <mat-icon>check</mat-icon> Confirmar y anotar
+                <mat-icon>check</mat-icon> Aceptar y completar
               </button>
               <button mat-stroked-button color="warn" (click)="discardSelectedSpan(ci)">
                 <mat-icon>block</mat-icon> Descartar
@@ -172,25 +264,372 @@
           </div>
         }
 
+        @if (lexicalLayerEnabled()) {
+          <section class="lexical-layer" aria-label="Revisión de formas breves">
+            <div class="lexical-layer-head">
+              <div>
+                <span class="lexical-kicker">Revisión de formas breves</span>
+                <h3>¿Qué significa cada forma en esta nota?</h3>
+                <p>
+                  Revisá cada aparición sin adivinar. Las opciones de significado no tienen un
+                  orden de preferencia.
+                </p>
+              </div>
+              <span
+                class="lexical-review-badge"
+                [class.complete]="caseItem.lexicalReview?.status === 'completed'">
+                {{ caseItem.lexicalReview?.status === 'completed'
+                  ? 'Revisión completa'
+                  : lexicalPendingCount(caseItem) + ' pendientes' }}
+              </span>
+            </div>
+
+            <details class="lexical-help">
+              <summary>
+                <mat-icon aria-hidden="true">help_outline</mat-icon>
+                Guía rápida para decidir
+              </summary>
+              <div class="lexical-help-content">
+                <div>
+                  <strong>¿Cómo está escrita?</strong>
+                  <p>
+                    Elegí por la forma visible: palabra acortada, letras leídas juntas o por
+                    separado, letras con números, o símbolos. Una palabra en mayúsculas no es
+                    necesariamente una sigla.
+                  </p>
+                </div>
+                <div>
+                  <strong>¿Podés saber qué significa aquí?</strong>
+                  <p>
+                    <b>Pendiente</b> significa que todavía no decidiste y bloquea el cierre.
+                    <b>Ambigua aun con contexto</b> y <b>No puedo determinarla</b> son cierres
+                    válidos cuando la nota no permite resolver sin adivinar.
+                  </p>
+                </div>
+                <div>
+                  <strong>¿Qué papel cumple en esta parte de la nota?</strong>
+                  <p>
+                    <b>Sin clasificar</b> deja el papel sin decidir. <b>Otra función</b> indica
+                    que sí lo identificaste, pero no encaja en la lista. Elegir Entidad clínica
+                    no crea automáticamente una anotación SNOMED CT.
+                  </p>
+                </div>
+                <div>
+                  <strong>Ubicación y pistas</strong>
+                  <p>
+                    La sección es la parte local de esta nota, no la especialidad del paciente.
+                    Las pistas se guardan como una lista; su orden no expresa importancia ni
+                    probabilidad.
+                  </p>
+                </div>
+              </div>
+            </details>
+
+            @if (!(caseItem.lexicalMentions?.length)) {
+              <div class="lexical-empty">
+                No hay formas sugeridas. Revisá igualmente toda la nota y seleccioná cada forma
+                breve que encuentres.
+              </div>
+            }
+
+            <div class="lexical-mentions">
+              @for (mention of caseItem.lexicalMentions ?? []; track mention.mentionId) {
+                <article
+                  class="lexical-card"
+                  [class.lexical-card-complete]="isLexicalMentionComplete(mention)"
+                  [attr.aria-label]="'Forma breve ' + mention.surface">
+                  <div class="lexical-card-head">
+                    <div>
+                      <strong>“{{ mention.surface }}”</strong>
+                      <span>{{ lexicalOriginLabel(mention.origin) }}</span>
+                    </div>
+                    @if (mention.origin === 'human') {
+                      <button
+                        mat-icon-button
+                        color="warn"
+                        matTooltip="Quitar aparición agregada manualmente"
+                        (click)="removeHumanLexicalMention(ci, mention.mentionId)">
+                        <mat-icon>close</mat-icon>
+                      </button>
+                    }
+                  </div>
+
+                  @if (lexicalSenseOptions(mention).length) {
+                    <div class="lexical-candidates">
+                      <span>Significados disponibles, ninguno es preferido:</span>
+                      @for (sense of lexicalSenseOptions(mention); track sense.senseId) {
+                        <span class="lexical-candidate">{{ sense.expansion }}</span>
+                      }
+                    </div>
+                  }
+
+                  <div class="lexical-grid">
+                    <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                      <mat-label>¿Cómo está escrita?</mat-label>
+                      <mat-select
+                        panelWidth="420px"
+                        [attr.aria-describedby]="'lexical-form-help-' + ci + '-' + mention.mentionId"
+                        [ngModel]="mention.annotation.formType"
+                        (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'formType', $event)">
+                        <mat-select-trigger>
+                          {{ lexicalFormLabel(mention.annotation.formType) }}
+                        </mat-select-trigger>
+                        @for (option of lexicalFormTypes; track option.value) {
+                          <mat-option class="lexical-mat-option" [value]="option.value">
+                            <span class="lexical-option">
+                              <strong>{{ option.label }}</strong>
+                              <span>{{ option.description }}</span>
+                              @if (option.example) {
+                                <small>{{ option.example }}</small>
+                              }
+                            </span>
+                          </mat-option>
+                        }
+                      </mat-select>
+                      <mat-hint [id]="'lexical-form-help-' + ci + '-' + mention.mentionId">
+                        {{ lexicalFormSuggestion(mention) }}
+                      </mat-hint>
+                    </mat-form-field>
+
+                    <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                      <mat-label>¿Podés saber qué significa aquí?</mat-label>
+                      <mat-select
+                        panelWidth="420px"
+                        [attr.aria-describedby]="'lexical-decision-help-' + ci + '-' + mention.mentionId"
+                        [ngModel]="mention.annotation.decisionStatus"
+                        (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'decisionStatus', $event)">
+                        <mat-select-trigger>
+                          {{ lexicalDecisionLabel(mention.annotation.decisionStatus) }}
+                        </mat-select-trigger>
+                        @for (option of lexicalDecisions; track option.value) {
+                          <mat-option
+                            class="lexical-mat-option"
+                            [value]="option.value"
+                            [disabled]="option.value === 'resolved' && !lexicalSenseOptions(mention).length">
+                            <span class="lexical-option">
+                              <strong>{{ option.label }}</strong>
+                              <span>{{ option.description }}</span>
+                              @if (option.example) {
+                                <small>{{ option.example }}</small>
+                              }
+                            </span>
+                          </mat-option>
+                        }
+                      </mat-select>
+                      <mat-hint [id]="'lexical-decision-help-' + ci + '-' + mention.mentionId">
+                        Pendiente bloquea el cierre; ambigua y no puedo determinarla son
+                        abstenciones finales válidas. “Resuelta” requiere elegir un significado disponible.
+                      </mat-hint>
+                    </mat-form-field>
+
+                    <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                      <mat-label>¿Qué papel cumple en esta parte de la nota?</mat-label>
+                      <mat-select
+                        panelWidth="420px"
+                        [attr.aria-describedby]="'lexical-function-help-' + ci + '-' + mention.mentionId"
+                        [ngModel]="mention.annotation.function"
+                        (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'function', $event)">
+                        <mat-select-trigger>
+                          {{ lexicalFunctionLabel(mention.annotation.function) }}
+                        </mat-select-trigger>
+                        <mat-option
+                          class="lexical-mat-option"
+                          [value]="lexicalUnclassifiedFunction.value">
+                          <span class="lexical-option">
+                            <strong>{{ lexicalUnclassifiedFunction.label }}</strong>
+                            <span>{{ lexicalUnclassifiedFunction.description }}</span>
+                          </span>
+                        </mat-option>
+                        @for (option of lexicalFunctions; track option.value) {
+                          <mat-option class="lexical-mat-option" [value]="option.value">
+                            <span class="lexical-option">
+                              <strong>{{ option.label }}</strong>
+                              <span>{{ option.description }}</span>
+                              @if (option.example) {
+                                <small>{{ option.example }}</small>
+                              }
+                            </span>
+                          </mat-option>
+                        }
+                      </mat-select>
+                      <mat-hint [id]="'lexical-function-help-' + ci + '-' + mention.mentionId">
+                        Sin clasificar deja el papel vacío; Otra función es una elección explícita.
+                      </mat-hint>
+                    </mat-form-field>
+
+                    @if (mention.annotation.decisionStatus === 'resolved') {
+                      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                        <mat-label>¿Qué significa aquí?</mat-label>
+                        <mat-select
+                          panelWidth="420px"
+                          [ngModel]="mention.annotation.senseId"
+                          (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'senseId', $event)">
+                          <mat-select-trigger>
+                            {{ lexicalSenseLabel(mention) }}
+                          </mat-select-trigger>
+                          @for (sense of lexicalSenseOptions(mention); track sense.senseId) {
+                            <mat-option [value]="sense.senseId">{{ sense.expansion }}</mat-option>
+                          }
+                        </mat-select>
+                        @if (!lexicalSenseOptions(mention).length) {
+                          <mat-hint>
+                            No hay significados disponibles; elegí “Proponer sentido nuevo”.
+                          </mat-hint>
+                        }
+                      </mat-form-field>
+                    }
+
+                    @if (mention.annotation.decisionStatus === 'new_sense_proposed') {
+                      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                        <mat-label>¿Qué significado proponés?</mat-label>
+                        <input
+                          matInput
+                          required
+                          [ngModel]="mention.annotation.proposedExpansion"
+                          (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'proposedExpansion', $event)" />
+                        <mat-hint>Es obligatorio para cerrar esta decisión.</mat-hint>
+                      </mat-form-field>
+                    }
+
+                    @if (mention.annotation.decisionStatus === 'form_error') {
+                      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                        <mat-label>¿Cómo debería estar escrita?</mat-label>
+                        <input
+                          matInput
+                          required
+                          [ngModel]="mention.annotation.correctedForm"
+                          (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'correctedForm', $event)" />
+                        <mat-hint>Es obligatorio para cerrar esta decisión.</mat-hint>
+                      </mat-form-field>
+                    }
+
+                    <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                      <mat-label>¿En qué parte de la nota aparece?</mat-label>
+                      <mat-select
+                        panelWidth="420px"
+                        [ngModel]="mention.annotation.section"
+                        (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'section', $event)">
+                        <mat-select-trigger>
+                          {{ lexicalSectionLabel(mention.annotation.section) }}
+                        </mat-select-trigger>
+                        <mat-option [value]="null">Sin especificar</mat-option>
+                        @if (mention.annotation.section && !isKnownLexicalSection(mention.annotation.section)) {
+                          <mat-option [value]="mention.annotation.section">
+                            Valor existente: {{ mention.annotation.section }}
+                          </mat-option>
+                        }
+                        @for (option of lexicalSections; track option.value) {
+                          <mat-option class="lexical-mat-option" [value]="option.value">
+                            <span class="lexical-option">
+                              <strong>{{ option.label }}</strong>
+                              <span>{{ option.description }}</span>
+                            </span>
+                          </mat-option>
+                        }
+                      </mat-select>
+                      <mat-hint>Elegí la ubicación local; no una especialidad global.</mat-hint>
+                    </mat-form-field>
+
+                    <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                      <mat-label>¿Qué pistas usaste?</mat-label>
+                      <mat-select
+                        panelWidth="420px"
+                        multiple
+                        [ngModel]="mention.annotation.evidenceCodes"
+                        (ngModelChange)="updateLexicalEvidence(ci, mention.mentionId, $event)">
+                        <mat-select-trigger>
+                          {{ lexicalEvidenceSummary(mention.annotation.evidenceCodes) }}
+                        </mat-select-trigger>
+                        @for (code of unlistedLexicalEvidenceCodes(mention); track code) {
+                          <mat-option [value]="code">Valor existente: {{ code }}</mat-option>
+                        }
+                        @for (option of lexicalEvidenceCodes; track option.value) {
+                          <mat-option class="lexical-mat-option" [value]="option.value">
+                            <span class="lexical-option">
+                              <strong>{{ option.label }}</strong>
+                              <span>{{ option.description }}</span>
+                            </span>
+                          </mat-option>
+                        }
+                      </mat-select>
+                      <mat-hint>
+                        Podés elegir varias. Solo marcá las pistas realmente observadas.
+                      </mat-hint>
+                    </mat-form-field>
+
+                    <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                      <mat-label>¿Hay algo importante que no quedó registrado arriba?</mat-label>
+                      <textarea
+                        matInput
+                        rows="2"
+                        [ngModel]="mention.annotation.comment"
+                        (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'comment', $event)">
+                      </textarea>
+                      <mat-hint>
+                        Opcional. Incluí aquí observaciones sobre un posible significado no
+                        codificado.
+                      </mat-hint>
+                    </mat-form-field>
+                  </div>
+                </article>
+              }
+            </div>
+
+            <div class="lexical-review-actions">
+              <span>
+                Confirmá sólo después de revisar toda la nota, incluso si no encontraste formas breves.
+              </span>
+              <button
+                mat-flat-button
+                color="primary"
+                [disabled]="lexicalPendingCount(caseItem) > 0"
+                (click)="completeLexicalReview(ci)">
+                <mat-icon>spellcheck</mat-icon>
+                {{ caseItem.lexicalReview?.status === 'completed'
+                  ? 'Revisión de formas completada'
+                  : 'Completar revisión de formas' }}
+              </button>
+            </div>
+          </section>
+        }
+
+        <section class="concepts-section" aria-label="Conceptos clínicos SNOMED CT">
+          <div class="concepts-section-head">
+            <div>
+              <span class="concepts-kicker">Información clínica</span>
+              <h3>Conceptos clínicos (SNOMED CT)</h3>
+              <p>Agregá una tarjeta por cada mención clínica y completala de izquierda a derecha.</p>
+            </div>
+            <button mat-flat-button color="primary" (click)="addConcept(ci)">
+              <mat-icon>add</mat-icon> Agregar concepto
+            </button>
+          </div>
+
         <div class="concepts">
-          @for (concept of caseItem.concepts; track $index; let cj = $index) {
+          @for (entry of conceptsInDescendingOrder(caseItem); track entry.index) {
+            @let concept = entry.concept;
+            @let cj = entry.index;
             <div class="concept-block">
               <div class="concept-head">
-                <span class="concept-num">C{{ cj + 1 }}</span>
-                @if (concept.spanId) {
-                  <span class="concept-span-id">Span {{ concept.spanId }}</span>
-                }
+                <div class="concept-title">
+                  <span class="concept-num">C{{ concept.sequence ?? cj + 1 }}</span>
+                  <div>
+                    <strong>Concepto clínico</strong>
+                    <span>Jerarquía → búsqueda SNOMED CT → literal → contexto</span>
+                  </div>
+                </div>
                 <button mat-icon-button color="warn" class="remove-btn"
                         matTooltip="Quitar concepto" (click)="removeConcept(ci, cj)">
                   <mat-icon>close</mat-icon>
                 </button>
               </div>
 
-              <div class="concept-fields">
+              <div class="concept-core-fields">
                 <!-- Category -->
                 <mat-form-field appearance="outline" class="f-cat" subscriptSizing="dynamic">
-                  <mat-label>Categoría (jerarquía)</mat-label>
-                  <mat-select [ngModel]="concept.cat"
+                  <mat-label>1. Jerarquía clínica</mat-label>
+                  <mat-select panelWidth="360px"
+                              [ngModel]="concept.cat"
                               (ngModelChange)="onCategoryChange(ci, cj, $event)">
                     @for (c of categories; track c.label) {
                       <mat-option [value]="c.label">{{ c.label }}</mat-option>
@@ -202,12 +641,14 @@
                 <div class="f-search">
                   <app-autocomplete-binding
                     [binding]="bindingFor(concept.cat)"
+                    [term]="concept.term"
                     [terminologyServer]="terminologyServer()"
                     [editionUri]="editionUri()"
                     [readonly]="!concept.cat"
                     [compact]="true"
                     appearance="outline"
-                    (selectionChange)="onConceptSelected(ci, cj, $event)">
+                    (selectionChange)="onConceptSelected(ci, cj, $event)"
+                    (searchTelemetry)="recordSearchTelemetry(ci, cj, $event)">
                   </app-autocomplete-binding>
                   <div class="chip-slot">
                     @if (concept.sctid) {
@@ -219,10 +660,12 @@
                     }
                   </div>
                 </div>
+              </div>
 
+              <div class="concept-literal-row">
                 <!-- Literal text -->
                 <mat-form-field appearance="outline" class="f-literal" subscriptSizing="dynamic">
-                  <mat-label>Texto literal</mat-label>
+                  <mat-label>3. Texto literal de la nota</mat-label>
                   <input matInput [ngModel]="concept.textoLiteral"
                          (ngModelChange)="updateConceptField(ci, cj, 'textoLiteral', $event)"
                          placeholder="expresión exacta del texto" />
@@ -230,6 +673,10 @@
               </div>
 
               <!-- Clinical context -->
+              <div class="context-heading">
+                <strong>4. Contexto clínico</strong>
+                <span>Decidí cada dimensión de forma independiente.</span>
+              </div>
               <div class="context-row">
                 <mat-form-field appearance="outline" class="f-ctx" subscriptSizing="dynamic">
                   <mat-label>Polaridad</mat-label>
@@ -263,13 +710,46 @@
             </div>
           }
         </div>
+        </section>
 
-        <div class="case-actions">
-          <button mat-stroked-button color="primary"
-                  [disabled]="caseItem.concepts.length >= maxConcepts"
-                  (click)="addConcept(ci)">
-            <mat-icon>add</mat-icon> Agregar concepto
-          </button>
+        <div class="case-finalization" [class.finalized]="isCaseFinalized(caseItem)">
+          @if (isCaseFinalized(caseItem)) {
+            <div class="case-finalization-copy">
+              <mat-icon>verified</mat-icon>
+              <div>
+                <strong>Nota revisada</strong>
+                <span>
+                  {{ caseItem.review?.outcome === 'no-eligible-concepts'
+                    ? 'Sin conceptos clínicos anotables.'
+                    : 'Con conceptos SNOMED CT codificados.' }}
+                  Si modificás la anotación, volverá automáticamente a pendiente.
+                </span>
+              </div>
+            </div>
+          } @else {
+            <div class="case-finalization-copy">
+              <mat-icon>fact_check</mat-icon>
+              <div>
+                <strong>Finalizar revisión de esta nota</strong>
+                <span>
+                  Confirmá uno de los dos resultados después de revisar todo el texto
+                  @if (lexicalLayerEnabled()) { y completar la revisión de formas breves }.
+                </span>
+              </div>
+            </div>
+            <div class="case-finalization-actions">
+              <button mat-flat-button color="primary"
+                      [disabled]="!hasAnnotatedConcept(caseItem) || !lexicalReviewReady(caseItem)"
+                      (click)="finalizeCase(ci, 'coded')">
+                <mat-icon>check_circle</mat-icon> Revisada con conceptos
+              </button>
+              <button mat-stroked-button
+                      [disabled]="hasAnnotatedConcept(caseItem) || !lexicalReviewReady(caseItem)"
+                      (click)="finalizeCase(ci, 'no-eligible-concepts')">
+                <mat-icon>do_not_disturb_on</mat-icon> Sin conceptos anotables
+              </button>
+            </div>
+          }
         </div>
 
         <mat-form-field appearance="outline" class="comentarios" subscriptSizing="dynamic">
@@ -278,6 +758,8 @@
                     (ngModelChange)="updateComentarios(ci, $event)"
                     placeholder="Dudas o notas sobre este caso"></textarea>
         </mat-form-field>
+          </div>
+        </div>
       </mat-card-content>
     </mat-card>
   }
@@ -344,7 +826,19 @@
       </div>
       <div class="stat-item">
         <span class="stat-label">Progreso actual</span>
-        <span class="stat-value">{{ annotatedCount() }} / {{ cases().length }} casos ({{ progressPct() }}%)</span>
+        <span class="stat-value">{{ reviewedCount() }} / {{ cases().length }} notas ({{ progressPct() }}%)</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Tiempo activo acumulado</span>
+        <span class="stat-value">{{ formatDuration(totalActiveMs()) }}</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Búsquedas terminológicas</span>
+        <span class="stat-value">{{ totalSearchEpisodes() }} episodios · {{ totalSearchRequests() }} consultas</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Consultas sin resultados / errores</span>
+        <span class="stat-value">{{ totalZeroResultSearches() }} / {{ totalSearchErrors() }}</span>
       </div>
       @if (completedAt()) {
         <div class="stat-item stat-done">
@@ -362,7 +856,9 @@
           <div class="log-details">
             <span class="log-action">{{ entry.action === 'upload' ? 'Carga' : 'Descarga' }}</span>
             <span class="log-time">{{ entry.timestamp | date:'dd/MM/yyyy HH:mm:ss' }}</span>
-            <span class="log-progress">{{ entry.annotatedCount }}/{{ entry.totalCases }} casos</span>
+            <span class="log-progress">
+              {{ entry.reviewedCount ?? entry.annotatedCount }}/{{ entry.totalCases }} revisadas
+            </span>
           </div>
         </div>
       }

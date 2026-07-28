@@ -1,0 +1,476 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://semantiar.local/schema/lexical-layer-v2.json",
+  "title": "SemantIAr lexical annotation layer v2",
+  "description": "Contrato canónico de la capa léxica por aparición. Los códigos se mantienen estables para compatibilidad con archivos v2.",
+  "type": "object",
+  "required": [
+    "_lexicalInventory",
+    "_annotationProtocol",
+    "cases"
+  ],
+  "properties": {
+    "_lexicalInventory": {
+      "$ref": "#/$defs/inventory"
+    },
+    "_annotationProtocol": {
+      "type": "object",
+      "required": [
+        "lexicalLayerEnabled",
+        "lexicalExhaustiveReviewRequired",
+        "lexicalPreferredSenseVisible"
+      ],
+      "properties": {
+        "lexicalLayerEnabled": {
+          "const": true
+        },
+        "lexicalExhaustiveReviewRequired": {
+          "const": true
+        },
+        "lexicalPreferredSenseVisible": {
+          "const": false
+        },
+        "lexicalSenseRankingVisible": {
+          "type": "boolean"
+        },
+        "lexicalAbstentionEnabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/case"
+      }
+    }
+  },
+  "$defs": {
+    "nullableText": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/nonblankText"
+        }
+      ]
+    },
+    "nonblankText": {
+      "type": "string",
+      "pattern": ".*\\S.*"
+    },
+    "inventory": {
+      "type": "object",
+      "required": [
+        "layerVersion",
+        "inventoryVersion",
+        "status",
+        "rankingPresent",
+        "probabilitiesPresent",
+        "abbreviations"
+      ],
+      "properties": {
+        "layerVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inventoryVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rankingPresent": {
+          "const": false
+        },
+        "probabilitiesPresent": {
+          "const": false
+        },
+        "abbreviations": {
+          "type": "array"
+        }
+      }
+    },
+    "case": {
+      "type": "object",
+      "required": [
+        "id",
+        "text",
+        "lexicalMentions",
+        "lexicalReview"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "lexicalMentions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/mention"
+          }
+        },
+        "lexicalReview": {
+          "$ref": "#/$defs/review"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "lexicalReview": {
+                "properties": {
+                  "status": {
+                    "const": "completed"
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              }
+            },
+            "required": [
+              "lexicalReview"
+            ]
+          },
+          "then": {
+            "properties": {
+              "lexicalMentions": {
+                "not": {
+                  "contains": {
+                    "properties": {
+                      "annotation": {
+                        "properties": {
+                          "decisionStatus": {
+                            "const": "pending"
+                          }
+                        },
+                        "required": [
+                          "decisionStatus"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "annotation"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "mention": {
+      "type": "object",
+      "required": [
+        "mentionId",
+        "start",
+        "end",
+        "surface",
+        "normalizedKey",
+        "origin",
+        "candidateSenseIds",
+        "annotation"
+      ],
+      "properties": {
+        "mentionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "surface": {
+          "type": "string",
+          "minLength": 1
+        },
+        "normalizedKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "origin": {
+          "enum": [
+            "sense_inventory",
+            "legacy_dictionary",
+            "orthographic_heuristic",
+            "human"
+          ]
+        },
+        "candidateSenseIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "annotation": {
+          "$ref": "#/$defs/annotation"
+        }
+      }
+    },
+    "annotation": {
+      "type": "object",
+      "required": [
+        "decisionStatus",
+        "formType",
+        "correctedForm",
+        "senseId",
+        "proposedExpansion",
+        "function",
+        "section",
+        "evidenceCodes",
+        "comment",
+        "annotatorId",
+        "annotatedAt"
+      ],
+      "properties": {
+        "decisionStatus": {
+          "enum": [
+            "pending",
+            "resolved",
+            "ambiguous",
+            "unknown",
+            "new_sense_proposed",
+            "form_error",
+            "nonclinical",
+            "rejected"
+          ]
+        },
+        "formType": {
+          "enum": [
+            "abbreviation",
+            "acronym",
+            "initialism",
+            "alphanumeric",
+            "symbolic_abbreviation",
+            "other"
+          ]
+        },
+        "correctedForm": {
+          "$ref": "#/$defs/nullableText"
+        },
+        "senseId": {
+          "$ref": "#/$defs/nullableText"
+        },
+        "proposedExpansion": {
+          "$ref": "#/$defs/nullableText"
+        },
+        "function": {
+          "description": "null significa Sin clasificar; other significa que se eligió explícitamente Otra función.",
+          "enum": [
+            null,
+            "header",
+            "entity",
+            "value",
+            "result",
+            "modifier",
+            "structural",
+            "other"
+          ]
+        },
+        "section": {
+          "description": "Ubicación estructural local dentro de la nota, no especialidad global.",
+          "$ref": "#/$defs/nullableText"
+        },
+        "evidenceCodes": {
+          "description": "Pistas contextuales sin ranking ni probabilidad; el orden no tiene significado.",
+          "type": "array",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/nonblankText"
+              },
+              {
+                "not": {
+                  "const": "POSIBLE_SEMANTICA_NO_CODIFICADA"
+                }
+              }
+            ]
+          },
+          "uniqueItems": true
+        },
+        "comment": {
+          "description": "Lugar para POSIBLE_SEMANTICA_NO_CODIFICADA y otras observaciones libres.",
+          "$ref": "#/$defs/nullableText"
+        },
+        "annotatorId": {
+          "$ref": "#/$defs/nullableText"
+        },
+        "annotatedAt": {
+          "$ref": "#/$defs/nullableText"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "decisionStatus": {
+                "const": "resolved"
+              }
+            },
+            "required": [
+              "decisionStatus"
+            ]
+          },
+          "then": {
+            "properties": {
+              "senseId": {
+                "$ref": "#/$defs/nonblankText"
+              },
+              "proposedExpansion": {
+                "const": null
+              },
+              "correctedForm": {
+                "const": null
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "decisionStatus": {
+                "const": "new_sense_proposed"
+              }
+            },
+            "required": [
+              "decisionStatus"
+            ]
+          },
+          "then": {
+            "properties": {
+              "senseId": {
+                "const": null
+              },
+              "proposedExpansion": {
+                "$ref": "#/$defs/nonblankText"
+              },
+              "correctedForm": {
+                "const": null
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "decisionStatus": {
+                "const": "form_error"
+              }
+            },
+            "required": [
+              "decisionStatus"
+            ]
+          },
+          "then": {
+            "properties": {
+              "senseId": {
+                "const": null
+              },
+              "proposedExpansion": {
+                "const": null
+              },
+              "correctedForm": {
+                "$ref": "#/$defs/nonblankText"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "decisionStatus": {
+                "enum": [
+                  "pending",
+                  "ambiguous",
+                  "unknown",
+                  "nonclinical",
+                  "rejected"
+                ]
+              }
+            },
+            "required": [
+              "decisionStatus"
+            ]
+          },
+          "then": {
+            "properties": {
+              "senseId": {
+                "const": null
+              },
+              "proposedExpansion": {
+                "const": null
+              },
+              "correctedForm": {
+                "const": null
+              }
+            }
+          }
+        }
+      ]
+    },
+    "review": {
+      "type": "object",
+      "required": [
+        "status",
+        "exhaustiveReviewRequired",
+        "annotatorId",
+        "completedAt",
+        "inventoryVersion"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "pending",
+            "completed"
+          ]
+        },
+        "exhaustiveReviewRequired": {
+          "const": true
+        },
+        "annotatorId": {
+          "$ref": "#/$defs/nullableText"
+        },
+        "completedAt": {
+          "$ref": "#/$defs/nullableText"
+        },
+        "inventoryVersion": {
+          "$ref": "#/$defs/nullableText"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "completed"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "completedAt": {
+                "$ref": "#/$defs/nonblankText"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
