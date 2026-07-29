@@ -524,8 +524,8 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   // ---- Loading ----
 
   loadExample(): void {
-    this.http.get<AnnotationDocument>('example-input.json').subscribe({
-      next: (doc) => this.ingestDocument(doc, 'example-input.json'),
+    this.http.get<AnnotationDocument>('example-resolved.json').subscribe({
+      next: (doc) => this.ingestDocument(doc, 'example-resolved.json'),
       error: () => this.snackBar.open('No se pudo cargar el ejemplo.', 'OK', { duration: 4000 }),
     });
   }

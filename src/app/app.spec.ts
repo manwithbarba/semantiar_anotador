@@ -600,8 +600,21 @@ describe('App', () => {
       telemetry: createAnnotationTelemetry(['TELEMETRY-001']),
     });
 
+    const addCard = document.createElement('div');
+    addCard.setAttribute('data-case-index', '0');
+    const addButton = document.createElement('button');
+    addButton.className = 'add-concept-btn';
+    addCard.appendChild(addButton);
+    annotator.onDocumentClick({ target: addButton } as unknown as MouseEvent);
     annotator.addConcept(0);
-    annotator.selectedSpan.set(annotator.cases()[0].spans[0]);
+
+    const discardCard = document.createElement('div');
+    discardCard.setAttribute('data-case-index', '0');
+    const discardButton = document.createElement('button');
+    discardButton.className = 'discard-span-btn';
+    discardCard.appendChild(discardButton);
+    annotator.onDocumentClick({ target: discardButton } as unknown as MouseEvent);
+    annotator.selectedSpan.set({ caseIndex: 0, spanId: annotator.cases()[0].spans[0].spanId });
     annotator.discardSelectedSpan(0);
 
     const caseTelem = annotator.sessionMeta()?.telemetry?.cases[0];

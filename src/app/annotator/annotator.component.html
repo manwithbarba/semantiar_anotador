@@ -24,6 +24,13 @@
   <button mat-stroked-button (click)="fileInput.click()">
     <mat-icon>upload_file</mat-icon> Cargar JSON
   </button>
+  <button
+    mat-stroked-button
+    color="accent"
+    matTooltip="Abrir una muestra ya cerrada para practicar"
+    (click)="loadExample()">
+    <mat-icon>auto_stories</mat-icon> Ejemplo resuelto
+  </button>
   @if (loaded() && !complete()) {
     <button mat-stroked-button color="accent" (click)="scrollToFirstPending()"
             matTooltip="Ir al primer caso sin anotar">

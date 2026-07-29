@@ -11,8 +11,8 @@ Pensada para el flujo de calibración de anotadores del proyecto SEMANTIAR
 
 ## Flujo
 
-1. **Cargar JSON** con los textos a anotar (o **Ejemplo** para probar con los 15
-   casos de calibración incluidos).
+1. **Cargar JSON** con los textos a anotar, o abrir el **Ejemplo resuelto** para
+   probar una muestra ya cerrada.
 2. Por cada concepto clínico del texto: elegir **Categoría** (jerarquía SNOMED),
    buscar y seleccionar el concepto, y completar **Texto literal** + contexto
    (Polaridad / Certeza / Temporalidad / Sujeto). Se pueden registrar tantos
@@ -48,8 +48,10 @@ conserva al descargar el resultado y no se reemplaza por el protocolo asistido.
 }
 ```
 
-Solo `cases[].id` y `cases[].text` son obligatorios. El ejemplo
+Solo `cases[].id` y `cases[].text` son obligatorios. El ejemplo de entrada
 (`public/example-input.json`) se generó a partir de `SEMANTIAR_CAL_A048.xlsx`.
+El botón **Ejemplo resuelto** carga `public/example-resolved.json`, una demo ya
+finalizada para practicar el flujo completo.
 
 ## Formato de salida (JSON)
 
