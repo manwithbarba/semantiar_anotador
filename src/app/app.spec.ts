@@ -163,6 +163,94 @@ describe('App', () => {
     expect(annotator.sessionMeta()?.telemetry?.cases[0].reopenedCount).toBe(1);
   });
 
+  it('should distinguish edited notes from notes explicitly closed by the annotator', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+
+    annotator.cases.set([
+      {
+        id: 'FLOW-001',
+        text: 'Paciente con fiebre.',
+        textNorm: 'Paciente con fiebre.',
+        spans: [],
+        concepts: [
+          {
+            sequence: 1,
+            cat: 'Hallazgo clínico',
+            sctid: '386661006',
+            term: 'Fiebre',
+            textoLiteral: 'fiebre',
+            pol: 'Activo',
+            cert: 'Confirmado',
+            temp: 'Actual',
+            suj: 'Paciente',
+          },
+        ],
+        comentarios: '',
+        review: { status: 'pending' },
+      },
+      {
+        id: 'FLOW-002',
+        text: 'Sin hallazgos.',
+        textNorm: 'Sin hallazgos.',
+        spans: [],
+        concepts: [],
+        comentarios: '',
+        review: { status: 'pending' },
+      },
+    ]);
+
+    expect(annotator.reviewedCount()).toBe(0);
+    expect(annotator.pendingCount()).toBe(2);
+    expect(annotator.editingCount()).toBe(1);
+
+    annotator.finalizeCase(0, 'coded');
+
+    expect(annotator.reviewedCount()).toBe(1);
+    expect(annotator.pendingCount()).toBe(1);
+    expect(annotator.editingCount()).toBe(0);
+  });
+
+  it('should show the two visible steps of the lexical review flow', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    const mention = newHumanLexicalMention('flow-lex-001', 0, 2, 'FC');
+
+    annotator.annotationProtocol.set({
+      ...ASSISTED_ANNOTATION_PROTOCOL,
+      lexicalLayerEnabled: true,
+    });
+    annotator.cases.set([
+      {
+        id: 'FLOW-LEX-001',
+        text: 'FC',
+        textNorm: 'FC',
+        spans: [],
+        concepts: [],
+        comentarios: '',
+        review: { status: 'pending' },
+        lexicalMentions: [mention],
+        lexicalReview: newLexicalReview(),
+      },
+    ]);
+
+    expect(annotator.lexicalTotalCount(annotator.cases()[0])).toBe(1);
+    expect(annotator.lexicalCompletedCount(annotator.cases()[0])).toBe(0);
+    expect(annotator.lexicalProgressPct(annotator.cases()[0])).toBe(0);
+
+    annotator.updateLexicalAnnotation(0, mention.mentionId, 'decisionStatus', 'unknown');
+
+    expect(annotator.lexicalCompletedCount(annotator.cases()[0])).toBe(1);
+    expect(annotator.lexicalProgressPct(annotator.cases()[0])).toBe(100);
+    expect(annotator.cases()[0].lexicalReview?.status).toBe('pending');
+    annotator.completeLexicalReview(0);
+    expect(annotator.cases()[0].lexicalReview?.status).toBe('completed');
+  });
+
   it('should migrate previously coded notes to finalized review state on reload', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();

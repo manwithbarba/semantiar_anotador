@@ -137,6 +137,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   batch = signal<string>('');
   annotatorId = signal<string>('');
   sourceFile = signal<string>('');
+  loadedFileName = signal<string>('');
   premarking = signal<Record<string, unknown> | undefined>(undefined);
   trace = signal<Record<string, unknown> | undefined>(undefined);
   annotationProtocol = signal<AnnotationProtocol>(ASSISTED_ANNOTATION_PROTOCOL);
@@ -188,11 +189,15 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     () => this.cases().filter((c) => c.review?.status === 'finalized').length
   );
   pendingCount = computed(() => this.cases().length - this.reviewedCount());
+  editingCount = computed(
+    () => this.cases().filter((caseItem) => !this.isCaseFinalized(caseItem) && this.caseHasStarted(caseItem)).length
+  );
   progressPct = computed(() => {
     const total = this.cases().length;
     return total ? Math.round((this.reviewedCount() / total) * 100) : 0;
   });
   complete = computed(() => this.loaded() && this.reviewedCount() === this.cases().length);
+  jsonStatusLabel = computed(() => (this.dirty() ? 'Cambios sin descargar' : 'JSON cargado'));
 
   /** Index of the first case that has not been explicitly finalized. */
   firstPendingIdx = computed(() =>
@@ -515,8 +520,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     const idx = this.firstPendingIdx();
     if (idx < 0) return;
     this.selectCase(idx);
-    const cards = document.querySelectorAll('.case-card');
-    const el = cards[0] as HTMLElement | undefined;
+    const el = document.querySelector(`[data-case-index="${idx}"]`) as HTMLElement | null;
     el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
@@ -551,6 +555,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.batch.set(doc.batch ?? '');
     this.annotatorId.set(doc.annotatorId ?? '');
     this.sourceFile.set(doc.sourceFile ?? fileName);
+    this.loadedFileName.set(fileName);
 
     const resolvedProtocol =
       doc._annotationProtocol?.mode === 'core-blind'
@@ -697,6 +702,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.project.set('');
     this.batch.set('');
     this.sourceFile.set('');
+    this.loadedFileName.set('');
     this.premarking.set(undefined);
     this.trace.set(undefined);
     this.lexicalInventory.set(undefined);
@@ -1219,6 +1225,49 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     const total = caseItem.concepts.length;
     if (!total) return 'Sin conceptos';
     return `${coded}/${total} codificados`;
+  }
+
+  /** True when a note has work in progress but has not been explicitly closed. */
+  caseHasStarted(caseItem: CaseAnnotation): boolean {
+    const lexicalStarted = (caseItem.lexicalMentions ?? []).some(({ annotation }) =>
+      annotation.decisionStatus !== 'pending' ||
+      annotation.function !== null ||
+      annotation.section !== null ||
+      annotation.evidenceCodes.length > 0 ||
+      !!annotation.comment?.trim() ||
+      !!annotation.annotatorId
+    );
+    return (
+      this.hasAnnotatedConcept(caseItem) ||
+      caseItem.comentarios.trim().length > 0 ||
+      caseItem.spans.some((span) => span.status !== 'pendiente') ||
+      caseItem.lexicalReview?.status === 'completed' ||
+      lexicalStarted
+    );
+  }
+
+  lexicalCompletedCount(caseItem: CaseAnnotation): number {
+    return (caseItem.lexicalMentions ?? []).filter((mention) => lexicalMentionComplete(mention)).length;
+  }
+
+  lexicalTotalCount(caseItem: CaseAnnotation): number {
+    return (caseItem.lexicalMentions ?? []).length;
+  }
+
+  lexicalProgressPct(caseItem: CaseAnnotation): number {
+    const total = this.lexicalTotalCount(caseItem);
+    return total ? Math.round((this.lexicalCompletedCount(caseItem) / total) * 100) : 100;
+  }
+
+  lexicalStepLabel(caseItem: CaseAnnotation): string {
+    const pending = this.lexicalPendingCount(caseItem);
+    if (pending > 0) {
+      return `Paso 1 · Decidí cada forma breve (${pending} pendiente${pending === 1 ? '' : 's'})`;
+    }
+    if (caseItem.lexicalReview?.status !== 'completed') {
+      return 'Paso 2 · Confirmá la revisión exhaustiva de formas';
+    }
+    return 'Revisión de formas breves cerrada';
   }
 
   isCaseFinalized(caseItem: CaseAnnotation): boolean {

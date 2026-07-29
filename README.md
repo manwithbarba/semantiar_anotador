@@ -13,11 +13,20 @@ Pensada para el flujo de calibración de anotadores del proyecto SEMANTIAR
 
 1. **Cargar JSON** con los textos a anotar, o reabrir un JSON de salida previo
    para continuar el trabajo de cualquier anotador.
-2. Por cada concepto clínico del texto: elegir **Categoría** (jerarquía SNOMED),
+2. Por cada nota, revisar exhaustivamente el texto y completar las decisiones
+   de formas breves que aparezcan.
+3. Por cada concepto clínico del texto: elegir **Categoría** (jerarquía SNOMED),
    buscar y seleccionar el concepto, y completar **Texto literal** + contexto
    (Polaridad / Certeza / Temporalidad / Sujeto). Se pueden registrar tantos
    conceptos por caso como sean clínicamente relevantes.
-3. **Descargar** el JSON anotado.
+4. **Cerrar la nota** con **Revisada con conceptos** o **Sin conceptos anotables**.
+   El contador superior disminuye en este paso, no al modificar un campo.
+5. **Descargar** el JSON de avance o final.
+
+La página trabaja en el navegador y no guarda cambios en GitHub ni en un
+servidor. Mientras el estado diga **Cambios sin descargar**, el trabajo está
+únicamente en esa pestaña. Descargá el JSON para conservarlo y, en otra sesión,
+volvé a cargar ese archivo para continuar.
 
 ### Protocolo de anotación asistida
 
@@ -93,6 +102,11 @@ Cada nota debe cerrarse como **Revisada con conceptos** o **Sin conceptos
 anotables**. Una modificación posterior la devuelve automáticamente a pendiente.
 Los archivos previos que ya contienen un SCTID se migran como revisados al
 volver a cargarlos.
+
+En los lotes con capa léxica, cada forma breve tiene dos pasos visibles: decidir
+la aparición individual (el contador `X/Y formas decididas`) y luego confirmar
+**Revisión de formas**. Hasta completar ambos pasos, el cierre de la nota queda
+bloqueado y la nota sigue figurando como pendiente.
 
 La salida incorpora `_meta.telemetry` (`SEMANTIAR-TELEMETRY-1.0`) para comparar
 de forma homogénea el flujo Core Blind y el flujo con spans:

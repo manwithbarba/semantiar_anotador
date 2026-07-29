@@ -75,6 +75,87 @@
   color: #fff !important;
 }
 
+/* Visible hand-off between the browser session and the JSON file. */
+.json-flow {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.1fr) minmax(360px, 1.8fr) auto;
+  align-items: center;
+  gap: 16px;
+  margin: 0 auto 18px;
+  border: 1px solid #c8d5e7;
+  border-radius: 12px;
+  background: #f8fbff;
+  padding: 12px 16px;
+  color: #25344f;
+}
+.json-flow-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+.json-flow-status mat-icon {
+  flex: 0 0 auto;
+  color: var(--done-color);
+}
+.json-flow-status.unsaved mat-icon {
+  color: #a46600;
+}
+.json-flow-status strong,
+.json-flow-status span {
+  display: block;
+}
+.json-flow-status strong {
+  font-size: 13px;
+}
+.json-flow-status span {
+  margin-top: 2px;
+  color: #596a83;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.json-flow-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: #7c8798;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.json-flow-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.json-flow-step b {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 50%;
+  background: #e4e8ef;
+  color: #596a83;
+  font-size: 10px;
+}
+.json-flow-step.active {
+  color: var(--brand);
+  font-weight: 700;
+}
+.json-flow-step.done {
+  color: #32634a;
+}
+.json-flow-step.done b {
+  background: #d9efdf;
+  color: #22653b;
+}
+.json-flow-arrow {
+  color: #a5afbd;
+  font-size: 16px;
+}
+.json-flow-download {
+  white-space: nowrap;
+}
+
 .app-toolbar button {
   margin-left: 4px;
 }
@@ -831,6 +912,43 @@
   color: var(--done-color);
 }
 
+.lexical-flow {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(120px, 1fr) minmax(190px, 1.2fr);
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  border: 1px solid #d8ccec;
+  border-radius: 8px;
+  background: #faf8fe;
+  padding: 9px 11px;
+}
+.lexical-flow-copy,
+.lexical-review-action-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.lexical-step-label {
+  color: #50317f;
+  font-size: 11px;
+  font-weight: 800;
+}
+.lexical-flow-copy strong {
+  color: #38255c;
+  font-size: 12px;
+}
+.lexical-progress-bar {
+  border-radius: 5px;
+  --mat-progress-bar-active-indicator-color: #6941a5;
+  --mat-progress-bar-track-color: #e7ddf5;
+}
+.lexical-flow-hint {
+  color: #625873;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .lexical-help {
   margin-top: 12px;
   border: 1px solid #d8ccec;
@@ -999,6 +1117,20 @@
 }
 
 @media (max-width: 900px) {
+  .json-flow {
+    grid-template-columns: 1fr;
+  }
+  .json-flow-steps {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+  .json-flow-download {
+    justify-self: start;
+  }
+  .lexical-flow {
+    grid-template-columns: 1fr;
+  }
   .lexical-grid {
     grid-template-columns: 1fr;
   }

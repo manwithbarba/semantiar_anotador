@@ -3,12 +3,14 @@
   <span class="spacer"></span>
 
   @if (loaded()) {
-    <div class="progress-area" matTooltip="Notas marcadas explícitamente como revisadas">
+    <div
+      class="progress-area"
+      matTooltip="Una nota baja de pendientes cuando elegís “Revisada con conceptos” o “Sin conceptos anotables” al final de su tarjeta.">
       <div class="progress-top">
-        <span class="progress-count">{{ reviewedCount() }} / {{ cases().length }} notas</span>
+        <span class="progress-count">{{ reviewedCount() }} / {{ cases().length }} cerradas</span>
         <span class="progress-pct" [class.done]="complete()">
           @if (complete()) { <mat-icon>check_circle</mat-icon> Completo }
-          @else { {{ progressPct() }}% · <span class="pending-label">{{ pendingCount() }} pendientes</span> }
+          @else { {{ progressPct() }}% · <span class="pending-label">{{ pendingCount() }} para cerrar</span> }
         </span>
       </div>
       <mat-progress-bar
@@ -42,7 +44,8 @@
   }
   <button mat-flat-button color="accent" class="download-btn"
           [class.complete]="complete()" [disabled]="!loaded()" (click)="download()">
-    <mat-icon>{{ complete() ? 'task_alt' : 'download' }}</mat-icon> Descargar
+    <mat-icon>{{ complete() ? 'task_alt' : 'download' }}</mat-icon>
+    {{ complete() ? 'Descargar JSON final' : 'Descargar JSON de avance' }}
   </button>
   <button mat-icon-button class="settings-btn" (click)="openSettings()"
           matTooltip="Configuración de terminología">
@@ -98,13 +101,43 @@
         <button mat-flat-button color="primary" class="home-cta" (click)="fileInput.click()">
           <mat-icon>upload_file</mat-icon> Cargar archivo JSON
         </button>
-        <p class="home-hint">Formato aceptado: <code>.json</code></p>
+        <p class="home-hint">
+          Formato aceptado: <code>.json</code>. Los cambios se conservan en esta pestaña hasta descargar el archivo.
+        </p>
       </div>
     </div>
   }
 
   <!-- Cases -->
   @if (loaded()) {
+    <section class="json-flow" role="status" aria-live="polite" aria-label="Flujo del archivo JSON">
+      <div class="json-flow-status" [class.unsaved]="dirty()">
+        <mat-icon aria-hidden="true">{{ dirty() ? 'save_as' : 'task_alt' }}</mat-icon>
+        <div>
+          <strong>{{ jsonStatusLabel() }}</strong>
+          <span>
+            @if (dirty()) {
+              El progreso queda en esta pestaña hasta descargarlo. Usá “Descargar JSON de avance” para poder retomarlo o entregarlo.
+            } @else {
+              {{ loadedFileName() || sourceFile() || 'Archivo de anotación' }} está cargado. La próxima sesión comienza cargando el JSON descargado.
+            }
+          </span>
+        </div>
+      </div>
+      <div class="json-flow-steps" aria-label="Pasos de trabajo">
+        <span class="json-flow-step done"><b>1</b> Cargar JSON</span>
+        <span class="json-flow-arrow" aria-hidden="true">→</span>
+        <span class="json-flow-step" [class.done]="editingCount() > 0" [class.active]="editingCount() === 0 && !complete()"><b>2</b> Anotar</span>
+        <span class="json-flow-arrow" aria-hidden="true">→</span>
+        <span class="json-flow-step" [class.done]="reviewedCount() > 0" [class.active]="editingCount() > 0 && pendingCount() > 0"><b>3</b> Cerrar cada nota</span>
+        <span class="json-flow-arrow" aria-hidden="true">→</span>
+        <span class="json-flow-step" [class.done]="!dirty() && totalDownloads() > 0" [class.active]="dirty()"><b>4</b> Descargar JSON</span>
+      </div>
+      <button mat-stroked-button color="primary" class="json-flow-download" (click)="download()">
+        <mat-icon>download</mat-icon>
+        {{ complete() ? 'Descargar JSON final' : 'Descargar JSON de avance' }}
+      </button>
+    </section>
     <section class="annotation-protocol" role="note" aria-labelledby="annotation-protocol-title">
       <div class="annotation-protocol-icon" aria-hidden="true">
         <mat-icon>fact_check</mat-icon>
@@ -161,7 +194,7 @@
               <mat-icon>check_circle</mat-icon>
               {{ caseItem.review?.outcome === 'no-eligible-concepts' ? 'Revisada sin conceptos' : 'Revisada' }}
             </span>
-          } @else if (caseItem.concepts.some(cc => !!cc.sctid)) {
+          } @else if (caseHasStarted(caseItem)) {
             <span class="case-status-badge editing-badge">
               <mat-icon>edit</mat-icon> En edición
             </span>
@@ -281,6 +314,30 @@
                 {{ caseItem.lexicalReview?.status === 'completed'
                   ? 'Revisión completa'
                   : lexicalPendingCount(caseItem) + ' pendientes' }}
+              </span>
+            </div>
+
+            <div class="lexical-flow" aria-label="Progreso de la revisión de formas breves">
+              <div class="lexical-flow-copy">
+                <span class="lexical-step-label">{{ lexicalStepLabel(caseItem) }}</span>
+                <strong>
+                  {{ lexicalCompletedCount(caseItem) }} / {{ lexicalTotalCount(caseItem) }} formas decididas
+                </strong>
+              </div>
+              <mat-progress-bar
+                class="lexical-progress-bar"
+                mode="determinate"
+                [value]="lexicalProgressPct(caseItem)"
+                [attr.aria-label]="lexicalCompletedCount(caseItem) + ' de ' + lexicalTotalCount(caseItem) + ' formas decididas'">
+              </mat-progress-bar>
+              <span class="lexical-flow-hint">
+                @if (lexicalPendingCount(caseItem) > 0) {
+                  Completá cada tarjeta; después confirmá la revisión completa.
+                } @else if (caseItem.lexicalReview?.status === 'completed') {
+                  Listo para continuar con el cierre de la nota.
+                } @else {
+                  Todas las formas tienen una decisión; falta confirmar este paso.
+                }
               </span>
             </div>
 
@@ -581,9 +638,10 @@
             </div>
 
             <div class="lexical-review-actions">
-              <span>
-                Confirmá sólo después de revisar toda la nota, incluso si no encontraste formas breves.
-              </span>
+              <div class="lexical-review-action-copy">
+                <span class="lexical-step-label">Paso 2 · Cerrar la revisión léxica</span>
+                <span>Confirmá sólo después de revisar toda la nota, incluso si no encontraste formas breves.</span>
+              </div>
               <button
                 mat-flat-button
                 color="primary"
@@ -592,7 +650,7 @@
                 <mat-icon>spellcheck</mat-icon>
                 {{ caseItem.lexicalReview?.status === 'completed'
                   ? 'Revisión de formas completada'
-                  : 'Completar revisión de formas' }}
+                  : 'Confirmar revisión de formas' }}
               </button>
             </div>
           </section>
