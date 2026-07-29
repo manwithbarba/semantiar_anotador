@@ -78,7 +78,7 @@
 /* Visible hand-off between the browser session and the JSON file. */
 .json-flow {
   display: grid;
-  grid-template-columns: minmax(260px, 1.1fr) minmax(130px, 0.6fr) minmax(360px, 1.8fr) auto;
+  grid-template-columns: minmax(260px, 1.1fr) minmax(130px, 0.6fr) minmax(360px, 1.8fr);
   align-items: center;
   gap: 16px;
   margin: 0 auto 18px;
@@ -355,11 +355,6 @@
   padding: 2px 7px;
   font-size: 11px;
   font-weight: 700;
-}
-.case-close-jump {
-  flex: 0 0 auto;
-  margin-left: auto;
-  font-size: 12px;
 }
 .case-status-badge {
   display: inline-flex;
@@ -873,9 +868,6 @@
 @media (max-width: 760px) {
   .case-id {
     flex-wrap: wrap;
-  }
-  .case-close-jump {
-    margin-left: 0;
   }
   .human-span-draft,
   .span-panel {

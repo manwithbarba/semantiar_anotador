@@ -530,18 +530,6 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  /** Bring the explicit note-closing controls into view from the case header. */
-  focusCaseFinalization(caseIdx: number): void {
-    const card = document.querySelector(`[data-case-index="${caseIdx}"]`);
-    const finalization = card?.querySelector('.case-finalization') as HTMLElement | null;
-    if (!finalization) return;
-    finalization.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    window.setTimeout(() => {
-      const action = finalization.querySelector('button:not([disabled])') as HTMLButtonElement | null;
-      action?.focus();
-    }, 300);
-  }
-
   // ---- Loading ----
 
   onFileSelected(event: Event): void {

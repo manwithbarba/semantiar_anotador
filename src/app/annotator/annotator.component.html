@@ -137,10 +137,6 @@
         <span class="json-flow-arrow" aria-hidden="true">→</span>
         <span class="json-flow-step" [class.done]="!dirty() && totalDownloads() > 0" [class.active]="dirty()"><b>4</b> Descargar JSON</span>
       </div>
-      <button mat-stroked-button color="primary" class="json-flow-download" (click)="download()">
-        <mat-icon>download</mat-icon>
-        {{ downloadButtonLabel() }}
-      </button>
     </section>
     <section class="annotation-protocol" role="note" aria-labelledby="annotation-protocol-title">
       <div class="annotation-protocol-icon" aria-hidden="true">
@@ -200,23 +196,15 @@
               {{ caseItem.review?.outcome === 'no-eligible-concepts' ? 'Revisada sin conceptos' : 'Revisada' }}
             </span>
           } @else if (caseHasStarted(caseItem)) {
-            <span class="case-status-badge editing-badge">
-              <mat-icon>edit</mat-icon> En edición
+            <span
+              class="case-status-badge editing-badge"
+              matTooltip="El cambio quedó registrado en esta sesión. Descargá el JSON para conservarlo fuera de esta pestaña.">
+              <mat-icon>save</mat-icon> Anotación guardada
             </span>
           } @else {
             <span class="case-status-badge pending-badge">
               <mat-icon>radio_button_unchecked</mat-icon> Pendiente
             </span>
-          }
-          @if (!isCaseFinalized(caseItem)) {
-            <button
-              mat-stroked-button
-              color="primary"
-              class="case-close-jump"
-              (click)="focusCaseFinalization(ci)"
-              matTooltip="Ir a las opciones para cerrar esta nota">
-              <mat-icon>fact_check</mat-icon> Cerrar nota
-            </button>
           }
         </mat-card-title>
       </mat-card-header>

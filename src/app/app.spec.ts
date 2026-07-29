@@ -514,6 +514,47 @@ describe('App', () => {
     ).toBeTruthy();
   });
 
+  it('should show saved annotation state without duplicating the download command', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    annotator.cases.set([
+      {
+        id: 'FLOW-UI-001',
+        text: 'Paciente estable.',
+        textNorm: 'Paciente estable.',
+        spans: [],
+        concepts: [
+          {
+            sequence: 1,
+            cat: 'Hallazgo clínico',
+            sctid: '386661006',
+            term: 'Fiebre',
+            textoLiteral: 'estable',
+            pol: 'Activo',
+            cert: 'Confirmado',
+            temp: 'Actual',
+            suj: 'Paciente',
+          },
+        ],
+        comentarios: '',
+        review: { status: 'pending' },
+      },
+    ]);
+    fixture.detectChanges();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.querySelector('.case-close-jump')).toBeFalsy();
+    expect(compiled.textContent).toContain('Anotación guardada');
+    expect(compiled.querySelectorAll('.json-flow-download')).toHaveLength(0);
+    expect(
+      [...compiled.querySelectorAll('button')].filter((button) =>
+        button.textContent?.includes('Descargar JSON de avance')
+      )
+    ).toHaveLength(1);
+  });
+
   it('should export the same canonical lexical contract used on import', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();

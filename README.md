@@ -28,6 +28,11 @@ servidor. Mientras el estado diga **Cambios sin descargar**, el trabajo está
 únicamente en esa pestaña. Descargá el JSON para conservarlo y, en otra sesión,
 volvé a cargar ese archivo para continuar.
 
+Cada selección de concepto, cambio de contexto o decisión léxica se aplica
+inmediatamente a la nota en edición. **Anotación guardada** significa que el
+cambio ya quedó registrado en la sesión; **Nota revisada** se reserva para el
+cierre exhaustivo de la nota completa.
+
 ### Protocolo de anotación asistida
 
 Los resaltados se presentan únicamente como candidatos incompletos. El anotador
