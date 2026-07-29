@@ -29,7 +29,7 @@
   @if (loaded() && !complete()) {
     <button mat-stroked-button color="accent" (click)="scrollToFirstPending()"
             matTooltip="Ir al primer caso sin anotar">
-      <mat-icon>arrow_downward</mat-icon> Ir al pendiente
+      <mat-icon>arrow_downward</mat-icon> {{ pendingButtonLabel() }}
     </button>
   }
   @if (loaded()) {
@@ -45,7 +45,7 @@
   <button mat-flat-button color="accent" class="download-btn"
           [class.complete]="complete()" [disabled]="!loaded()" (click)="download()">
     <mat-icon>{{ complete() ? 'task_alt' : 'download' }}</mat-icon>
-    {{ complete() ? 'Descargar JSON final' : 'Descargar JSON de avance' }}
+    {{ downloadButtonLabel() }}
   </button>
   <button mat-icon-button class="settings-btn" (click)="openSettings()"
           matTooltip="Configuración de terminología">
@@ -124,6 +124,10 @@
           </span>
         </div>
       </div>
+      <div class="json-flow-count" aria-live="polite">
+        <strong>{{ reviewedCount() }}/{{ cases().length }} notas cerradas</strong>
+        <span>{{ pendingCount() }} para cerrar · {{ progressPct() }}% de avance</span>
+      </div>
       <div class="json-flow-steps" aria-label="Pasos de trabajo">
         <span class="json-flow-step done"><b>1</b> Cargar JSON</span>
         <span class="json-flow-arrow" aria-hidden="true">→</span>
@@ -135,7 +139,7 @@
       </div>
       <button mat-stroked-button color="primary" class="json-flow-download" (click)="download()">
         <mat-icon>download</mat-icon>
-        {{ complete() ? 'Descargar JSON final' : 'Descargar JSON de avance' }}
+        {{ downloadButtonLabel() }}
       </button>
     </section>
     <section class="annotation-protocol" role="note" aria-labelledby="annotation-protocol-title">
@@ -188,7 +192,8 @@
               [class.case-pending]="!isCaseFinalized(caseItem)">
       <mat-card-header>
         <mat-card-title class="case-id">
-          {{ caseItem.id }}
+          <span class="case-order">{{ ci + 1 }}/{{ cases().length }}</span>
+          <span>{{ caseItem.id }}</span>
           @if (caseItem.review?.status === 'finalized') {
             <span class="case-status-badge done-badge">
               <mat-icon>check_circle</mat-icon>
@@ -202,6 +207,16 @@
             <span class="case-status-badge pending-badge">
               <mat-icon>radio_button_unchecked</mat-icon> Pendiente
             </span>
+          }
+          @if (!isCaseFinalized(caseItem)) {
+            <button
+              mat-stroked-button
+              color="primary"
+              class="case-close-jump"
+              (click)="focusCaseFinalization(ci)"
+              matTooltip="Ir a las opciones para cerrar esta nota">
+              <mat-icon>fact_check</mat-icon> Cerrar nota
+            </button>
           }
         </mat-card-title>
       </mat-card-header>

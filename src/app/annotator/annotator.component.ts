@@ -198,6 +198,12 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   });
   complete = computed(() => this.loaded() && this.reviewedCount() === this.cases().length);
   jsonStatusLabel = computed(() => (this.dirty() ? 'Cambios sin descargar' : 'JSON cargado'));
+  pendingButtonLabel = computed(() => `Ir al pendiente · ${this.pendingCount()}`);
+  downloadButtonLabel = computed(() =>
+    this.complete()
+      ? 'Descargar JSON final'
+      : `Descargar JSON de avance · ${this.reviewedCount()}/${this.cases().length} cerradas`
+  );
 
   /** Index of the first case that has not been explicitly finalized. */
   firstPendingIdx = computed(() =>
@@ -522,6 +528,18 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.selectCase(idx);
     const el = document.querySelector(`[data-case-index="${idx}"]`) as HTMLElement | null;
     el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  /** Bring the explicit note-closing controls into view from the case header. */
+  focusCaseFinalization(caseIdx: number): void {
+    const card = document.querySelector(`[data-case-index="${caseIdx}"]`);
+    const finalization = card?.querySelector('.case-finalization') as HTMLElement | null;
+    if (!finalization) return;
+    finalization.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    window.setTimeout(() => {
+      const action = finalization.querySelector('button:not([disabled])') as HTMLButtonElement | null;
+      action?.focus();
+    }, 300);
   }
 
   // ---- Loading ----
