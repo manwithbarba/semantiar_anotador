@@ -12,7 +12,6 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { HttpClient } from '@angular/common/http';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -55,6 +54,7 @@ import {
   LEXICAL_SECTIONS,
   LEXICAL_UNCLASSIFIED_FUNCTION,
   LexicalInventory,
+  LexicalInventoryEntry,
   LexicalMention,
   LexicalSenseOption,
   newHumanLexicalMention,
@@ -108,7 +108,6 @@ import {
   styleUrl: './annotator.component.css',
 })
 export class AnnotatorComponent implements OnInit, OnDestroy {
-  private http = inject(HttpClient);
   private terminologyService = inject(TerminologyService);
   private snackBar = inject(MatSnackBar);
   private dialog = inject(MatDialog);
@@ -523,13 +522,6 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
 
   // ---- Loading ----
 
-  loadExample(): void {
-    this.http.get<AnnotationDocument>('example-resolved.json').subscribe({
-      next: (doc) => this.ingestDocument(doc, 'example-resolved.json'),
-      error: () => this.snackBar.open('No se pudo cargar el ejemplo.', 'OK', { duration: 4000 }),
-    });
-  }
-
   onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -926,12 +918,52 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   }
 
   lexicalSenseOptions(mention: LexicalMention): LexicalSenseOption[] {
-    if (!mention.candidateSenseIds.length) return [];
-    const allowed = new Set(mention.candidateSenseIds);
-    return (this.lexicalInventory()?.abbreviations ?? [])
-      .flatMap((entry) => entry.senses)
-      .filter((sense) => allowed.has(sense.senseId))
-      .sort((left, right) => left.senseId.localeCompare(right.senseId));
+    const allEntries = this.lexicalInventory()?.abbreviations ?? [];
+    const allSenses = this.uniqueLexicalSenseOptions(allEntries.flatMap((entry) => entry.senses));
+    const selectedSenseId = mention.annotation.senseId?.trim() ?? '';
+
+    const candidateMatches = mention.candidateSenseIds.length
+      ? this.uniqueLexicalSenseOptions(
+          allSenses.filter((sense) => mention.candidateSenseIds.includes(sense.senseId))
+        )
+      : [];
+    const surfaceMatches = this.uniqueLexicalSenseOptions(
+      allEntries
+        .filter((entry) => this.lexicalEntryMatchesMention(entry, mention))
+        .flatMap((entry) => entry.senses)
+    );
+
+    const options = candidateMatches.length ? candidateMatches : surfaceMatches;
+    if (!selectedSenseId) return options;
+
+    if (options.some((option) => option.senseId === selectedSenseId)) return options;
+
+    const knownSelected = allSenses.find((option) => option.senseId === selectedSenseId);
+    return this.uniqueLexicalSenseOptions([
+      ...options,
+      knownSelected ?? {
+        senseId: selectedSenseId,
+        expansion: `Sentido guardado: ${selectedSenseId}`,
+      },
+    ]);
+  }
+
+  private lexicalEntryMatchesMention(entry: LexicalInventoryEntry, mention: LexicalMention): boolean {
+    const keys = new Set([
+      mention.normalizedKey,
+      mention.surface,
+      mention.normalizedKey.trim().toLocaleLowerCase('es-AR'),
+      mention.surface.trim().toLocaleLowerCase('es-AR'),
+    ].map((value) => value.trim().toLocaleLowerCase('es-AR')));
+    const entryKey = entry.key.trim().toLocaleLowerCase('es-AR');
+    if (keys.has(entryKey)) return true;
+    return entry.caseSensitiveForms.some((form) => keys.has(form.trim().toLocaleLowerCase('es-AR')));
+  }
+
+  private uniqueLexicalSenseOptions(options: LexicalSenseOption[]): LexicalSenseOption[] {
+    return [...new Map(options.map((option) => [option.senseId, option])).values()].sort((left, right) =>
+      left.expansion.localeCompare(right.expansion, 'es-AR') || left.senseId.localeCompare(right.senseId)
+    );
   }
 
   lexicalOriginLabel(origin: LexicalMention['origin']): string {
@@ -973,10 +1005,11 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   }
 
   lexicalSenseLabel(mention: LexicalMention): string {
+    const selected = mention.annotation.senseId?.trim();
+    if (!selected) return 'Sin seleccionar';
     return (
-      this.lexicalSenseOptions(mention).find(
-        (option) => option.senseId === mention.annotation.senseId,
-      )?.expansion ?? 'Sin seleccionar'
+      this.lexicalSenseOptions(mention).find((option) => option.senseId === selected)?.expansion ??
+      `Valor existente: ${selected}`
     );
   }
 
@@ -1021,9 +1054,6 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       }
       mention.annotation.annotatorId = this.annotatorId() || null;
       mention.annotation.annotatedAt = new Date().toISOString();
-      if (field === 'decisionStatus') {
-        mention.annotation = normalizeLexicalAnnotation(mention.annotation, mention.surface);
-      }
       this.reopenLexicalReview(caseItem);
     });
   }

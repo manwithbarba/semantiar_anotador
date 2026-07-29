@@ -24,13 +24,6 @@
   <button mat-stroked-button (click)="fileInput.click()">
     <mat-icon>upload_file</mat-icon> Cargar JSON
   </button>
-  <button
-    mat-stroked-button
-    color="accent"
-    matTooltip="Abrir una muestra ya cerrada para practicar"
-    (click)="loadExample()">
-    <mat-icon>auto_stories</mat-icon> Ejemplo resuelto
-  </button>
   @if (loaded() && !complete()) {
     <button mat-stroked-button color="accent" (click)="scrollToFirstPending()"
             matTooltip="Ir al primer caso sin anotar">
@@ -411,8 +404,7 @@
                         @for (option of lexicalDecisions; track option.value) {
                           <mat-option
                             class="lexical-mat-option"
-                            [value]="option.value"
-                            [disabled]="option.value === 'resolved' && !lexicalSenseOptions(mention).length">
+                            [value]="option.value">
                             <span class="lexical-option">
                               <strong>{{ option.label }}</strong>
                               <span>{{ option.description }}</span>
@@ -467,22 +459,28 @@
                     @if (mention.annotation.decisionStatus === 'resolved') {
                       <mat-form-field appearance="outline" subscriptSizing="dynamic">
                         <mat-label>¿Qué significa aquí?</mat-label>
-                        <mat-select
-                          panelWidth="420px"
-                          [ngModel]="mention.annotation.senseId"
-                          (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'senseId', $event)">
-                          <mat-select-trigger>
-                            {{ lexicalSenseLabel(mention) }}
-                          </mat-select-trigger>
-                          @for (sense of lexicalSenseOptions(mention); track sense.senseId) {
-                            <mat-option [value]="sense.senseId">{{ sense.expansion }}</mat-option>
-                          }
-                        </mat-select>
-                        @if (!lexicalSenseOptions(mention).length) {
-                          <mat-hint>
-                            No hay significados disponibles; elegí “Proponer sentido nuevo”.
-                          </mat-hint>
+                        @if (lexicalSenseOptions(mention).length) {
+                          <mat-select
+                            panelWidth="420px"
+                            [ngModel]="mention.annotation.senseId"
+                            (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'senseId', $event)">
+                            <mat-select-trigger>
+                              {{ lexicalSenseLabel(mention) }}
+                            </mat-select-trigger>
+                            @for (sense of lexicalSenseOptions(mention); track sense.senseId) {
+                              <mat-option [value]="sense.senseId">{{ sense.expansion }}</mat-option>
+                            }
+                          </mat-select>
+                        } @else {
+                          <input
+                            matInput
+                            [ngModel]="mention.annotation.senseId"
+                            (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'senseId', $event)"
+                            placeholder="Escribí el sentido o su identificador" />
                         }
+                        <mat-hint>
+                          Elegí un significado disponible o escribí el sentido manualmente si el JSON no trajo inventario para esta forma.
+                        </mat-hint>
                       </mat-form-field>
                     }
 
