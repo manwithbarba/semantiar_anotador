@@ -27,11 +27,8 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Enable Corepack
-        run: corepack enable
-
       - name: Install dependencies
-        run: corepack npm ci
+        run: npm ci
 
       - name: Build (production, GitHub Pages)
         run: npm run build:pages
