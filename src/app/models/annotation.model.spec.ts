@@ -2,6 +2,7 @@ import {
   ASSISTED_ANNOTATION_PROTOCOL,
   buildTextSegments,
   CORE_BLIND_PROTOCOL,
+  createAnnotationTelemetry,
   LEXICAL_DECISIONS,
   LEXICAL_FORM_TYPES,
   LEXICAL_FUNCTIONS,
@@ -605,5 +606,52 @@ describe('premarked span helpers', () => {
           mention.annotation.senseId === null
       )
     ).toBe(true);
+  });
+});
+
+describe('telemetry helpers', () => {
+  it('initializes and merges passive behavioral metrics (clicks and deletions)', () => {
+    const telemetry = createAnnotationTelemetry(['CASE-001']);
+    expect(telemetry.cases[0]).toMatchObject({
+      id: 'CASE-001',
+      clicksTotal: 0,
+      deletionsTotal: 0,
+    });
+    expect(telemetry.cases[0].clicksByTarget).toEqual({
+      'span-accept': 0,
+      'span-discard': 0,
+      'concept-add': 0,
+      'concept-remove': 0,
+      'concept-edit': 0,
+      'category-select': 0,
+      'context-toggle': 0,
+      'search-interaction': 0,
+      'lexical-review': 0,
+      'general-ui': 0,
+    });
+    expect(telemetry.cases[0].deletionsByType).toEqual({
+      concept: 0,
+      span: 0,
+      'lexical-mention': 0,
+      comment: 0,
+    });
+
+    const updated = createAnnotationTelemetry(['CASE-001'], {
+      ...telemetry,
+      cases: [
+        {
+          ...telemetry.cases[0],
+          clicksTotal: 5,
+          clicksByTarget: { ...telemetry.cases[0].clicksByTarget, 'concept-add': 3, 'span-accept': 2 },
+          deletionsTotal: 1,
+          deletionsByType: { ...telemetry.cases[0].deletionsByType, concept: 1 },
+        },
+      ],
+    });
+
+    expect(updated.cases[0].clicksTotal).toBe(5);
+    expect(updated.cases[0].clicksByTarget['concept-add']).toBe(3);
+    expect(updated.cases[0].deletionsTotal).toBe(1);
+    expect(updated.cases[0].deletionsByType.concept).toBe(1);
   });
 });

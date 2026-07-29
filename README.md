@@ -103,7 +103,9 @@ de forma homogénea el flujo Core Blind y el flujo con spans:
 - episodios, consultas reales después del *debounce*, reformulaciones,
   resultados vacíos, errores, cancelaciones, latencia y rango seleccionado;
 - conceptos agregados, eliminados o reemplazados, cambios de categoría y
-  decisiones sobre spans.
+  decisiones sobre spans;
+- interacciones pasivas de UI: `clicksTotal` y distribución en `clicksByTarget` por componente objetivo (`span-accept`, `span-discard`, `concept-add`, `concept-remove`, `concept-edit`, `category-select`, `context-toggle`, `search-interaction`, `lexical-review`, `general-ui`);
+- métricas de borrado e inhibición: `deletionsTotal` y desglose en `deletionsByType` (`concept`, `span`, `lexical-mention`, `comment`).
 
 La telemetría se mantiene exclusivamente en memoria y en el JSON descargado:
 no existe un backend analítico. Las consultas se guardan normalizadas y

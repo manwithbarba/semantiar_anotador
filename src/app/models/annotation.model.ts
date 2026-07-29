@@ -1090,6 +1090,24 @@ export interface SearchTelemetry {
   queries: SearchQueryTelemetry[];
 }
 
+export type TelemetryClickTarget =
+  | 'span-accept'
+  | 'span-discard'
+  | 'concept-add'
+  | 'concept-remove'
+  | 'concept-edit'
+  | 'category-select'
+  | 'context-toggle'
+  | 'search-interaction'
+  | 'lexical-review'
+  | 'general-ui';
+
+export type TelemetryDeletionType =
+  | 'concept'
+  | 'span'
+  | 'lexical-mention'
+  | 'comment';
+
 export interface CaseTelemetry {
   id: string;
   activeMs: number;
@@ -1109,6 +1127,10 @@ export interface CaseTelemetry {
   conceptsRemoved: number;
   conceptsReplaced: number;
   categoryChanges: number;
+  clicksTotal: number;
+  clicksByTarget: Record<TelemetryClickTarget, number>;
+  deletionsTotal: number;
+  deletionsByType: Record<TelemetryDeletionType, number>;
   search: SearchTelemetry;
 }
 
@@ -1138,6 +1160,26 @@ function emptyCaseTelemetry(id: string): CaseTelemetry {
     conceptsRemoved: 0,
     conceptsReplaced: 0,
     categoryChanges: 0,
+    clicksTotal: 0,
+    clicksByTarget: {
+      'span-accept': 0,
+      'span-discard': 0,
+      'concept-add': 0,
+      'concept-remove': 0,
+      'concept-edit': 0,
+      'category-select': 0,
+      'context-toggle': 0,
+      'search-interaction': 0,
+      'lexical-review': 0,
+      'general-ui': 0,
+    },
+    deletionsTotal: 0,
+    deletionsByType: {
+      concept: 0,
+      span: 0,
+      'lexical-mention': 0,
+      comment: 0,
+    },
     search: {
       episodes: 0,
       reformulations: 0,
@@ -1162,12 +1204,23 @@ export function createAnnotationTelemetry(
   const cases = caseIds.map((id) => {
     const previous = prior.get(id);
     if (!previous) return emptyCaseTelemetry(id);
+    const empty = emptyCaseTelemetry(id);
     return {
-      ...emptyCaseTelemetry(id),
+      ...empty,
       ...previous,
       id,
+      clicksTotal: previous.clicksTotal ?? 0,
+      clicksByTarget: {
+        ...empty.clicksByTarget,
+        ...(previous.clicksByTarget ?? {}),
+      },
+      deletionsTotal: previous.deletionsTotal ?? 0,
+      deletionsByType: {
+        ...empty.deletionsByType,
+        ...(previous.deletionsByType ?? {}),
+      },
       search: {
-        ...emptyCaseTelemetry(id).search,
+        ...empty.search,
         ...previous.search,
         selectedRanks: [...(previous.search?.selectedRanks ?? [])],
         queries: (previous.search?.queries ?? []).map((query) => ({ ...query })),

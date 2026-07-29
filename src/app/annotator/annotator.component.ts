@@ -42,6 +42,8 @@ import {
   CaseAnnotation,
   CaseReviewOutcome,
   CaseTelemetry,
+  TelemetryClickTarget,
+  TelemetryDeletionType,
   Category,
   lexicalMentionComplete,
   LexicalAnnotation,
@@ -372,6 +374,85 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
         },
       };
     });
+  }
+
+  private recordClick(
+    caseIdx: number,
+    target: TelemetryClickTarget = 'general-ui'
+  ): void {
+    if (caseIdx < 0 || caseIdx >= this.cases().length) return;
+    this.updateCaseTelemetry(caseIdx, (item) => {
+      item.clicksTotal = (item.clicksTotal ?? 0) + 1;
+      const currentMap = item.clicksByTarget ?? {
+        'span-accept': 0,
+        'span-discard': 0,
+        'concept-add': 0,
+        'concept-remove': 0,
+        'concept-edit': 0,
+        'category-select': 0,
+        'context-toggle': 0,
+        'search-interaction': 0,
+        'lexical-review': 0,
+        'general-ui': 0,
+      };
+      item.clicksByTarget = {
+        ...currentMap,
+        [target]: (currentMap[target] ?? 0) + 1,
+      };
+    });
+  }
+
+  private recordDeletion(
+    caseIdx: number,
+    type: TelemetryDeletionType
+  ): void {
+    if (caseIdx < 0 || caseIdx >= this.cases().length) return;
+    this.updateCaseTelemetry(caseIdx, (item) => {
+      item.deletionsTotal = (item.deletionsTotal ?? 0) + 1;
+      const currentMap = item.deletionsByType ?? {
+        concept: 0,
+        span: 0,
+        'lexical-mention': 0,
+        comment: 0,
+      };
+      item.deletionsByType = {
+        ...currentMap,
+        [type]: (currentMap[type] ?? 0) + 1,
+      };
+    });
+  }
+
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent): void {
+    if (!this.loaded() || document.hidden) return;
+    const targetElement = event.target;
+    if (!(targetElement instanceof Element)) return;
+
+    const caseIdx = this.caseIndexFromEvent(event) ?? this.activeCaseIndex();
+    if (caseIdx < 0 || caseIdx >= this.cases().length) return;
+
+    let targetType: TelemetryClickTarget = 'general-ui';
+    if (targetElement.closest('.span-accept, [data-telemetry="span-accept"], button.confirm-span-btn')) {
+      targetType = 'span-accept';
+    } else if (targetElement.closest('.span-discard, [data-telemetry="span-discard"], button.discard-span-btn')) {
+      targetType = 'span-discard';
+    } else if (targetElement.closest('.concept-add, [data-telemetry="concept-add"], button.add-concept-btn')) {
+      targetType = 'concept-add';
+    } else if (targetElement.closest('.concept-remove, [data-telemetry="concept-remove"], button.remove-concept-btn')) {
+      targetType = 'concept-remove';
+    } else if (targetElement.closest('.concept-edit, [data-telemetry="concept-edit"]')) {
+      targetType = 'concept-edit';
+    } else if (targetElement.closest('.category-select, [data-telemetry="category-select"], mat-select')) {
+      targetType = 'category-select';
+    } else if (targetElement.closest('.context-toggle, [data-telemetry="context-toggle"]')) {
+      targetType = 'context-toggle';
+    } else if (targetElement.closest('.autocomplete-binding, app-autocomplete-binding')) {
+      targetType = 'search-interaction';
+    } else if (targetElement.closest('.lexical-review, [data-telemetry="lexical-review"]')) {
+      targetType = 'lexical-review';
+    }
+
+    this.recordClick(caseIdx, targetType);
   }
 
   activateCase(caseIdx: number): void {
@@ -1240,6 +1321,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     });
     this.selectedSpan.set(null);
     this.updateCaseTelemetry(caseIdx, (item) => (item.spansDiscarded += 1));
+    this.recordDeletion(caseIdx, 'span');
   }
 
   removeConcept(caseIdx: number, conceptIdx: number): void {
@@ -1247,6 +1329,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       c.concepts.splice(conceptIdx, 1);
     });
     this.updateCaseTelemetry(caseIdx, (item) => (item.conceptsRemoved += 1));
+    this.recordDeletion(caseIdx, 'concept');
   }
 
   private nextConceptSequence(caseItem: CaseAnnotation): number {

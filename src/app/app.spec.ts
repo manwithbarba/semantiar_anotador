@@ -566,4 +566,52 @@ describe('App', () => {
       selections: 1,
     });
   });
+
+  it('should track passive behavioral metrics (clicks, deletions, and target distribution)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+
+    annotator.cases.set([
+      {
+        id: 'TELEMETRY-001',
+        text: 'Paciente con dolor abdominal.',
+        textNorm: 'Paciente con dolor abdominal.',
+        spans: [
+          {
+            spanId: 'span-1',
+            start: 13,
+            end: 28,
+            textoLiteral: 'dolor abdominal',
+            origin: 'candidate',
+            confidence: 1.0,
+            status: 'pendiente',
+          },
+        ],
+        concepts: [],
+        comentarios: '',
+      },
+    ]);
+    annotator.sessionMeta.set({
+      sessions: [],
+      totalDownloads: 0,
+      firstLoadedAt: '2026-07-24T00:00:00.000Z',
+      telemetry: createAnnotationTelemetry(['TELEMETRY-001']),
+    });
+
+    annotator.addConcept(0);
+    annotator.selectedSpan.set(annotator.cases()[0].spans[0]);
+    annotator.discardSelectedSpan(0);
+
+    const caseTelem = annotator.sessionMeta()?.telemetry?.cases[0];
+    expect(caseTelem).toBeDefined();
+    expect(caseTelem?.conceptsAdded).toBe(1);
+    expect(caseTelem?.spansDiscarded).toBe(1);
+    expect(caseTelem?.deletionsTotal).toBe(1);
+    expect(caseTelem?.deletionsByType.span).toBe(1);
+    expect(caseTelem?.clicksByTarget['concept-add']).toBe(1);
+    expect(caseTelem?.clicksByTarget['span-discard']).toBe(1);
+    expect(caseTelem?.clicksTotal).toBeGreaterThanOrEqual(2);
+  });
 });
