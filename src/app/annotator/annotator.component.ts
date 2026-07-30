@@ -123,6 +123,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   @ViewChild('confirmClear') confirmClearTpl!: TemplateRef<unknown>;
   @ViewChild('settingsDialog') settingsTpl!: TemplateRef<unknown>;
   @ViewChild('statsDialog') statsTpl!: TemplateRef<unknown>;
+  @ViewChild('manualDialog') manualTpl!: TemplateRef<unknown>;
 
   readonly categories = CATEGORIES;
   readonly polarities = POLARITIES;
@@ -528,6 +529,54 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.flushActiveTime();
     this.flushPendingActiveTime();
     this.dialog.open(this.statsTpl, { width: '560px' });
+  }
+
+  openManual(): void {
+    this.dialog.open(this.manualTpl, {
+      width: 'min(680px, calc(100vw - 24px))',
+      maxHeight: '88vh',
+      panelClass: 'manual-dialog-panel',
+    });
+  }
+
+  async downloadManual(): Promise<void> {
+    const path = 'manuales/Manual_de_uso_SemantIAr_App.pdf';
+    const filename = 'Manual_de_uso_SemantIAr_App.pdf';
+
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const response = await fetch(path);
+        if (!response.ok) throw new Error(`Manual unavailable: ${response.status}`);
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        const chunkSize = 0x8000;
+        let binary = '';
+        for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+          binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+        }
+        const file = await Filesystem.writeFile({
+          path: filename,
+          data: btoa(binary),
+          directory: Directory.Cache,
+        });
+        await Share.share({
+          title: 'Manual de SemantIAr App',
+          text: 'Manual de uso para anotadores clínicos',
+          files: [file.uri],
+          dialogTitle: 'Guardar o compartir manual',
+        });
+      } else {
+        const a = document.createElement('a');
+        a.href = path;
+        a.download = filename;
+        a.click();
+      }
+    } catch {
+      this.snackBar.open(
+        'No se pudo abrir el manual. Verificá el espacio disponible y volvé a intentarlo.',
+        'OK',
+        { duration: 5000 },
+      );
+    }
   }
 
   /** Scroll smoothly to the first unannotated case card. */

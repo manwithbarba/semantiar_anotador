@@ -209,6 +209,18 @@ En Android, **Guardar avance** abre el selector del sistema para guardar o
 compartir el JSON fuera de la aplicación. La web conserva la descarga habitual
 del archivo en el navegador.
 
+### Manual de SemantIAr App
+
+La guía operativa específica para Android y PWA está disponible en:
+
+- [Manual de uso en GitHub](docs/Manual_de_uso_SemantIAr_App.md).
+- [Manual PDF descargable](https://manwithbarba.github.io/semantiar_anotador/manuales/Manual_de_uso_SemantIAr_App.pdf).
+
+La aplicación Android incluye además una versión resumida embebida, accesible
+desde **Ver manual de uso** en la pantalla inicial y desde **Más acciones**
+durante la anotación. Desde ese panel puede guardarse o compartirse el PDF sin
+salir del aplicativo.
+
 ## Release congelada para las celdas
 
 `scripts/lock_assisted_annotation_corpus.py` aplica el postfiltro común a los

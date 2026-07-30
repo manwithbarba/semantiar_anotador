@@ -386,6 +386,11 @@
   padding: 12px 0;
   border-top: 1px solid #f0f2f6;
 }
+.home-manual-cta {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 10px;
+}
 .step-num {
   flex: 0 0 24px;
   height: 24px;
@@ -534,6 +539,45 @@
 }
 .mobile-utility-actions {
   display: none;
+}
+
+.manual-dialog-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.manual-dialog-title mat-icon {
+  color: var(--brand);
+}
+.manual-dialog-content {
+  color: #263958;
+}
+.manual-dialog-content section {
+  border-top: 1px solid #e2e8f0;
+  padding: 12px 0 4px;
+}
+.manual-dialog-content h3 {
+  margin: 0 0 5px;
+  color: #1e5d96;
+  font-size: 15px;
+}
+.manual-dialog-content p {
+  margin: 0 0 8px;
+  line-height: 1.5;
+}
+.manual-dialog-notice {
+  border: 1px solid #e6c35d;
+  border-radius: 9px;
+  background: #fff8e3;
+  color: #624a08;
+  padding: 10px 12px;
+  font-weight: 600;
+}
+.manual-dialog-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 24px 18px;
 }
 .case-id {
   font-size: 14px;
@@ -1800,6 +1844,13 @@
   }
   .mobile-utility-actions button {
     justify-content: flex-start;
+    min-height: 46px;
+  }
+  .manual-dialog-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .manual-dialog-actions button {
     min-height: 46px;
   }
   .span-actions,

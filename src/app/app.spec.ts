@@ -33,6 +33,26 @@ describe('App', () => {
     expect(compiled.querySelector('app-annotator')).toBeTruthy();
   });
 
+  it('should provide an embedded app manual with one PDF download action', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+
+    annotator.openManual();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const dialog = document.querySelector('.manual-dialog-content');
+    expect(dialog?.textContent).toContain('Cargá el archivo asignado');
+    expect(dialog?.textContent).toContain('Cerrá la nota');
+    expect(
+      [...document.querySelectorAll('button')].filter((button) =>
+        button.textContent?.includes('Descargar o compartir PDF')
+      )
+    ).toHaveLength(1);
+  });
+
   it('should calculate the source offsets of a manual selection across rendered segments', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
