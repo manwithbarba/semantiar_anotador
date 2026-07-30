@@ -74,6 +74,9 @@
   background-color: #1e7d34 !important;
   color: #fff !important;
 }
+.toolbar-label-compact {
+  display: none;
+}
 
 /* Visible hand-off between the browser session and the JSON file. */
 .json-flow {
@@ -1308,9 +1311,18 @@
   }
   .download-btn {
     flex: 1 1 auto;
-    min-width: 0;
-    white-space: normal;
+    min-width: 142px;
+    border-radius: 22px;
+    box-shadow: 0 3px 8px rgba(28, 83, 144, 0.22);
+    font-size: 13px;
     line-height: 1.2;
+    padding: 0 14px;
+  }
+  .download-btn .toolbar-label-wide {
+    display: none;
+  }
+  .download-btn .toolbar-label-compact {
+    display: inline;
   }
   .settings-btn {
     order: 2;

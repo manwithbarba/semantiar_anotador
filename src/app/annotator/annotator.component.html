@@ -1,5 +1,5 @@
 <mat-toolbar color="primary" class="app-toolbar">
-  <span class="app-title">SEMANTIAR · Anotador SNOMED CT</span>
+  <span class="app-title">Semantic App</span>
   <span class="spacer"></span>
 
   @if (loaded()) {
@@ -45,7 +45,8 @@
   <button mat-flat-button color="accent" class="download-btn"
           [class.complete]="complete()" [disabled]="!loaded()" (click)="download()">
     <mat-icon>{{ complete() ? 'task_alt' : 'download' }}</mat-icon>
-    <span class="toolbar-label">{{ downloadButtonLabel() }}</span>
+    <span class="toolbar-label toolbar-label-wide">{{ downloadButtonLabel() }}</span>
+    <span class="toolbar-label toolbar-label-compact">Guardar avance</span>
   </button>
   <button mat-icon-button class="settings-btn" (click)="openSettings()"
           matTooltip="Configuración de terminología">
@@ -59,7 +60,7 @@
       <div class="home-card">
         <div class="home-hero">
           <mat-icon class="home-logo">local_hospital</mat-icon>
-          <h1>Anotador SNOMED CT</h1>
+          <h1>Semantic App</h1>
           <p class="home-sub">Herramienta de anotación clínica del proyecto SEMANTIAR</p>
         </div>
 
@@ -259,7 +260,7 @@
             <div class="quick-lexical-head">
               <mat-icon aria-hidden="true">short_text</mat-icon>
               <div>
-                <strong>Agregar forma breve sin arrastrar</strong>
+                <strong>Agregar forma breve</strong>
                 <span>Escribí la sigla y tocá la ocurrencia exacta.</span>
               </div>
             </div>
