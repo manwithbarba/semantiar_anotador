@@ -54,16 +54,18 @@
   </button>
 </mat-toolbar>
 
-<aside class="tester-notice" role="note" aria-label="Versión tester para uso académico">
-  <mat-icon aria-hidden="true">science</mat-icon>
-  <div>
-    <strong>Versión tester pública · uso académico</strong>
-    <span>
-      Aplicación en evaluación y actualización continua. No constituye software médico ni debe
-      utilizarse para atención clínica. No cargues información identificatoria de pacientes.
-    </span>
-  </div>
-</aside>
+@if (isNativeApp) {
+  <aside class="tester-notice" role="note" aria-label="Versión tester para uso académico">
+    <mat-icon aria-hidden="true">science</mat-icon>
+    <div>
+      <strong>Versión tester pública · uso académico</strong>
+      <span>
+        Aplicación en evaluación y actualización continua. No constituye software médico ni debe
+        utilizarse para atención clínica. No cargues información identificatoria de pacientes.
+      </span>
+    </div>
+  </aside>
+}
 
 <div class="content">
   @if (!loaded()) {

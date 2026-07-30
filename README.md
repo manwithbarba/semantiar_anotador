@@ -6,11 +6,6 @@ usando el buscador embebido (`autocomplete-binding`) restringido por jerarquía.
 Pensada para el flujo de calibración de anotadores del proyecto SEMANTIAR
 (corpus clínico en español rioplatense).
 
-> **Versión tester pública para uso exclusivamente académico y de investigación.**
-> La aplicación está en evaluación y recibirá actualizaciones. No constituye
-> software médico, no debe utilizarse para atención clínica y no deben cargarse
-> datos identificatorios de pacientes.
-
 > 📄 Descripción técnica detallada (integración con el servidor de terminología,
 > autocompletado, búsqueda multi-prefijo, FHIR API): [`docs/IMPLEMENTACION.md`](docs/IMPLEMENTACION.md).
 
@@ -196,6 +191,23 @@ Esta primera fase no persiste anotaciones de pacientes fuera de la pestaña ni
 sincroniza datos automáticamente: el avance sigue resguardándose mediante la
 descarga del JSON. IndexedDB, reanudación y sincronización diferida pertenecen a
 la Fase 2.
+
+### Aplicación Android descargable
+
+La web pública y la aplicación Android son dos entregables independientes:
+
+- **Web / PWA:** <https://manwithbarba.github.io/semantiar_anotador/>
+- **APK Android tester:** se publica como archivo descargable en
+  [GitHub Releases](https://github.com/manwithbarba/semantiar_anotador/releases).
+
+El APK es una versión pública de prueba para fines exclusivamente académicos.
+Android puede solicitar autorización para instalar aplicaciones desde el
+navegador o el gestor de archivos. Las actualizaciones del APK son manuales:
+cuando haya una versión nueva, debe descargarse e instalarse desde Releases.
+
+En Android, **Guardar avance** abre el selector del sistema para guardar o
+compartir el JSON fuera de la aplicación. La web conserva la descarga habitual
+del archivo en el navegador.
 
 ## Release congelada para las celdas
 
