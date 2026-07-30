@@ -1176,3 +1176,69 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Mobile-first interaction layer for 6–7 inch annotation devices. */
+@media (max-width: 720px) {
+  .app-toolbar {
+    min-height: 0;
+    height: auto;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: calc(8px + env(safe-area-inset-top)) 8px 8px;
+  }
+  .app-title {
+    flex: 1 1 100%;
+    font-size: 16px;
+  }
+  .spacer {
+    display: none;
+  }
+  .progress-area {
+    order: 1;
+    width: 100%;
+    margin: 0 0 2px;
+  }
+  .app-toolbar button {
+    min-height: 44px;
+    margin-left: 0;
+  }
+  .download-btn {
+    flex: 1 1 calc(100% - 58px);
+    min-width: 0;
+    white-space: normal;
+    line-height: 1.2;
+  }
+  .settings-btn {
+    order: 2;
+  }
+  .content {
+    width: min(100% - 12px, 1640px);
+    padding: 12px 0 calc(28px + env(safe-area-inset-bottom));
+  }
+  .annotation-protocol,
+  .json-flow {
+    border-radius: 10px;
+    padding: 12px;
+  }
+  .case-card {
+    margin-bottom: 12px;
+    padding: 12px;
+  }
+  .case-text {
+    font-size: 16px;
+    padding: 12px;
+  }
+  .span-actions,
+  .case-finalization-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+  .span-actions button,
+  .case-finalization-actions button {
+    min-height: 46px;
+    width: 100%;
+  }
+  .stats-content {
+    min-width: 0;
+  }
+}

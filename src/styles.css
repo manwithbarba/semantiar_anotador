@@ -5,11 +5,13 @@
 }
 html, body {
   height: 100%;
+  min-height: 100dvh;
 }
 body {
   margin: 0;
   font-family: Roboto, "Helvetica Neue", sans-serif;
   background: #eef1f5;
+  overscroll-behavior-y: none;
 }
 * {
   box-sizing: border-box;
