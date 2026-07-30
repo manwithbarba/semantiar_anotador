@@ -1,4 +1,4 @@
-<mat-toolbar color="primary" class="app-toolbar">
+<mat-toolbar color="primary" class="app-toolbar" [class.loaded-toolbar]="loaded()">
   <span class="app-title">Semantic App</span>
   <span class="spacer"></span>
 
@@ -33,7 +33,7 @@
     </button>
   }
   @if (loaded()) {
-    <button mat-icon-button (click)="openStats()"
+    <button mat-icon-button class="stats-btn" (click)="openStats()"
             matTooltip="Ver estadísticas de sesiones">
       <mat-icon>bar_chart</mat-icon>
     </button>
@@ -139,12 +139,20 @@
         <span class="json-flow-step" [class.done]="!dirty() && totalDownloads() > 0" [class.active]="dirty()"><b>4</b> Descargar JSON</span>
       </div>
     </section>
-    <section class="annotation-protocol" role="note" aria-labelledby="annotation-protocol-title">
-      <div class="annotation-protocol-icon" aria-hidden="true">
-        <mat-icon>fact_check</mat-icon>
-      </div>
-      <div>
-        <h2 id="annotation-protocol-title">Revisión exhaustiva de menciones clínicas</h2>
+    <section class="annotation-protocol" [class.expanded]="protocolExpanded()" aria-labelledby="annotation-protocol-title">
+      <button type="button" class="annotation-protocol-toggle" (click)="toggleProtocol()"
+              [attr.aria-expanded]="protocolExpanded()">
+        <span class="annotation-protocol-icon" aria-hidden="true"><mat-icon>fact_check</mat-icon></span>
+        <span>
+          <h2 id="annotation-protocol-title">Revisión exhaustiva de menciones clínicas</h2>
+          <small>{{ protocolExpanded() ? 'Ocultar instrucciones' : 'Ver instrucciones' }}</small>
+        </span>
+        <mat-icon class="annotation-protocol-chevron" aria-hidden="true">
+          {{ protocolExpanded() ? 'expand_less' : 'expand_more' }}
+        </mat-icon>
+      </button>
+      @if (protocolExpanded()) {
+      <div class="annotation-protocol-copy">
         @if (coreBlindMode()) {
           <p>
             <strong>Este lote pertenece al conjunto de referencia Core Blind y no contiene preanotaciones.</strong>
@@ -177,6 +185,7 @@
           </p>
         }
       </div>
+      }
     </section>
   }
 
@@ -255,44 +264,6 @@
           Para agregar una mención: mantené pulsado sobre el texto, arrastrá los controles de selección y elegí
           <strong>“Incorporar mención omitida”</strong>.
         </p>
-        @if (lexicalLayerEnabled()) {
-          <section class="quick-lexical-add" aria-label="Agregar forma breve sin seleccionar texto">
-            <div class="quick-lexical-head">
-              <mat-icon aria-hidden="true">short_text</mat-icon>
-              <div>
-                <strong>Agregar forma breve</strong>
-                <span>Escribí la sigla y tocá la ocurrencia exacta.</span>
-              </div>
-            </div>
-            <mat-form-field appearance="outline" class="quick-lexical-input">
-              <mat-label>Forma breve en esta nota</mat-label>
-              <input
-                matInput
-                [ngModel]="lexicalQuickValue(ci)"
-                (ngModelChange)="setLexicalQuickValue(ci, $event)"
-                placeholder="Ej.: FC"
-                autocomplete="off"
-                autocapitalize="characters" />
-            </mat-form-field>
-            @if (lexicalQuickValue(ci).trim()) {
-              <div class="quick-lexical-candidates" aria-live="polite">
-                @for (candidate of lexicalQuickCandidates(ci); track candidate.start) {
-                  <button
-                    type="button"
-                    class="quick-lexical-candidate"
-                    (click)="addHumanLexicalMentionAt(ci, candidate.start, candidate.end)">
-                    <strong>“{{ candidate.surface }}”</strong>
-                    <span>…{{ candidate.context }}…</span>
-                    <mat-icon aria-hidden="true">add_circle</mat-icon>
-                  </button>
-                } @empty {
-                  <p>No hay coincidencias exactas en esta nota.</p>
-                }
-              </div>
-            }
-          </section>
-        }
-
           @if (caseItem.spans.length > 1) {
             <p class="overlap-help">
               Si un resaltado tiene un número, hay varias menciones superpuestas: elegí cada una para revisarla.
@@ -349,6 +320,41 @@
         }
 
         @if (lexicalLayerEnabled()) {
+          <section class="quick-lexical-add" aria-label="Agregar forma breve sin seleccionar texto">
+            <div class="quick-lexical-head">
+              <mat-icon aria-hidden="true">short_text</mat-icon>
+              <div>
+                <strong>Agregar forma breve</strong>
+                <span>Escribí la sigla y tocá la ocurrencia exacta.</span>
+              </div>
+            </div>
+            <mat-form-field appearance="outline" class="quick-lexical-input">
+              <mat-label>Forma breve en esta nota</mat-label>
+              <input
+                matInput
+                [ngModel]="lexicalQuickValue(ci)"
+                (ngModelChange)="setLexicalQuickValue(ci, $event)"
+                placeholder="Ej.: FC"
+                autocomplete="off"
+                autocapitalize="characters" />
+            </mat-form-field>
+            @if (lexicalQuickValue(ci).trim()) {
+              <div class="quick-lexical-candidates" aria-live="polite">
+                @for (candidate of lexicalQuickCandidates(ci); track candidate.start) {
+                  <button
+                    type="button"
+                    class="quick-lexical-candidate"
+                    (click)="addHumanLexicalMentionAt(ci, candidate.start, candidate.end)">
+                    <strong>“{{ candidate.surface }}”</strong>
+                    <span>…{{ candidate.context }}…</span>
+                    <mat-icon aria-hidden="true">add_circle</mat-icon>
+                  </button>
+                } @empty {
+                  <p>No hay coincidencias exactas en esta nota.</p>
+                }
+              </div>
+            }
+          </section>
           <section class="lexical-layer" aria-label="Revisión de formas breves">
             <div class="lexical-layer-head">
               <div>
@@ -876,6 +882,25 @@
         </div>
       </mat-card-content>
     </mat-card>
+  }
+  @if (loaded()) {
+    <section class="mobile-utility-actions" aria-label="Acciones adicionales">
+      <span class="mobile-utility-title">Más acciones</span>
+      @if (!complete()) {
+        <button mat-stroked-button color="accent" (click)="scrollToFirstPending()">
+          <mat-icon>arrow_downward</mat-icon> {{ pendingButtonLabel() }}
+        </button>
+      }
+      <button mat-stroked-button (click)="openStats()">
+        <mat-icon>bar_chart</mat-icon> Estadísticas de sesión
+      </button>
+      <button mat-stroked-button (click)="openSettings()">
+        <mat-icon>settings</mat-icon> Configuración
+      </button>
+      <button mat-stroked-button color="warn" (click)="clearAll()">
+        <mat-icon>restart_alt</mat-icon> Limpiar y cargar otro JSON
+      </button>
+    </section>
   }
 </div>
 

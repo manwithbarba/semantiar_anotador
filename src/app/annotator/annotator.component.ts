@@ -159,6 +159,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   );
   /** Draft text used by the one-tap lexical mention flow on mobile. */
   lexicalQuickEntry = signal<Record<number, string>>({});
+  protocolExpanded = signal<boolean>(false);
 
   /** Session metadata (upload/download audit trail). */
   sessionMeta = signal<AnnotationMeta | null>(null);
@@ -532,6 +533,10 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.selectCase(idx);
     const el = document.querySelector(`[data-case-index="${idx}"]`) as HTMLElement | null;
     el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  toggleProtocol(): void {
+    this.protocolExpanded.update((expanded) => !expanded);
   }
 
   // ---- Loading ----
