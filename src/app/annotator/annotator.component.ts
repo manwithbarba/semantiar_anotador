@@ -78,6 +78,7 @@ import {
   DEFAULT_TERMINOLOGY_SERVER,
   createAnnotationTelemetry,
   eclForCategory,
+  isValidTextSpan,
   newConcept,
   POLARITIES,
   SEMANTIAR_SCHEMA_VERSION,
@@ -90,7 +91,6 @@ import {
 } from '../models/annotation.model';
 import {
   AnnotationInteropError,
-  isValidTextSpan,
   prepareAnnotationDocument,
 } from '../models/annotation-interop';
 
@@ -127,6 +127,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   private timingActive = false;
   private textSelectionTimer: number | undefined;
   private pendingActiveMs = new Map<number, number>();
+  private terminologyDetectionGeneration = 0;
 
   @ViewChild('confirmClear') confirmClearTpl!: TemplateRef<unknown>;
   @ViewChild('settingsDialog') settingsTpl!: TemplateRef<unknown>;
@@ -152,6 +153,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   batch = signal<string>('');
   annotatorId = signal<string>('');
   sourceFile = signal<string>('');
+  sourceSchemaVersion = signal<string | undefined>(undefined);
   loadedFileName = signal<string>('');
   premarking = signal<Record<string, unknown> | undefined>(undefined);
   trace = signal<Record<string, unknown> | undefined>(undefined);
@@ -269,6 +271,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.terminologyDetectionGeneration += 1;
     if (this.textSelectionTimer !== undefined) window.clearTimeout(this.textSelectionTimer);
     this.flushActiveTime();
     this.flushPendingActiveTime();
@@ -535,11 +538,22 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
 
   /** Auto-select the Argentina edition (Spanish) if present, else International (English). */
   detectEdition(): void {
+    const generation = ++this.terminologyDetectionGeneration;
+    const requestedServer = this.terminologyServer();
     this.editionLabel.set('Detectando edición…');
-    this.terminologyService.detectEdition(this.terminologyServer()).subscribe((info) => {
+    this.terminologyService.detectEdition(requestedServer).subscribe((info) => {
+      if (
+        generation !== this.terminologyDetectionGeneration ||
+        requestedServer !== this.terminologyServer()
+      ) {
+        return;
+      }
       this.editionUri.set(info.editionUri);
       this.snomedVersion.set(info.version);
       this.displayLanguage.set(info.displayLanguage);
+      this.terminologyService.setTerminologyServer(requestedServer);
+      this.terminologyService.setEditionUri(info.editionUri);
+      this.terminologyService.setDisplayLanguage(info.displayLanguage);
       this.editionLabel.set(info.label);
       // No notice on success (Argentina present). Only warn on the English fallback.
       if (!info.isArgentina) {
@@ -668,6 +682,14 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       this.snackBar.open('El JSON no contiene "cases".', 'OK', { duration: 4000 });
       return;
     }
+    if (this.isNativeApp && doc._annotationProtocol?.mode === 'core-blind') {
+      this.snackBar.open(
+        'Core Blind es de uso exclusivo del investigador principal en la página web. Abrí este lote desde la versión web.',
+        'OK',
+        { duration: 8000 }
+      );
+      return;
+    }
     this.pauseActivityTracking();
     this.timingCaseIndex = null;
     this.pendingActiveMs.clear();
@@ -675,9 +697,11 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.batch.set(doc.batch ?? '');
     this.annotatorId.set(doc.annotatorId ?? '');
     this.sourceFile.set(doc.sourceFile ?? fileName);
+    this.sourceSchemaVersion.set(doc.sourceSchemaVersion);
     this.loadedFileName.set(fileName);
 
     if (doc.terminology) {
+      this.terminologyDetectionGeneration += 1;
       this.terminologyServer.set(doc.terminology.server);
       this.editionUri.set(doc.terminology.editionUri);
       this.snomedVersion.set(doc.terminology.version);
@@ -781,7 +805,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       appBuild: TELEMETRY_APP_BUILD,
       platform: this.currentPlatform,
       sourceFile: fileName,
-      schemaVersion: doc.schemaVersion ?? 'legacy',
+      schemaVersion: doc.schemaVersion ?? doc.sourceSchemaVersion ?? 'legacy',
       terminologyVersion: doc.terminology?.version ?? null,
     };
     existingMeta.sessions = [...existingMeta.sessions, uploadEntry];
@@ -848,6 +872,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.project.set('');
     this.batch.set('');
     this.sourceFile.set('');
+    this.sourceSchemaVersion.set(undefined);
     this.loadedFileName.set('');
     this.premarking.set(undefined);
     this.trace.set(undefined);
@@ -1178,12 +1203,18 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       const matchStart = caseItem.textNorm.indexOf(surface, start);
       if (matchStart < 0) break;
       const end = matchStart + surface.length;
-      candidates.push({
-        start: matchStart,
-        end,
-        surface: caseItem.textNorm.slice(matchStart, end),
-        context: caseItem.textNorm.slice(Math.max(0, matchStart - 18), Math.min(caseItem.textNorm.length, end + 24)),
-      });
+      const exactSurface = caseItem.textNorm.slice(matchStart, end);
+      if (isValidTextSpan(caseItem.textNorm, matchStart, end, exactSurface)) {
+        candidates.push({
+          start: matchStart,
+          end,
+          surface: exactSurface,
+          context: caseItem.textNorm.slice(
+            Math.max(0, matchStart - 18),
+            Math.min(caseItem.textNorm.length, end + 24)
+          ),
+        });
+      }
       start = end;
     }
     return candidates;
@@ -1191,7 +1222,13 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
 
   addHumanLexicalMentionAt(caseIdx: number, start: number, end: number): void {
     const caseItem = this.cases()[caseIdx];
-    if (!caseItem || start < 0 || end <= start || end > caseItem.textNorm.length) return;
+    const surface = caseItem?.textNorm.slice(start, end) ?? '';
+    if (!caseItem || !isValidTextSpan(caseItem.textNorm, start, end, surface)) {
+      this.snackBar.open('La forma breve no coincide con límites Unicode seguros.', 'OK', {
+        duration: 3500,
+      });
+      return;
+    }
     const duplicate = (caseItem.lexicalMentions ?? []).some(
       (mention) => mention.start === start && mention.end === end
     );
@@ -1200,7 +1237,6 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const surface = caseItem.textNorm.slice(start, end);
     this.mutateCase(caseIdx, (targetCase) => {
       targetCase.lexicalMentions ??= [];
       targetCase.lexicalMentions.push(
@@ -1936,6 +1972,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       platform: this.currentPlatform,
       sourceFile: this.loadedFileName() || this.sourceFile(),
       schemaVersion: SEMANTIAR_SCHEMA_VERSION,
+      sourceSchemaVersion: this.sourceSchemaVersion(),
       terminologyVersion: this.snomedVersion(),
     };
     const updatedMeta: AnnotationMeta = {
@@ -1949,6 +1986,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
 
     const output: AnnotationOutput = {
       schemaVersion: SEMANTIAR_SCHEMA_VERSION,
+      sourceSchemaVersion: this.sourceSchemaVersion(),
       textProfile: { ...SEMANTIAR_TEXT_PROFILE },
       terminology: {
         server: this.terminologyServer(),

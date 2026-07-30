@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { Subject } from 'rxjs';
 import { vi } from 'vitest';
 import { App } from './app';
 import { AnnotatorComponent } from './annotator/annotator.component';
@@ -9,9 +10,11 @@ import {
   buildTextSegments,
   newHumanLexicalMention,
   newLexicalReview,
+  normalizeLexicalMentions,
   normalizePremarkedSpans,
   NONCODED_SEMANTICS_COMMENT,
 } from './models/annotation.model';
+import { prepareAnnotationDocument } from './models/annotation-interop';
 
 describe('App', () => {
   beforeEach(async () => {
@@ -176,6 +179,67 @@ describe('App', () => {
     expect(
       annotator.sessionMeta()?.telemetry?.cases[0].byPlatform.web.manualSpansAdded
     ).toBe(1);
+  });
+
+  it('should keep Core Blind restricted to the webpage', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    Object.defineProperty(annotator, 'isNativeApp', { value: true });
+
+    (annotator as unknown as {
+      ingestDocument: (doc: unknown, fileName: string) => void;
+    }).ingestDocument(
+      {
+        project: 'SEMANTIAR',
+        batch: 'CORE-BLIND',
+        annotatorId: 'IP',
+        sourceFile: 'core-blind.json',
+        _annotationProtocol: {
+          mode: 'core-blind',
+          spansVisible: false,
+          preannotationVisible: false,
+          exhaustiveReviewRequired: true,
+        },
+        cases: [{ id: 'CB-001', text: 'Nota de referencia.' }],
+      },
+      'core-blind.json'
+    );
+
+    expect(annotator.loaded()).toBe(false);
+    expect(annotator.cases()).toEqual([]);
+  });
+
+  it('should reject an isolated combining mark and preserve the complete mobile lexical span', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    const text = 'A\u0338';
+    annotator.cases.set([
+      {
+        id: 'MOBILE-LEXICAL-UNICODE-001',
+        text,
+        textNorm: text.normalize('NFC'),
+        spans: [],
+        concepts: [],
+        comentarios: '',
+        lexicalMentions: [],
+      },
+    ]);
+
+    annotator.setLexicalQuickValue(0, '\u0338');
+    expect(annotator.lexicalQuickCandidates(0)).toEqual([]);
+    annotator.addHumanLexicalMentionAt(0, 1, 2);
+    expect(annotator.cases()[0].lexicalMentions).toEqual([]);
+
+    annotator.setLexicalQuickValue(0, text);
+    const [candidate] = annotator.lexicalQuickCandidates(0);
+    annotator.addHumanLexicalMentionAt(0, candidate.start, candidate.end);
+    const saved = annotator.cases()[0].lexicalMentions ?? [];
+    expect(saved).toHaveLength(1);
+    expect(normalizeLexicalMentions(saved, annotator.cases()[0].textNorm).invalidCount).toBe(0);
   });
 
   it('should finalize a reviewed case and reopen it after an annotation edit', async () => {
@@ -691,6 +755,7 @@ describe('App', () => {
       platform: 'web',
       schemaVersion: '1.0.0',
     });
+    expect(() => prepareAnnotationDocument(output)).not.toThrow();
     expect(annotation).toMatchObject({
       decisionStatus: 'unknown',
       senseId: null,
@@ -703,6 +768,49 @@ describe('App', () => {
     click.mockRestore();
     revokeObjectUrl.mockRestore();
     createObjectUrl.mockRestore();
+  });
+
+  it('should ignore an out-of-order SNOMED detection after restoring a JSON version', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    const terminologyService = (annotator as any).terminologyService;
+    const delayed = new Subject<any>();
+    vi.spyOn(terminologyService, 'detectEdition').mockReturnValue(delayed);
+
+    annotator.terminologyServer.set('https://old.example/fhir');
+    annotator.detectEdition();
+    (annotator as any).ingestDocument(
+      {
+        cases: [{ id: 'RACE-001', text: 'Paciente estable.' }],
+        terminology: {
+          server: 'https://restored.example/fhir',
+          editionUri: 'http://snomed.info/sct/11000221109/version/20260331',
+          version: 'http://snomed.info/sct/11000221109/version/20260331',
+          displayLanguage: 'es',
+          capturedAt: '2026-07-30T00:00:00.000Z',
+        },
+      },
+      'race.json'
+    );
+
+    delayed.next({
+      editionUri: 'http://snomed.info/sct/900000000000207008/version/20260701',
+      version: 'http://snomed.info/sct/900000000000207008/version/20260701',
+      displayLanguage: 'en',
+      label: 'Internacional (en)',
+      isArgentina: false,
+    });
+
+    expect(annotator.terminologyServer()).toBe('https://restored.example/fhir');
+    expect(annotator.editionUri()).toBe(
+      'http://snomed.info/sct/11000221109/version/20260331'
+    );
+    expect(terminologyService.terminologyServer).toBe('https://restored.example/fhir');
+    expect(terminologyService.editionUri).toBe(
+      'http://snomed.info/sct/11000221109/version/20260331'
+    );
   });
 
   it('should aggregate terminology search events without counting keystrokes', async () => {
@@ -783,6 +891,54 @@ describe('App', () => {
     expect(
       annotator.sessionMeta()?.telemetry?.cases[0].byPlatform.android.search.requests
     ).toBe(0);
+  });
+
+  it('should accumulate assisted-span search metrics separately across Android and web', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    annotator.cases.set([
+      {
+        id: 'CROSS-PLATFORM-001',
+        text: 'Paciente con fiebre.',
+        textNorm: 'Paciente con fiebre.',
+        spans: [],
+        concepts: [
+          {
+            cat: 'Hallazgo clínico',
+            sctid: '',
+            term: '',
+            textoLiteral: 'fiebre',
+            pol: 'Activo',
+            cert: 'Confirmado',
+            temp: 'Actual',
+            suj: 'Paciente',
+          },
+        ],
+        comentarios: '',
+      },
+    ]);
+    annotator.sessionMeta.set({
+      sessions: [],
+      totalDownloads: 0,
+      firstLoadedAt: '2026-07-30T00:00:00.000Z',
+      telemetry: createAnnotationTelemetry(['CROSS-PLATFORM-001']),
+    });
+
+    (annotator as any).currentPlatform = 'android';
+    annotator.recordSearchTelemetry(0, 0, { type: 'request', query: 'fiebre' });
+    (annotator as any).currentPlatform = 'web';
+    annotator.recordSearchTelemetry(0, 0, { type: 'request', query: 'fiebre' });
+
+    const telemetry = annotator.sessionMeta()?.telemetry?.cases[0];
+    expect(telemetry?.search.requests).toBe(2);
+    expect(telemetry?.byPlatform.android.search.requests).toBe(1);
+    expect(telemetry?.byPlatform.web.search.requests).toBe(1);
+    expect(telemetry?.search.queries.map((query) => query.platform).sort()).toEqual([
+      'android',
+      'web',
+    ]);
   });
 
   it('should track passive behavioral metrics (clicks, deletions, and target distribution)', async () => {

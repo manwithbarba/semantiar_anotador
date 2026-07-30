@@ -316,13 +316,15 @@ para estudios de cobertura terminológica y de sinónimos locales— y un campo 
 - **Finalización explícita**: cada nota se cierra como `coded` o
   `no-eligible-concepts`. Cualquier edición posterior la reabre, por lo que una
   nota revisada sin conceptos no se confunde con una nota aún pendiente.
-- **Telemetría local comparable**: `_meta.telemetry` registra el mismo conjunto
-  de métricas en Core Blind y en anotación con spans. Incluye tiempo activo por
+- **Telemetría local comparable**: `_meta.telemetry` registra métricas del flujo
+  asistido con spans separadas por plataforma. Incluye tiempo activo por
   nota, visitas, reaperturas, operaciones de edición, episodios/peticiones de
   búsqueda con latencia, resultados vacíos, errores, rango seleccionado y métricas
   pasivas de interfaz (`clicksTotal`, `clicksByTarget`, `deletionsTotal`, `deletionsByType`).
   La inactividad se corta a los 120 segundos y la pestaña oculta no acumula
-  tiempo.
+  tiempo. Core Blind es un flujo exclusivo del investigador principal en la
+  página web y no participa de la comparación Android–web; el APK bloquea su
+  apertura.
 - **Privacidad operativa**: no se envían métricas a un backend. Las consultas
   terminológicas se resumen normalizadas por término y jerarquía exclusivamente
   dentro del JSON que descarga el anotador.

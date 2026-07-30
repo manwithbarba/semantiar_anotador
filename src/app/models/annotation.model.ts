@@ -31,6 +31,44 @@ export interface ProducerMetadata {
 
 export type AnnotationPlatform = ProducerMetadata['platform'];
 
+export function isSafeUtf16Boundary(text: string, offset: number): boolean {
+  if (!Number.isInteger(offset) || offset < 0 || offset > text.length) return false;
+  if (offset > 0 && offset < text.length) {
+    const previous = text.charCodeAt(offset - 1);
+    const next = text.charCodeAt(offset);
+    if (
+      previous >= 0xd800 &&
+      previous <= 0xdbff &&
+      next >= 0xdc00 &&
+      next <= 0xdfff
+    ) {
+      return false;
+    }
+  }
+  if (offset < text.length && /^\p{M}$/u.test(String.fromCodePoint(text.codePointAt(offset)!))) {
+    return false;
+  }
+  return true;
+}
+
+export function isValidTextSpan(
+  text: string,
+  start: number,
+  end: number,
+  literal?: string
+): boolean {
+  return (
+    Number.isInteger(start) &&
+    Number.isInteger(end) &&
+    start >= 0 &&
+    start < end &&
+    end <= text.length &&
+    isSafeUtf16Boundary(text, start) &&
+    isSafeUtf16Boundary(text, end) &&
+    (literal === undefined || text.slice(start, end) === literal)
+  );
+}
+
 /** Clinical case loaded from the input JSON (read-only content). */
 export interface ClinicalCase {
   id: string;
@@ -134,26 +172,8 @@ export function normalizePremarkedSpans(
   const ids = new Set<string>();
 
   for (const span of candidates) {
-    const splitsSurrogatePair = (offset: number) => {
-      if (offset <= 0 || offset >= textNorm.length) return false;
-      const previous = textNorm.charCodeAt(offset - 1);
-      const next = textNorm.charCodeAt(offset);
-      return (
-        previous >= 0xd800 &&
-        previous <= 0xdbff &&
-        next >= 0xdc00 &&
-        next <= 0xdfff
-      );
-    };
     const validOffsets =
-      Number.isInteger(span.start) &&
-      Number.isInteger(span.end) &&
-      span.start >= 0 &&
-      span.start < span.end &&
-      span.end <= textNorm.length &&
-      !splitsSurrogatePair(span.start) &&
-      !splitsSurrogatePair(span.end) &&
-      textNorm.slice(span.start, span.end) === span.textoLiteral;
+      isValidTextSpan(textNorm, span.start, span.end, span.textoLiteral);
 
     if (!validOffsets || ids.has(span.spanId)) {
       invalidCount += 1;
@@ -498,6 +518,8 @@ export function reviewPremarkedSpan(span: PremarkedSpan, textNorm: string): Prem
 /** Input document uploaded by the annotator (or loaded from the example). */
 export interface AnnotationDocument {
   schemaVersion?: string;
+  /** Original lot schema retained when a known legacy document is migrated. */
+  sourceSchemaVersion?: string;
   textProfile?: TextProfile;
   terminology?: TerminologySnapshot;
   producer?: ProducerMetadata;
@@ -967,6 +989,8 @@ export function normalizeLexicalMentions(
       (item.start ?? -1) >= 0 &&
       (item.end ?? 0) > (item.start ?? -1) &&
       (item.end ?? textNorm.length + 1) <= textNorm.length &&
+      isSafeUtf16Boundary(textNorm, item.start ?? -1) &&
+      isSafeUtf16Boundary(textNorm, item.end ?? -1) &&
       textNorm.slice(item.start, item.end) === item.surface &&
       !ids.has(item.mentionId);
     if (!valid) {
@@ -1122,6 +1146,7 @@ export interface SessionEntry {
   platform?: AnnotationPlatform;
   sourceFile?: string;
   schemaVersion?: string;
+  sourceSchemaVersion?: string;
   terminologyVersion?: string | null;
 }
 
@@ -1356,6 +1381,7 @@ export interface AnnotationMeta {
 /** Full output document produced on download. */
 export interface AnnotationOutput {
   schemaVersion: typeof SEMANTIAR_SCHEMA_VERSION;
+  sourceSchemaVersion?: string;
   textProfile: TextProfile;
   terminology: TerminologySnapshot;
   producer: ProducerMetadata;

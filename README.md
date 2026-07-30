@@ -131,8 +131,8 @@ la aparición individual (el contador `X/Y formas decididas`) y luego confirmar
 **Revisión de formas**. Hasta completar ambos pasos, el cierre de la nota queda
 bloqueado y la nota sigue figurando como pendiente.
 
-La salida incorpora `_meta.telemetry` (`SEMANTIAR-TELEMETRY-1.1`) para comparar
-de forma homogénea el flujo Core Blind y el flujo con spans:
+La salida incorpora `_meta.telemetry` (`SEMANTIAR-TELEMETRY-1.1`). La comparación
+entre `web` y `android` se aplica exclusivamente al flujo asistido con spans:
 
 - tiempo activo total y por nota, con pausa por pestaña oculta y umbral de
   inactividad de 120 segundos;
@@ -146,6 +146,8 @@ de forma homogénea el flujo Core Blind y el flujo con spans:
 - el mismo conjunto de métricas separado en `cases[].byPlatform.web` y
   `cases[].byPlatform.android`, de modo que un único JSON pueda acumular y
   comparar tiempos, clics, búsquedas, errores y ediciones de ambas interfaces;
+  Core Blind queda reservado a la página web y al investigador principal, y el
+  APK rechaza esos lotes para evitar mezclarlos con el estudio móvil;
 - `_meta.sessions[]` identifica cada carga y descarga con plataforma, versión de
   esquema, archivo y release terminológico. Los spans manuales y conceptos
   conservan además la plataforma donde fueron creados o seleccionados.

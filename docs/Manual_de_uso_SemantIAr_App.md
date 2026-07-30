@@ -104,6 +104,10 @@ Cada descarga identifica en `_meta.sessions` dónde se cargó o guardó, y
 entre `android` y `web`. Esta información es local y viaja únicamente dentro del
 JSON de avance.
 
+Esta interoperabilidad corresponde a los lotes de anotación asistida con spans.
+Los lotes **Core Blind** son de uso exclusivo del investigador principal en la
+página web y la aplicación Android no permite abrirlos.
+
 ## 6. Privacidad y funcionamiento sin conexión
 
 - No cargue nombres, documentos, direcciones ni otros identificadores de

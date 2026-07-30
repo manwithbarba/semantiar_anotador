@@ -66,7 +66,6 @@ export class TerminologyService {
       isArgentina: false,
     };
     if (!base) {
-      this.applyEdition(intl);
       return of(intl);
     }
     const headers = new HttpHeaders({ Accept: 'application/fhir+json' });
@@ -95,19 +94,10 @@ export class TerminologyService {
                 editionUri: intlVersion ?? INTL_EDITION_URI,
                 version: intlVersion,
               };
-          this.applyEdition(info);
           return info;
         }),
-        catchError(() => {
-          this.applyEdition(intl);
-          return of(intl);
-        })
+        catchError(() => of(intl))
       );
-  }
-
-  private applyEdition(info: EditionInfo): void {
-    this.editionUri = info.editionUri;
-    this.displayLanguage = info.displayLanguage;
   }
 
   /**

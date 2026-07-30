@@ -1,13 +1,28 @@
+import Ajv2020 from 'ajv/dist/2020';
+import addFormats from 'ajv-formats';
+import annotationSchema from '../../../public/semantiar-annotation.schema.json';
 import {
   AnnotationDocument,
   ClinicalCase,
   ConceptAnnotation,
+  isValidTextSpan,
   LexicalMention,
   PremarkedSpan,
   SEMANTIAR_SCHEMA_VERSION,
   SEMANTIAR_TEXT_PROFILE,
   TerminologySnapshot,
 } from './annotation.model';
+
+const KNOWN_LEGACY_SCHEMA_VERSIONS = new Set([
+  '2.0-core-blind',
+  '2.0-spanlayer',
+  '3.0-core-blind+lexical',
+  '3.0-span+lexical',
+]);
+
+const ajv = new Ajv2020({ allErrors: true, strict: false });
+addFormats(ajv);
+const validateInterchangeSchema = ajv.compile(annotationSchema);
 
 export class AnnotationInteropError extends Error {
   constructor(message: string) {
@@ -23,40 +38,6 @@ export interface PreparedAnnotationDocument {
 
 export function canonicalizeAnnotationText(value: string): string {
   return value.replace(/\r\n?/g, '\n').normalize('NFC');
-}
-
-export function isSafeUtf16Boundary(text: string, offset: number): boolean {
-  if (!Number.isInteger(offset) || offset < 0 || offset > text.length) return false;
-  if (offset > 0 && offset < text.length) {
-    const previous = text.charCodeAt(offset - 1);
-    const next = text.charCodeAt(offset);
-    const splitsSurrogatePair =
-      previous >= 0xd800 && previous <= 0xdbff && next >= 0xdc00 && next <= 0xdfff;
-    if (splitsSurrogatePair) return false;
-  }
-  // A boundary must not detach a combining mark from its base character.
-  if (offset < text.length && /^\p{M}$/u.test(String.fromCodePoint(text.codePointAt(offset)!))) {
-    return false;
-  }
-  return true;
-}
-
-export function isValidTextSpan(
-  text: string,
-  start: number,
-  end: number,
-  literal?: string
-): boolean {
-  return (
-    Number.isInteger(start) &&
-    Number.isInteger(end) &&
-    start >= 0 &&
-    start < end &&
-    end <= text.length &&
-    isSafeUtf16Boundary(text, start) &&
-    isSafeUtf16Boundary(text, end) &&
-    (literal === undefined || text.slice(start, end) === literal)
-  );
 }
 
 function canonicalOffset(text: string, offset: number): number {
@@ -196,19 +177,39 @@ function normalizeTerminology(raw: AnnotationDocument): TerminologySnapshot | un
   return undefined;
 }
 
+function assertInterchangeSchema(raw: unknown): void {
+  if (validateInterchangeSchema(raw)) return;
+  const details = (validateInterchangeSchema.errors ?? [])
+    .slice(0, 4)
+    .map((error) => `${error.instancePath || '/'} ${error.message ?? 'es inválido'}`)
+    .join('; ');
+  throw new AnnotationInteropError(
+    `El JSON declara el contrato SemantIAr ${SEMANTIAR_SCHEMA_VERSION}, pero no lo cumple: ${details}.`
+  );
+}
+
 export function prepareAnnotationDocument(raw: unknown): PreparedAnnotationDocument {
   if (!raw || typeof raw !== 'object') {
     throw new AnnotationInteropError('El JSON debe contener un objeto en la raíz.');
   }
   const input = raw as AnnotationDocument;
   const warnings: string[] = [];
+  let strictInterchange = false;
 
-  if (input.schemaVersion) {
+  let sourceSchemaVersion = input.sourceSchemaVersion;
+  if (input.schemaVersion !== undefined) {
     if (typeof input.schemaVersion !== 'string') {
       throw new AnnotationInteropError('"schemaVersion" debe ser una cadena de texto.');
     }
-    const major = Number(input.schemaVersion.split('.')[0]);
-    if (!Number.isInteger(major) || major !== 1) {
+    if (input.schemaVersion === SEMANTIAR_SCHEMA_VERSION) {
+      assertInterchangeSchema(raw);
+      strictInterchange = true;
+    } else if (KNOWN_LEGACY_SCHEMA_VERSIONS.has(input.schemaVersion)) {
+      sourceSchemaVersion = input.schemaVersion;
+      warnings.push(
+        `Lote ${input.schemaVersion}: se migró al contrato SemantIAr ${SEMANTIAR_SCHEMA_VERSION}.`
+      );
+    } else {
       throw new AnnotationInteropError(
         `La versión de esquema “${input.schemaVersion}” no es compatible con esta aplicación.`
       );
@@ -263,7 +264,8 @@ export function prepareAnnotationDocument(raw: unknown): PreparedAnnotationDocum
   return {
     document: {
       ...input,
-      schemaVersion: SEMANTIAR_SCHEMA_VERSION,
+      schemaVersion: strictInterchange ? SEMANTIAR_SCHEMA_VERSION : undefined,
+      sourceSchemaVersion,
       textProfile: { ...SEMANTIAR_TEXT_PROFILE },
       terminology: normalizeTerminology(input),
       cases,

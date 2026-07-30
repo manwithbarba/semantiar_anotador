@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   AnnotationInteropError,
-  isSafeUtf16Boundary,
   prepareAnnotationDocument,
 } from './annotation-interop';
+import { isSafeUtf16Boundary, normalizeLexicalMentions } from './annotation.model';
 
 describe('SemantIAr annotation interoperability', () => {
   it('migrates CRLF and NFD text while preserving exact UTF-16 span offsets', () => {
@@ -54,7 +54,7 @@ describe('SemantIAr annotation interoperability', () => {
       migrated.textNorm?.slice(migrated.spans![0].start, migrated.spans![0].end)
     ).toBe(migrated.spans?.[0].textoLiteral);
     expect(migrated.concepts?.[0].sctid).toBe('222980061000013107');
-    expect(prepared.document.schemaVersion).toBe('1.0.0');
+    expect(prepared.document.schemaVersion).toBeUndefined();
     expect(prepared.document.textProfile?.offsetUnit).toBe('utf16-code-unit');
   });
 
@@ -83,7 +83,32 @@ describe('SemantIAr annotation interoperability', () => {
         },
         cases: [{ id: 'OFFSET-001', text: 'Dolor' }],
       })
-    ).toThrow(/offsets incompatible/);
+    ).toThrow(/no lo cumple/);
+  });
+
+  it('migrates every known legacy lot schema without requiring regenerated JSON', () => {
+    for (const schemaVersion of [
+      '2.0-core-blind',
+      '2.0-spanlayer',
+      '3.0-core-blind+lexical',
+      '3.0-span+lexical',
+    ]) {
+      const prepared = prepareAnnotationDocument({
+        schemaVersion,
+        cases: [{ id: `LEGACY-${schemaVersion}`, text: 'Paciente estable.' }],
+      });
+      expect(prepared.document.schemaVersion).toBeUndefined();
+      expect(prepared.document.sourceSchemaVersion).toBe(schemaVersion);
+    }
+  });
+
+  it('rejects a malformed document that claims the strict interchange schema', () => {
+    expect(() =>
+      prepareAnnotationDocument({
+        schemaVersion: '1.0.0',
+        cases: [{ id: 'FALSE-CONTRACT-001', text: 'Dolor' }],
+      })
+    ).toThrow(/no lo cumple/);
   });
 
   it('does not allow a touch selection to split an emoji surrogate pair', () => {
@@ -114,10 +139,48 @@ describe('SemantIAr annotation interoperability', () => {
         },
       ],
     }).document;
-    const second = prepareAnnotationDocument(first).document;
+    const second = prepareAnnotationDocument({
+      ...first,
+      schemaVersion: '1.0.0',
+      textProfile: {
+        normalization: 'NFC',
+        lineEndings: 'LF',
+        offsetUnit: 'utf16-code-unit',
+      },
+      terminology: {
+        server: 'https://example.test/fhir',
+        editionUri: 'http://snomed.info/sct',
+        version: null,
+        displayLanguage: 'es',
+        capturedAt: '2026-07-30T00:00:00.000Z',
+      },
+      producer: {
+        app: 'SemantIAr',
+        build: 'test',
+        platform: 'web',
+      },
+    }).document;
 
     expect(second.cases[0].textNorm).toBe(first.cases[0].textNorm);
     expect(second.cases[0].spans).toEqual(first.cases[0].spans);
     expect(second.cases[0].concepts?.[0].sctid).toBe('386661006');
+  });
+
+  it('rejects imported lexical offsets that start on a combining mark', () => {
+    const textNorm = 'Cafe\u0301';
+    const result = normalizeLexicalMentions(
+      [
+        {
+          mentionId: 'lex-1',
+          start: 4,
+          end: 5,
+          surface: '\u0301',
+          origin: 'human',
+          candidateSenseIds: [],
+        },
+      ],
+      textNorm
+    );
+    expect(result).toEqual({ mentions: [], invalidCount: 1 });
   });
 });
