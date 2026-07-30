@@ -773,6 +773,83 @@
   color: #2f6fae;
   font-size: 18px;
 }
+.quick-lexical-add {
+  margin: 0 0 14px;
+  border: 1px solid #d8ccef;
+  border-radius: 10px;
+  background: #fbf9ff;
+  padding: 12px;
+}
+.quick-lexical-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: #4a356d;
+}
+.quick-lexical-head > mat-icon {
+  color: #6941a5;
+}
+.quick-lexical-head strong,
+.quick-lexical-head span {
+  display: block;
+}
+.quick-lexical-head strong {
+  font-size: 13px;
+}
+.quick-lexical-head span {
+  margin-top: 2px;
+  color: #665b79;
+  font-size: 12px;
+}
+.quick-lexical-input {
+  width: 100%;
+}
+.quick-lexical-candidates {
+  display: grid;
+  gap: 7px;
+  margin-top: -4px;
+}
+.quick-lexical-candidates > p {
+  margin: 0;
+  color: #665b79;
+  font-size: 12px;
+}
+.quick-lexical-candidate {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #cab9e8;
+  border-radius: 8px;
+  background: #fff;
+  color: #403051;
+  cursor: pointer;
+  padding: 8px 10px;
+  text-align: left;
+}
+.quick-lexical-candidate:hover,
+.quick-lexical-candidate:focus-visible {
+  border-color: #6941a5;
+  background: #f4efff;
+  outline: none;
+}
+.quick-lexical-candidate strong {
+  color: #51357c;
+  font-size: 13px;
+}
+.quick-lexical-candidate span {
+  overflow: hidden;
+  color: #665b79;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.quick-lexical-candidate mat-icon {
+  color: #6941a5;
+}
 .premarked-span {
   border: 0;
   border-bottom: 3px solid #0f766e;
@@ -1295,6 +1372,16 @@
   .selection-help {
     margin: 0 2px 12px;
     font-size: 12px;
+  }
+  .quick-lexical-add {
+    padding: 12px;
+  }
+  .quick-lexical-input {
+    --mat-form-field-container-height: 52px;
+  }
+  .quick-lexical-candidate {
+    min-height: 50px;
+    padding: 10px;
   }
   .human-span-draft {
     position: sticky;

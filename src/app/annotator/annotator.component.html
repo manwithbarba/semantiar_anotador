@@ -254,6 +254,43 @@
           Para agregar una mención: mantené pulsado sobre el texto, arrastrá los controles de selección y elegí
           <strong>“Incorporar mención omitida”</strong>.
         </p>
+        @if (lexicalLayerEnabled()) {
+          <section class="quick-lexical-add" aria-label="Agregar forma breve sin seleccionar texto">
+            <div class="quick-lexical-head">
+              <mat-icon aria-hidden="true">short_text</mat-icon>
+              <div>
+                <strong>Agregar forma breve sin arrastrar</strong>
+                <span>Escribí la sigla y tocá la ocurrencia exacta.</span>
+              </div>
+            </div>
+            <mat-form-field appearance="outline" class="quick-lexical-input">
+              <mat-label>Forma breve en esta nota</mat-label>
+              <input
+                matInput
+                [ngModel]="lexicalQuickValue(ci)"
+                (ngModelChange)="setLexicalQuickValue(ci, $event)"
+                placeholder="Ej.: FC"
+                autocomplete="off"
+                autocapitalize="characters" />
+            </mat-form-field>
+            @if (lexicalQuickValue(ci).trim()) {
+              <div class="quick-lexical-candidates" aria-live="polite">
+                @for (candidate of lexicalQuickCandidates(ci); track candidate.start) {
+                  <button
+                    type="button"
+                    class="quick-lexical-candidate"
+                    (click)="addHumanLexicalMentionAt(ci, candidate.start, candidate.end)">
+                    <strong>“{{ candidate.surface }}”</strong>
+                    <span>…{{ candidate.context }}…</span>
+                    <mat-icon aria-hidden="true">add_circle</mat-icon>
+                  </button>
+                } @empty {
+                  <p>No hay coincidencias exactas en esta nota.</p>
+                }
+              </div>
+            }
+          </section>
+        }
 
           @if (caseItem.spans.length > 1) {
             <p class="overlap-help">

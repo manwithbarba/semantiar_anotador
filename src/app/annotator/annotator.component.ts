@@ -157,6 +157,8 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   humanSpanDraft = signal<{ caseIndex: number; start: number; end: number; textoLiteral: string } | null>(
     null
   );
+  /** Draft text used by the one-tap lexical mention flow on mobile. */
+  lexicalQuickEntry = signal<Record<number, string>>({});
 
   /** Session metadata (upload/download audit trail). */
   sessionMeta = signal<AnnotationMeta | null>(null);
@@ -630,6 +632,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.caseSearch.set('');
     this.selectedSpan.set(null);
     this.humanSpanDraft.set(null);
+    this.lexicalQuickEntry.set({});
 
     // --- Session metadata: preserve existing or initialise ---
     const now = new Date().toISOString();
@@ -716,6 +719,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.lexicalInventory.set(undefined);
     this.selectedSpan.set(null);
     this.humanSpanDraft.set(null);
+    this.lexicalQuickEntry.set({});
     this.activeCaseIndex.set(0);
     this.caseSearch.set('');
     this.sessionMeta.set(null);
@@ -941,6 +945,62 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     });
     this.humanSpanDraft.set(null);
     window.getSelection()?.removeAllRanges();
+  }
+
+  lexicalQuickValue(caseIdx: number): string {
+    return this.lexicalQuickEntry()[caseIdx] ?? '';
+  }
+
+  setLexicalQuickValue(caseIdx: number, value: string): void {
+    this.lexicalQuickEntry.update((entries) => ({ ...entries, [caseIdx]: value }));
+  }
+
+  /** Exact, offset-safe occurrences for a typed short form. */
+  lexicalQuickCandidates(caseIdx: number): Array<{ start: number; end: number; surface: string; context: string }> {
+    const caseItem = this.cases()[caseIdx];
+    const surface = this.lexicalQuickValue(caseIdx).trim();
+    if (!caseItem || !surface) return [];
+
+    const candidates: Array<{ start: number; end: number; surface: string; context: string }> = [];
+    let start = 0;
+    while (start < caseItem.textNorm.length) {
+      const matchStart = caseItem.textNorm.indexOf(surface, start);
+      if (matchStart < 0) break;
+      const end = matchStart + surface.length;
+      candidates.push({
+        start: matchStart,
+        end,
+        surface: caseItem.textNorm.slice(matchStart, end),
+        context: caseItem.textNorm.slice(Math.max(0, matchStart - 18), Math.min(caseItem.textNorm.length, end + 24)),
+      });
+      start = end;
+    }
+    return candidates;
+  }
+
+  addHumanLexicalMentionAt(caseIdx: number, start: number, end: number): void {
+    const caseItem = this.cases()[caseIdx];
+    if (!caseItem || start < 0 || end <= start || end > caseItem.textNorm.length) return;
+    const duplicate = (caseItem.lexicalMentions ?? []).some(
+      (mention) => mention.start === start && mention.end === end
+    );
+    if (duplicate) {
+      this.snackBar.open('Esa forma breve ya está incorporada en la revisión.', 'OK', { duration: 3000 });
+      return;
+    }
+
+    const surface = caseItem.textNorm.slice(start, end);
+    this.mutateCase(caseIdx, (targetCase) => {
+      targetCase.lexicalMentions ??= [];
+      targetCase.lexicalMentions.push(
+        newHumanLexicalMention(this.nextHumanLexicalMentionId(targetCase), start, end, surface)
+      );
+      targetCase.lexicalMentions.sort((left, right) => left.start - right.start || left.end - right.end);
+      this.reopenLexicalReview(targetCase);
+    });
+    this.snackBar.open(`Forma breve “${surface}” incorporada. Completá su decisión abajo.`, 'OK', {
+      duration: 3000,
+    });
   }
 
   lexicalSenseOptions(mention: LexicalMention): LexicalSenseOption[] {
