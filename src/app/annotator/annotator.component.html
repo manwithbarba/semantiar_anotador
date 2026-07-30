@@ -634,7 +634,8 @@
                     <mat-form-field appearance="outline" subscriptSizing="dynamic">
                       <mat-label>¿Cómo está escrita?</mat-label>
                       <mat-select
-                        panelWidth="420px"
+                        [panelWidth]="lexicalPanelWidth()"
+                        panelClass="semantiar-lexical-select-panel"
                         [attr.aria-describedby]="'lexical-form-help-' + ci + '-' + mention.mentionId"
                         [ngModel]="mention.annotation.formType"
                         (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'formType', $event)">
@@ -661,7 +662,8 @@
                     <mat-form-field appearance="outline" subscriptSizing="dynamic">
                       <mat-label>¿Podés saber qué significa aquí?</mat-label>
                       <mat-select
-                        panelWidth="420px"
+                        [panelWidth]="lexicalPanelWidth()"
+                        panelClass="semantiar-lexical-select-panel"
                         [attr.aria-describedby]="'lexical-decision-help-' + ci + '-' + mention.mentionId"
                         [ngModel]="mention.annotation.decisionStatus"
                         (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'decisionStatus', $event)">
@@ -691,7 +693,8 @@
                     <mat-form-field appearance="outline" subscriptSizing="dynamic">
                       <mat-label>¿Qué papel cumple en esta parte de la nota?</mat-label>
                       <mat-select
-                        panelWidth="420px"
+                        [panelWidth]="lexicalPanelWidth()"
+                        panelClass="semantiar-lexical-select-panel"
                         [attr.aria-describedby]="'lexical-function-help-' + ci + '-' + mention.mentionId"
                         [ngModel]="mention.annotation.function"
                         (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'function', $event)">
@@ -728,7 +731,8 @@
                         <mat-label>¿Qué significa aquí?</mat-label>
                         @if (lexicalSenseOptions(mention).length) {
                           <mat-select
-                            panelWidth="420px"
+                            [panelWidth]="lexicalPanelWidth()"
+                            panelClass="semantiar-lexical-select-panel"
                             [ngModel]="mention.annotation.senseId"
                             (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'senseId', $event)">
                             <mat-select-trigger>

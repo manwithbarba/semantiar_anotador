@@ -277,6 +277,15 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.flushPendingActiveTime();
   }
 
+  /**
+   * Long lexical option cards need room on desktop, but a fixed 420px overlay
+   * can be positioned beyond the viewport on a phone. On compact screens the
+   * Material panel follows the width of its trigger instead.
+   */
+  lexicalPanelWidth(): string {
+    return window.innerWidth <= 720 ? 'auto' : '420px';
+  }
+
   @HostListener('document:pointerdown', ['$event'])
   @HostListener('document:keydown', ['$event'])
   @HostListener('window:scroll', ['$event'])
