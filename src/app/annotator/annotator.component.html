@@ -1,5 +1,5 @@
-<mat-toolbar color="primary" class="app-toolbar">
-  <span class="app-title">SEMANTIAR · Anotador SNOMED CT</span>
+<mat-toolbar color="primary" class="app-toolbar" [class.loaded-toolbar]="loaded()">
+  <span class="app-title">SemantIAr App</span>
   <span class="spacer"></span>
 
   @if (loaded()) {
@@ -23,29 +23,30 @@
   }
 
   <input #fileInput type="file" accept="application/json,.json" hidden (change)="onFileSelected($event)" />
-  <button mat-stroked-button (click)="fileInput.click()">
-    <mat-icon>upload_file</mat-icon> Cargar JSON
+  <button mat-stroked-button class="load-btn" (click)="fileInput.click()" aria-label="Cargar JSON">
+    <mat-icon>upload_file</mat-icon> <span class="toolbar-label">Cargar JSON</span>
   </button>
   @if (loaded() && !complete()) {
-    <button mat-stroked-button color="accent" (click)="scrollToFirstPending()"
+    <button mat-stroked-button color="accent" class="pending-btn" (click)="scrollToFirstPending()"
             matTooltip="Ir al primer caso sin anotar">
-      <mat-icon>arrow_downward</mat-icon> {{ pendingButtonLabel() }}
+      <mat-icon>arrow_downward</mat-icon> <span class="toolbar-label">{{ pendingButtonLabel() }}</span>
     </button>
   }
   @if (loaded()) {
-    <button mat-icon-button (click)="openStats()"
+    <button mat-icon-button class="stats-btn" (click)="openStats()"
             matTooltip="Ver estadísticas de sesiones">
       <mat-icon>bar_chart</mat-icon>
     </button>
-    <button mat-stroked-button color="warn" (click)="clearAll()"
+    <button mat-stroked-button color="warn" class="clear-btn" (click)="clearAll()"
             matTooltip="Limpiar todo y empezar de nuevo">
-      <mat-icon>restart_alt</mat-icon> Limpiar
+      <mat-icon>restart_alt</mat-icon> <span class="toolbar-label">Limpiar</span>
     </button>
   }
   <button mat-flat-button color="accent" class="download-btn"
           [class.complete]="complete()" [disabled]="!loaded()" (click)="download()">
     <mat-icon>{{ complete() ? 'task_alt' : 'download' }}</mat-icon>
-    {{ downloadButtonLabel() }}
+    <span class="toolbar-label toolbar-label-wide">{{ downloadButtonLabel() }}</span>
+    <span class="toolbar-label toolbar-label-compact">Guardar avance</span>
   </button>
   <button mat-icon-button class="settings-btn" (click)="openSettings()"
           matTooltip="Configuración de terminología">
@@ -53,13 +54,24 @@
   </button>
 </mat-toolbar>
 
+<aside class="tester-notice" role="note" aria-label="Versión tester para uso académico">
+  <mat-icon aria-hidden="true">science</mat-icon>
+  <div>
+    <strong>Versión tester pública · uso académico</strong>
+    <span>
+      Aplicación en evaluación y actualización continua. No constituye software médico ni debe
+      utilizarse para atención clínica. No cargues información identificatoria de pacientes.
+    </span>
+  </div>
+</aside>
+
 <div class="content">
   @if (!loaded()) {
     <div class="home">
       <div class="home-card">
         <div class="home-hero">
           <mat-icon class="home-logo">local_hospital</mat-icon>
-          <h1>Anotador SNOMED CT</h1>
+          <h1>SemantIAr App</h1>
           <p class="home-sub">Herramienta de anotación clínica del proyecto SEMANTIAR</p>
         </div>
 
@@ -138,12 +150,28 @@
         <span class="json-flow-step" [class.done]="!dirty() && totalDownloads() > 0" [class.active]="dirty()"><b>4</b> Descargar JSON</span>
       </div>
     </section>
-    <section class="annotation-protocol" role="note" aria-labelledby="annotation-protocol-title">
-      <div class="annotation-protocol-icon" aria-hidden="true">
-        <mat-icon>fact_check</mat-icon>
+    <section class="annotation-protocol" [class.expanded]="protocolExpanded()" aria-labelledby="annotation-protocol-title">
+      <div class="annotation-protocol-header">
+        <button type="button" class="annotation-protocol-toggle" (click)="toggleProtocol()"
+                [attr.aria-expanded]="protocolExpanded()">
+          <span class="annotation-protocol-icon" aria-hidden="true"><mat-icon>fact_check</mat-icon></span>
+          <span>
+            <h2 id="annotation-protocol-title">Revisión exhaustiva de menciones clínicas</h2>
+            <small>{{ protocolExpanded() ? 'Ocultar instrucciones' : 'Ver instrucciones' }}</small>
+          </span>
+          <mat-icon class="annotation-protocol-chevron" aria-hidden="true">
+            {{ protocolExpanded() ? 'expand_less' : 'expand_more' }}
+          </mat-icon>
+        </button>
+        <a class="annotation-manual-link"
+           href="https://drive.google.com/drive/folders/175_jJqFsT9a3ENm5LaV6FGZGv0P_wmkQ?usp=sharing"
+           target="_blank" rel="noopener noreferrer">
+          <mat-icon aria-hidden="true">menu_book</mat-icon>
+          <span>Manuales</span>
+        </a>
       </div>
-      <div>
-        <h2 id="annotation-protocol-title">Revisión exhaustiva de menciones clínicas</h2>
+      @if (protocolExpanded()) {
+      <div class="annotation-protocol-copy">
         @if (coreBlindMode()) {
           <p>
             <strong>Este lote pertenece al conjunto de referencia Core Blind y no contiene preanotaciones.</strong>
@@ -176,12 +204,69 @@
           </p>
         }
       </div>
+      }
+    </section>
+  }
+
+  @if (activeCase(); as currentCase) {
+    <section class="case-flow-navigation" aria-label="Navegación entre notas">
+      <div class="case-pager">
+        <button mat-icon-button
+                [disabled]="activeCasePosition() <= 0"
+                (click)="goToAdjacentCase(-1)"
+                aria-label="Nota anterior">
+          <mat-icon>chevron_left</mat-icon>
+        </button>
+        <label class="case-pager-copy">
+          <span>Ir a una nota · {{ activeCasePosition() + 1 }} de {{ filteredCaseEntries().length }}</span>
+          <select aria-label="Elegir nota"
+                  [ngModel]="activeCaseIndex()"
+                  (ngModelChange)="selectCaseAndScroll($event)">
+            @for (entry of filteredCaseEntries(); track entry.caseItem.id; let position = $index) {
+              <option [ngValue]="entry.index">
+                {{ position + 1 }} · {{ entry.caseItem.id }}{{ isCaseFinalized(entry.caseItem) ? ' · Revisada' : '' }}
+              </option>
+            }
+          </select>
+          <small>{{ isCaseFinalized(currentCase) ? 'Revisada' : 'En revisión' }}</small>
+        </label>
+        <button mat-icon-button
+                [disabled]="activeCasePosition() >= filteredCaseEntries().length - 1"
+                (click)="goToAdjacentCase(1)"
+                aria-label="Nota siguiente">
+          <mat-icon>chevron_right</mat-icon>
+        </button>
+      </div>
+      <div class="case-stage-group">
+      <span class="case-stage-caption">Ir a una sección</span>
+      <nav class="case-stage-navigation" aria-label="Vínculos a las secciones de la nota activa">
+        <a [href]="'#case-source-' + activeCaseIndex()"
+           (click)="$event.preventDefault(); scrollCaseSection(activeCaseIndex(), 'source')">
+          <span>1</span> Nota
+        </a>
+        @if (lexicalLayerEnabled()) {
+          <a [href]="'#case-lexical-' + activeCaseIndex()"
+             (click)="$event.preventDefault(); scrollCaseSection(activeCaseIndex(), 'lexical')">
+            <span>2</span> Formas
+          </a>
+        }
+        <a [href]="'#case-concepts-' + activeCaseIndex()"
+           (click)="$event.preventDefault(); scrollCaseSection(activeCaseIndex(), 'concepts')">
+          <span>{{ lexicalLayerEnabled() ? 3 : 2 }}</span> Conceptos
+        </a>
+        <a [href]="'#case-finalize-' + activeCaseIndex()"
+           (click)="$event.preventDefault(); scrollCaseSection(activeCaseIndex(), 'finalize')">
+          <span>{{ lexicalLayerEnabled() ? 4 : 3 }}</span> Cierre
+        </a>
+      </nav>
+      </div>
     </section>
   }
 
   @for (caseItem of cases(); track caseItem.id; let ci = $index) {
     <mat-card class="case-card"
               [attr.data-case-index]="ci"
+              [class.case-hidden]="ci !== activeCaseIndex()"
               (pointerenter)="activateCase(ci)"
               (focusin)="activateCase(ci)"
               [class.case-annotated]="isCaseFinalized(caseItem)"
@@ -209,14 +294,48 @@
         </mat-card-title>
       </mat-card-header>
       <mat-card-content>
+        <section class="case-guidance" aria-label="Orientaciones para esta nota">
+          <details>
+            <summary>
+              <mat-icon aria-hidden="true">fact_check</mat-icon>
+              Antes de la nota: revisión de menciones clínicas
+            </summary>
+            <div>
+              @if (coreBlindMode()) {
+                Identificá desde cero procedimientos, fármacos y hallazgos clínicos. Seleccioná la
+                expresión exacta en la nota para incorporarla y luego definí concepto y contexto.
+              } @else {
+                Los resaltados son sólo candidatos: aceptalos, ajustalos o descartalos. Revisá toda la
+                nota e incorporá las menciones clínicamente relevantes que no estén señaladas.
+              }
+            </div>
+          </details>
+          @if (lexicalLayerEnabled()) {
+            <details>
+              <summary>
+                <mat-icon aria-hidden="true">short_text</mat-icon>
+                Antes de la nota: formas breves
+              </summary>
+              <div>
+                Marcá cada sigla, abreviatura o acrónimo según su contexto local. Para agregar una,
+                escribila después de la nota y tocá la ocurrencia exacta; no necesitás arrastrar texto.
+              </div>
+            </details>
+          }
+        </section>
         <div class="case-workspace">
-          <div class="case-source">
+          <div class="case-source" [attr.id]="'case-source-' + ci">
             <p class="case-source-label">Nota clínica · queda visible durante la revisión</p>
         <div
           #caseText
           class="case-text"
           [class.has-spans]="caseItem.spans.length"
-          (mouseup)="captureTextSelection(ci, caseText)">
+          tabindex="0"
+          aria-describedby="selection-help-{{ ci }}"
+          (mouseup)="queueTextSelection(ci, caseText)"
+          (pointerup)="queueTextSelection(ci, caseText)"
+          (touchend)="queueTextSelection(ci, caseText)"
+          (keyup)="queueTextSelection(ci, caseText)">
           @for (segment of textSegments(caseItem); track $index; let si = $index) {
             @if (segment.kind === 'text') {
               <span [attr.data-source-start]="textSegmentStart(caseItem, si)">{{ segment.value }}</span>
@@ -244,7 +363,11 @@
             }
           }
         </div>
-
+        <p class="selection-help" id="selection-help-{{ ci }}">
+          <mat-icon aria-hidden="true">gesture</mat-icon>
+          Para agregar una mención: mantené pulsado sobre el texto, arrastrá los controles de selección y elegí
+          <strong>“Incorporar mención omitida”</strong>.
+        </p>
           @if (caseItem.spans.length > 1) {
             <p class="overlap-help">
               Si un resaltado tiene un número, hay varias menciones superpuestas: elegí cada una para revisarla.
@@ -301,6 +424,41 @@
         }
 
         @if (lexicalLayerEnabled()) {
+          <section class="quick-lexical-add" [attr.id]="'case-lexical-' + ci" aria-label="Agregar forma breve sin seleccionar texto">
+            <div class="quick-lexical-head">
+              <mat-icon aria-hidden="true">short_text</mat-icon>
+              <div>
+                <strong>Agregar forma breve</strong>
+                <span>Escribí la sigla y tocá la ocurrencia exacta.</span>
+              </div>
+            </div>
+            <mat-form-field appearance="outline" class="quick-lexical-input">
+              <mat-label>Forma breve en esta nota</mat-label>
+              <input
+                matInput
+                [ngModel]="lexicalQuickValue(ci)"
+                (ngModelChange)="setLexicalQuickValue(ci, $event)"
+                placeholder="Ej.: FC"
+                autocomplete="off"
+                autocapitalize="characters" />
+            </mat-form-field>
+            @if (lexicalQuickValue(ci).trim()) {
+              <div class="quick-lexical-candidates" aria-live="polite">
+                @for (candidate of lexicalQuickCandidates(ci); track candidate.start) {
+                  <button
+                    type="button"
+                    class="quick-lexical-candidate"
+                    (click)="addHumanLexicalMentionAt(ci, candidate.start, candidate.end)">
+                    <strong>“{{ candidate.surface }}”</strong>
+                    <span>…{{ candidate.context }}…</span>
+                    <mat-icon aria-hidden="true">add_circle</mat-icon>
+                  </button>
+                } @empty {
+                  <p>No hay coincidencias exactas en esta nota.</p>
+                }
+              </div>
+            }
+          </section>
           <section class="lexical-layer" aria-label="Revisión de formas breves">
             <div class="lexical-layer-head">
               <div>
@@ -394,25 +552,29 @@
 
             <div class="lexical-mentions">
               @for (mention of caseItem.lexicalMentions ?? []; track mention.mentionId) {
-                <article
+                <details
                   class="lexical-card"
+                  [attr.name]="'lexical-accordion-' + ci"
                   [class.lexical-card-complete]="isLexicalMentionComplete(mention)"
                   [attr.aria-label]="'Forma breve ' + mention.surface">
-                  <div class="lexical-card-head">
+                  <summary class="lexical-card-head">
                     <div>
                       <strong>“{{ mention.surface }}”</strong>
-                      <span>{{ lexicalOriginLabel(mention.origin) }}</span>
+                      <span>
+                        {{ isLexicalMentionComplete(mention) ? 'Decidida' : 'Pendiente' }} ·
+                        {{ lexicalOriginLabel(mention.origin) }}
+                      </span>
                     </div>
                     @if (mention.origin === 'human') {
                       <button
                         mat-icon-button
                         color="warn"
                         matTooltip="Quitar aparición agregada manualmente"
-                        (click)="removeHumanLexicalMention(ci, mention.mentionId)">
+                        (click)="$event.stopPropagation(); removeHumanLexicalMention(ci, mention.mentionId)">
                         <mat-icon>close</mat-icon>
                       </button>
                     }
-                  </div>
+                  </summary>
 
                   @if (lexicalSenseOptions(mention).length) {
                     <div class="lexical-candidates">
@@ -636,7 +798,7 @@
                       </mat-hint>
                     </mat-form-field>
                   </div>
-                </article>
+                </details>
               }
             </div>
 
@@ -659,7 +821,7 @@
           </section>
         }
 
-        <section class="concepts-section" aria-label="Conceptos clínicos SNOMED CT">
+        <section class="concepts-section" [attr.id]="'case-concepts-' + ci" aria-label="Conceptos clínicos SNOMED CT">
           <div class="concepts-section-head">
             <div>
               <span class="concepts-kicker">Información clínica</span>
@@ -675,20 +837,27 @@
           @for (entry of conceptsInDescendingOrder(caseItem); track entry.index) {
             @let concept = entry.concept;
             @let cj = entry.index;
-            <div class="concept-block">
-              <div class="concept-head">
+            <details class="concept-block"
+                     open
+                     [attr.name]="'concept-accordion-' + ci"
+                     [attr.data-concept-index]="cj">
+              <summary class="concept-head">
                 <div class="concept-title">
                   <span class="concept-num">C{{ concept.sequence ?? cj + 1 }}</span>
                   <div>
-                    <strong>Concepto clínico</strong>
-                    <span>Jerarquía → búsqueda SNOMED CT → literal → contexto</span>
+                    <strong>{{ concept.term || 'Concepto clínico sin codificar' }}</strong>
+                    <span>
+                      {{ concept.cat || 'Sin jerarquía' }} ·
+                      {{ concept.sctid ? 'Codificado' : 'Pendiente' }}
+                    </span>
                   </div>
                 </div>
                 <button mat-icon-button color="warn" class="remove-btn"
-                        matTooltip="Quitar concepto" (click)="removeConcept(ci, cj)">
+                        matTooltip="Quitar concepto"
+                        (click)="$event.stopPropagation(); removeConcept(ci, cj)">
                   <mat-icon>close</mat-icon>
                 </button>
-              </div>
+              </summary>
 
               <div class="concept-core-fields">
                 <!-- Category -->
@@ -773,12 +942,12 @@
                   </mat-select>
                 </mat-form-field>
               </div>
-            </div>
+            </details>
           }
         </div>
         </section>
 
-        <div class="case-finalization" [class.finalized]="isCaseFinalized(caseItem)">
+        <div class="case-finalization" [attr.id]="'case-finalize-' + ci" [class.finalized]="isCaseFinalized(caseItem)">
           @if (isCaseFinalized(caseItem)) {
             <div class="case-finalization-copy">
               <mat-icon>verified</mat-icon>
@@ -828,6 +997,25 @@
         </div>
       </mat-card-content>
     </mat-card>
+  }
+  @if (loaded()) {
+    <section class="mobile-utility-actions" aria-label="Acciones adicionales">
+      <span class="mobile-utility-title">Más acciones</span>
+      @if (!complete()) {
+        <button mat-stroked-button color="accent" (click)="scrollToFirstPending()">
+          <mat-icon>arrow_downward</mat-icon> {{ pendingButtonLabel() }}
+        </button>
+      }
+      <button mat-stroked-button (click)="openStats()">
+        <mat-icon>bar_chart</mat-icon> Estadísticas de sesión
+      </button>
+      <button mat-stroked-button (click)="openSettings()">
+        <mat-icon>settings</mat-icon> Configuración
+      </button>
+      <button mat-stroked-button color="warn" (click)="clearAll()">
+        <mat-icon>restart_alt</mat-icon> Limpiar y cargar otro JSON
+      </button>
+    </section>
   }
 </div>
 

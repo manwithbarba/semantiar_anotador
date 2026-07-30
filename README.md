@@ -6,6 +6,11 @@ usando el buscador embebido (`autocomplete-binding`) restringido por jerarquía.
 Pensada para el flujo de calibración de anotadores del proyecto SEMANTIAR
 (corpus clínico en español rioplatense).
 
+> **Versión tester pública para uso exclusivamente académico y de investigación.**
+> La aplicación está en evaluación y recibirá actualizaciones. No constituye
+> software médico, no debe utilizarse para atención clínica y no deben cargarse
+> datos identificatorios de pacientes.
+
 > 📄 Descripción técnica detallada (integración con el servidor de terminología,
 > autocompletado, búsqueda multi-prefijo, FHIR API): [`docs/IMPLEMENTACION.md`](docs/IMPLEMENTACION.md).
 
@@ -179,6 +184,18 @@ npm start                 # http://localhost:4200 (o 4270 vía launch.json)
 npm run build             # build de desarrollo
 npm run build:pages       # build de producción para GitHub Pages (base-href ./ + .nojekyll)
 ```
+
+## SemantIAr Mobile · PWA (Sprint 1)
+
+La aplicación puede instalarse como PWA desde Chrome en Android: abrí la página,
+elegí **Instalar aplicación** o **Agregar a pantalla principal** y aceptá la
+instalación. El Service Worker se registra únicamente en el build de producción
+y conserva el shell de la aplicación para volver a abrirla sin red.
+
+Esta primera fase no persiste anotaciones de pacientes fuera de la pestaña ni
+sincroniza datos automáticamente: el avance sigue resguardándose mediante la
+descarga del JSON. IndexedDB, reanudación y sincronización diferida pertenecen a
+la Fase 2.
 
 ## Release congelada para las celdas
 

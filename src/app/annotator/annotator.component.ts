@@ -114,6 +114,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   private timingCaseIndex: number | null = null;
   private lastActivityMarkMs = 0;
   private timingActive = false;
+  private textSelectionTimer: number | undefined;
   private pendingActiveMs = new Map<number, number>();
 
   @ViewChild('confirmClear') confirmClearTpl!: TemplateRef<unknown>;
@@ -156,6 +157,9 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   humanSpanDraft = signal<{ caseIndex: number; start: number; end: number; textoLiteral: string } | null>(
     null
   );
+  /** Draft text used by the one-tap lexical mention flow on mobile. */
+  lexicalQuickEntry = signal<Record<number, string>>({});
+  protocolExpanded = signal<boolean>(false);
 
   /** Session metadata (upload/download audit trail). */
   sessionMeta = signal<AnnotationMeta | null>(null);
@@ -247,6 +251,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    if (this.textSelectionTimer !== undefined) window.clearTimeout(this.textSelectionTimer);
     this.flushActiveTime();
     this.flushPendingActiveTime();
   }
@@ -526,8 +531,11 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     const idx = this.firstPendingIdx();
     if (idx < 0) return;
     this.selectCase(idx);
-    const el = document.querySelector(`[data-case-index="${idx}"]`) as HTMLElement | null;
-    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    this.scrollActiveCaseIntoView(idx);
+  }
+
+  toggleProtocol(): void {
+    this.protocolExpanded.update((expanded) => !expanded);
   }
 
   // ---- Loading ----
@@ -628,6 +636,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.caseSearch.set('');
     this.selectedSpan.set(null);
     this.humanSpanDraft.set(null);
+    this.lexicalQuickEntry.set({});
 
     // --- Session metadata: preserve existing or initialise ---
     const now = new Date().toISOString();
@@ -714,6 +723,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.lexicalInventory.set(undefined);
     this.selectedSpan.set(null);
     this.humanSpanDraft.set(null);
+    this.lexicalQuickEntry.set({});
     this.activeCaseIndex.set(0);
     this.caseSearch.set('');
     this.sessionMeta.set(null);
@@ -792,6 +802,18 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     return caseItem.concepts
       .map((concept, index) => ({ concept, index }))
       .sort((left, right) => (right.concept.sequence ?? right.index) - (left.concept.sequence ?? left.index));
+  }
+
+  /**
+   * Android applies a long-press selection after the pointer event finishes.
+   * Deferring the read keeps mouse, keyboard and touch selections equivalent.
+   */
+  queueTextSelection(caseIdx: number, element: HTMLElement): void {
+    if (this.textSelectionTimer !== undefined) window.clearTimeout(this.textSelectionTimer);
+    this.textSelectionTimer = window.setTimeout(() => {
+      this.textSelectionTimer = undefined;
+      this.captureTextSelection(caseIdx, element);
+    }, 120);
   }
 
   captureTextSelection(caseIdx: number, element: HTMLElement): void {
@@ -927,6 +949,62 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     });
     this.humanSpanDraft.set(null);
     window.getSelection()?.removeAllRanges();
+  }
+
+  lexicalQuickValue(caseIdx: number): string {
+    return this.lexicalQuickEntry()[caseIdx] ?? '';
+  }
+
+  setLexicalQuickValue(caseIdx: number, value: string): void {
+    this.lexicalQuickEntry.update((entries) => ({ ...entries, [caseIdx]: value }));
+  }
+
+  /** Exact, offset-safe occurrences for a typed short form. */
+  lexicalQuickCandidates(caseIdx: number): Array<{ start: number; end: number; surface: string; context: string }> {
+    const caseItem = this.cases()[caseIdx];
+    const surface = this.lexicalQuickValue(caseIdx).trim();
+    if (!caseItem || !surface) return [];
+
+    const candidates: Array<{ start: number; end: number; surface: string; context: string }> = [];
+    let start = 0;
+    while (start < caseItem.textNorm.length) {
+      const matchStart = caseItem.textNorm.indexOf(surface, start);
+      if (matchStart < 0) break;
+      const end = matchStart + surface.length;
+      candidates.push({
+        start: matchStart,
+        end,
+        surface: caseItem.textNorm.slice(matchStart, end),
+        context: caseItem.textNorm.slice(Math.max(0, matchStart - 18), Math.min(caseItem.textNorm.length, end + 24)),
+      });
+      start = end;
+    }
+    return candidates;
+  }
+
+  addHumanLexicalMentionAt(caseIdx: number, start: number, end: number): void {
+    const caseItem = this.cases()[caseIdx];
+    if (!caseItem || start < 0 || end <= start || end > caseItem.textNorm.length) return;
+    const duplicate = (caseItem.lexicalMentions ?? []).some(
+      (mention) => mention.start === start && mention.end === end
+    );
+    if (duplicate) {
+      this.snackBar.open('Esa forma breve ya está incorporada en la revisión.', 'OK', { duration: 3000 });
+      return;
+    }
+
+    const surface = caseItem.textNorm.slice(start, end);
+    this.mutateCase(caseIdx, (targetCase) => {
+      targetCase.lexicalMentions ??= [];
+      targetCase.lexicalMentions.push(
+        newHumanLexicalMention(this.nextHumanLexicalMentionId(targetCase), start, end, surface)
+      );
+      targetCase.lexicalMentions.sort((left, right) => left.start - right.start || left.end - right.end);
+      this.reopenLexicalReview(targetCase);
+    });
+    this.snackBar.open(`Forma breve “${surface}” incorporada. Completá su decisión abajo.`, 'OK', {
+      duration: 3000,
+    });
   }
 
   lexicalSenseOptions(mention: LexicalMention): LexicalSenseOption[] {
@@ -1211,7 +1289,27 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     const currentPosition = this.activeCasePosition();
     if (currentPosition < 0) return;
     const nextEntry = entries[currentPosition + direction];
-    if (nextEntry) this.selectCase(nextEntry.index);
+    if (nextEntry) {
+      this.selectCase(nextEntry.index);
+      this.scrollActiveCaseIntoView(nextEntry.index);
+    }
+  }
+
+  selectCaseAndScroll(caseIdx: number): void {
+    this.selectCase(Number(caseIdx));
+    this.scrollActiveCaseIntoView(Number(caseIdx));
+  }
+
+  scrollCaseSection(caseIdx: number, section: 'source' | 'lexical' | 'concepts' | 'finalize'): void {
+    const element = document.getElementById(`case-${section}-${caseIdx}`);
+    element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  private scrollActiveCaseIntoView(caseIdx: number): void {
+    window.setTimeout(() => {
+      const element = document.querySelector(`[data-case-index="${caseIdx}"]`) as HTMLElement | null;
+      element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   }
 
   hasAnnotatedConcept(caseItem: CaseAnnotation): boolean {
@@ -1352,13 +1450,16 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       item.finalizedAt = finalizedAt;
       item.finalizationOutcome = outcome;
     });
+    const hasNextCase = this.activeCasePosition() < this.filteredCaseEntries().length - 1;
     this.snackBar.open(
       outcome === 'coded'
         ? 'Nota marcada como revisada.'
         : 'Nota registrada sin conceptos anotables.',
-      'OK',
-      { duration: 3000 }
-    );
+      hasNextCase ? 'Siguiente nota' : 'OK',
+      { duration: 5000 }
+    ).onAction().subscribe(() => {
+      if (hasNextCase) this.goToAdjacentCase(1);
+    });
   }
 
   confirmSelectedSpan(caseIdx: number): void {
