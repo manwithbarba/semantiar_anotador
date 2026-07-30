@@ -140,17 +140,25 @@
       </div>
     </section>
     <section class="annotation-protocol" [class.expanded]="protocolExpanded()" aria-labelledby="annotation-protocol-title">
-      <button type="button" class="annotation-protocol-toggle" (click)="toggleProtocol()"
-              [attr.aria-expanded]="protocolExpanded()">
-        <span class="annotation-protocol-icon" aria-hidden="true"><mat-icon>fact_check</mat-icon></span>
-        <span>
-          <h2 id="annotation-protocol-title">Revisión exhaustiva de menciones clínicas</h2>
-          <small>{{ protocolExpanded() ? 'Ocultar instrucciones' : 'Ver instrucciones' }}</small>
-        </span>
-        <mat-icon class="annotation-protocol-chevron" aria-hidden="true">
-          {{ protocolExpanded() ? 'expand_less' : 'expand_more' }}
-        </mat-icon>
-      </button>
+      <div class="annotation-protocol-header">
+        <button type="button" class="annotation-protocol-toggle" (click)="toggleProtocol()"
+                [attr.aria-expanded]="protocolExpanded()">
+          <span class="annotation-protocol-icon" aria-hidden="true"><mat-icon>fact_check</mat-icon></span>
+          <span>
+            <h2 id="annotation-protocol-title">Revisión exhaustiva de menciones clínicas</h2>
+            <small>{{ protocolExpanded() ? 'Ocultar instrucciones' : 'Ver instrucciones' }}</small>
+          </span>
+          <mat-icon class="annotation-protocol-chevron" aria-hidden="true">
+            {{ protocolExpanded() ? 'expand_less' : 'expand_more' }}
+          </mat-icon>
+        </button>
+        <a class="annotation-manual-link"
+           href="https://drive.google.com/drive/folders/175_jJqFsT9a3ENm5LaV6FGZGv0P_wmkQ?usp=sharing"
+           target="_blank" rel="noopener noreferrer">
+          <mat-icon aria-hidden="true">menu_book</mat-icon>
+          <span>Manuales</span>
+        </a>
+      </div>
       @if (protocolExpanded()) {
       <div class="annotation-protocol-copy">
         @if (coreBlindMode()) {
