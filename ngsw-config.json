@@ -22,6 +22,7 @@
       "resources": {
         "files": [
           "/icons/**",
+          "/manuales/**",
           "/**/*.(svg|png|jpg|jpeg|webp|ico)"
         ]
       }

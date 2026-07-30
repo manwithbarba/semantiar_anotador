@@ -14,6 +14,8 @@ import {
 /** Result of edition auto-detection. */
 export interface EditionInfo {
   editionUri: string;
+  /** Exact FHIR CodeSystem.version used to pin terminology requests. */
+  version: string | null;
   displayLanguage: string;
   /** Short human label for the UI, e.g. "Argentina (es)". */
   label: string;
@@ -45,6 +47,10 @@ export class TerminologyService {
     this.editionUri = uri || '';
   }
 
+  setDisplayLanguage(language: string) {
+    this.displayLanguage = language || DEFAULT_DISPLAY_LANGUAGE;
+  }
+
   /**
    * Detect the best edition on the current server: prefer the Argentina edition
    * (in Spanish) when present, otherwise fall back to International (English).
@@ -54,12 +60,12 @@ export class TerminologyService {
     const base = (terminologyServer || this.terminologyServer || '').replace(/\/$/, '');
     const intl: EditionInfo = {
       editionUri: INTL_EDITION_URI,
+      version: null,
       displayLanguage: INTL_DISPLAY_LANGUAGE,
       label: 'Internacional (en)',
       isArgentina: false,
     };
     if (!base) {
-      this.applyEdition(intl);
       return of(intl);
     }
     const headers = new HttpHeaders({ Accept: 'application/fhir+json' });
@@ -67,30 +73,31 @@ export class TerminologyService {
       .get<any>(`${base}/CodeSystem?_elements=version,url`, { headers })
       .pipe(
         map((bundle: any) => {
-          const hasAr = (bundle?.entry ?? []).some((e: any) =>
-            String(e?.resource?.version ?? '').startsWith(AR_EDITION_URI)
-          );
-          const info: EditionInfo = hasAr
+          const versions = (bundle?.entry ?? [])
+            .map((entry: any) => String(entry?.resource?.version ?? '').trim())
+            .filter((version: string) => version.length > 0)
+            .sort((left: string, right: string) => right.localeCompare(left));
+          const arVersion =
+            versions.find((version: string) => version.startsWith(AR_EDITION_URI)) ?? null;
+          const intlVersion =
+            versions.find((version: string) => version.startsWith(INTL_EDITION_URI)) ?? null;
+          const info: EditionInfo = arVersion
             ? {
-                editionUri: AR_EDITION_URI,
+                editionUri: arVersion,
+                version: arVersion,
                 displayLanguage: AR_DISPLAY_LANGUAGE,
                 label: 'Argentina (es)',
                 isArgentina: true,
               }
-            : intl;
-          this.applyEdition(info);
+            : {
+                ...intl,
+                editionUri: intlVersion ?? INTL_EDITION_URI,
+                version: intlVersion,
+              };
           return info;
         }),
-        catchError(() => {
-          this.applyEdition(intl);
-          return of(intl);
-        })
+        catchError(() => of(intl))
       );
-  }
-
-  private applyEdition(info: EditionInfo): void {
-    this.editionUri = info.editionUri;
-    this.displayLanguage = info.displayLanguage;
   }
 
   /**

@@ -72,6 +72,17 @@ Igual que la entrada + metadatos de exportación y, por caso, un array
 
 ```json
 {
+  "schemaVersion": "1.0.0",
+  "textProfile": {
+    "normalization": "NFC",
+    "lineEndings": "LF",
+    "offsetUnit": "utf16-code-unit"
+  },
+  "producer": {
+    "app": "SemantIAr",
+    "build": "SEMANTIAR-ANNOTATOR-2026.07",
+    "platform": "web"
+  },
   "annotatorId": "A048",
   "exportedAt": "2026-07-08T12:51:59.480Z",
   "terminologyServer": "https://implementation-demo.snomedtools.org/fhir",
@@ -101,6 +112,13 @@ Igual que la entrada + metadatos de exportación y, por caso, un array
 > Un JSON de salida puede volver a cargarse: las anotaciones existentes se
 > recuperan (la selección previa se muestra como chip; para cambiarla, re-buscar).
 
+El contrato formal está publicado en
+[`public/semantiar-annotation.schema.json`](public/semantiar-annotation.schema.json).
+Los SCTID se aceptan exclusivamente como cadenas. Antes de crear offsets,
+`textNorm` se normaliza a NFC y LF; los offsets se expresan siempre en unidades
+UTF-16. Los JSON anteriores sin `schemaVersion` se migran al cargarlos, por lo
+que no es necesario reemplazar los lotes ya asignados.
+
 ### Finalización explícita y métricas locales
 
 Cada nota debe cerrarse como **Revisada con conceptos** o **Sin conceptos
@@ -113,8 +131,8 @@ la aparición individual (el contador `X/Y formas decididas`) y luego confirmar
 **Revisión de formas**. Hasta completar ambos pasos, el cierre de la nota queda
 bloqueado y la nota sigue figurando como pendiente.
 
-La salida incorpora `_meta.telemetry` (`SEMANTIAR-TELEMETRY-1.0`) para comparar
-de forma homogénea el flujo Core Blind y el flujo con spans:
+La salida incorpora `_meta.telemetry` (`SEMANTIAR-TELEMETRY-1.1`). La comparación
+entre `web` y `android` se aplica exclusivamente al flujo asistido con spans:
 
 - tiempo activo total y por nota, con pausa por pestaña oculta y umbral de
   inactividad de 120 segundos;
@@ -125,6 +143,14 @@ de forma homogénea el flujo Core Blind y el flujo con spans:
   decisiones sobre spans;
 - interacciones pasivas de UI: `clicksTotal` y distribución en `clicksByTarget` por componente objetivo (`span-accept`, `span-discard`, `concept-add`, `concept-remove`, `concept-edit`, `category-select`, `context-toggle`, `search-interaction`, `lexical-review`, `general-ui`);
 - métricas de borrado e inhibición: `deletionsTotal` y desglose en `deletionsByType` (`concept`, `span`, `lexical-mention`, `comment`).
+- el mismo conjunto de métricas separado en `cases[].byPlatform.web` y
+  `cases[].byPlatform.android`, de modo que un único JSON pueda acumular y
+  comparar tiempos, clics, búsquedas, errores y ediciones de ambas interfaces;
+  Core Blind queda reservado a la página web y al investigador principal, y el
+  APK rechaza esos lotes para evitar mezclarlos con el estudio móvil;
+- `_meta.sessions[]` identifica cada carga y descarga con plataforma, versión de
+  esquema, archivo y release terminológico. Los spans manuales y conceptos
+  conservan además la plataforma donde fueron creados o seleccionados.
 
 La telemetría se mantiene exclusivamente en memoria y en el JSON descargado:
 no existe un backend analítico. Las consultas se guardan normalizadas y
@@ -208,6 +234,18 @@ cuando haya una versión nueva, debe descargarse e instalarse desde Releases.
 En Android, **Guardar avance** abre el selector del sistema para guardar o
 compartir el JSON fuera de la aplicación. La web conserva la descarga habitual
 del archivo en el navegador.
+
+### Manual de SemantIAr App
+
+La guía operativa específica para Android y PWA está disponible en:
+
+- [Manual de uso en GitHub](docs/Manual_de_uso_SemantIAr_App.md).
+- [Manual PDF descargable](https://manwithbarba.github.io/semantiar_anotador/manuales/Manual_de_uso_SemantIAr_App.pdf).
+
+La aplicación Android incluye además una versión resumida embebida, accesible
+desde **Ver manual de uso** en la pantalla inicial y desde **Más acciones**
+durante la anotación. Desde ese panel puede guardarse o compartirse el PDF sin
+salir del aplicativo.
 
 ## Release congelada para las celdas
 

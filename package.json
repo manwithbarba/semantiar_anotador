@@ -41,6 +41,8 @@
     "@capacitor/core": "^8.4.2",
     "@capacitor/filesystem": "^8.1.1",
     "@capacitor/share": "^8.0.1",
+    "ajv": "^8.18.0",
+    "ajv-formats": "^3.0.1",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0"
   },

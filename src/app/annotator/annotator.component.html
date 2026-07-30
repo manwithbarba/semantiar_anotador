@@ -115,6 +115,11 @@
         <button mat-flat-button color="primary" class="home-cta" (click)="fileInput.click()">
           <mat-icon>upload_file</mat-icon> Cargar archivo JSON
         </button>
+        @if (isNativeApp) {
+          <button mat-stroked-button class="home-manual-cta" (click)="openManual()">
+            <mat-icon>menu_book</mat-icon> Ver manual de uso
+          </button>
+        }
         <p class="home-hint">
           Formato aceptado: <code>.json</code>. Los cambios se conservan en esta pestaña hasta descargar el archivo.
         </p>
@@ -375,6 +380,44 @@
               Si un resaltado tiene un número, hay varias menciones superpuestas: elegí cada una para revisarla.
             </p>
           }
+
+          <section
+            class="quick-lexical-add quick-mention-add"
+            [attr.id]="'case-mention-add-' + ci"
+            aria-label="Agregar una mención clínica escribiendo el texto">
+            <div class="quick-lexical-head">
+              <mat-icon aria-hidden="true">add_location_alt</mat-icon>
+              <div>
+                <strong>Agregar mención clínica</strong>
+                <span>En celular, escribí el texto y tocá la aparición exacta; no necesitás arrastrar.</span>
+              </div>
+            </div>
+            <mat-form-field appearance="outline" class="quick-lexical-input">
+              <mat-label>Texto exacto de la mención</mat-label>
+              <input
+                matInput
+                [ngModel]="mentionQuickValue(ci)"
+                (ngModelChange)="setMentionQuickValue(ci, $event)"
+                placeholder="Ej.: dolor abdominal"
+                autocomplete="off" />
+            </mat-form-field>
+            @if (mentionQuickValue(ci).trim()) {
+              <div class="quick-lexical-candidates" aria-live="polite">
+                @for (candidate of mentionQuickCandidates(ci); track candidate.start) {
+                  <button
+                    type="button"
+                    class="quick-lexical-candidate"
+                    (click)="addHumanSpanAt(ci, candidate.start, candidate.end)">
+                    <strong>“{{ candidate.surface }}”</strong>
+                    <span>…{{ candidate.context }}…</span>
+                    <mat-icon aria-hidden="true">add_circle</mat-icon>
+                  </button>
+                } @empty {
+                  <p>No hay coincidencias exactas en esta nota. Revisá tildes y mayúsculas.</p>
+                }
+              </div>
+            }
+          </section>
           </div>
 
           <div class="case-review">
@@ -1014,6 +1057,11 @@
       <button mat-stroked-button (click)="openSettings()">
         <mat-icon>settings</mat-icon> Configuración
       </button>
+      @if (isNativeApp) {
+        <button mat-stroked-button (click)="openManual()">
+          <mat-icon>menu_book</mat-icon> Manual de uso
+        </button>
+      }
       <button mat-stroked-button color="warn" (click)="clearAll()">
         <mat-icon>restart_alt</mat-icon> Limpiar y cargar otro JSON
       </button>
@@ -1045,6 +1093,63 @@
     </button>
   </mat-dialog-content>
   <mat-dialog-actions align="end">
+    <button mat-flat-button color="primary" mat-dialog-close>Cerrar</button>
+  </mat-dialog-actions>
+</ng-template>
+
+<!-- App-specific help, packaged with the Android build. -->
+<ng-template #manualDialog>
+  <h2 mat-dialog-title class="manual-dialog-title">
+    <mat-icon aria-hidden="true">menu_book</mat-icon>
+    Manual de SemantIAr App
+  </h2>
+  <mat-dialog-content class="manual-dialog-content">
+    <p class="manual-dialog-notice">
+      Versión tester para uso exclusivamente académico. No constituye software médico y no
+      deben cargarse datos identificatorios de pacientes.
+    </p>
+
+    <section>
+      <h3>1. Cargá el archivo asignado</h3>
+      <p>
+        Elegí <strong>Cargar archivo JSON</strong> y seleccioná únicamente el archivo asociado
+        con tu ID de anotador. También podés cargar un JSON de avance para continuar.
+      </p>
+    </section>
+    <section>
+      <h3>2. Revisá cada nota</h3>
+      <p>
+        Leé el texto completo. Aceptá, descartá o ajustá los candidatos e incorporá las menciones
+        omitidas seleccionando su expresión exacta. Usá los accesos Nota, Formas, Conceptos y
+        Cierre para moverte sin desplazamientos largos.
+      </p>
+    </section>
+    <section>
+      <h3>3. Completá formas y conceptos</h3>
+      <p>
+        Resolvé cada forma breve según su contexto, sin adivinar. Para cada concepto clínico,
+        elegí la jerarquía, seleccioná el término SNOMED CT y completá su contexto.
+      </p>
+    </section>
+    <section>
+      <h3>4. Cerrá la nota</h3>
+      <p>
+        Elegí <strong>Revisada con conceptos</strong> o <strong>Sin conceptos anotables</strong>.
+        El contador disminuye al cerrar la nota. Si después la modificás, vuelve a pendiente.
+      </p>
+    </section>
+    <section>
+      <h3>5. Guardá el avance</h3>
+      <p>
+        Usá <strong>Guardar avance</strong> con frecuencia. Conservá el JSON descargado para
+        continuar o enviarlo al responsable del estudio cuando completes todas las notas.
+      </p>
+    </section>
+  </mat-dialog-content>
+  <mat-dialog-actions class="manual-dialog-actions">
+    <button mat-stroked-button (click)="downloadManual()">
+      <mat-icon>download</mat-icon> Descargar o compartir PDF
+    </button>
     <button mat-flat-button color="primary" mat-dialog-close>Cerrar</button>
   </mat-dialog-actions>
 </ng-template>
