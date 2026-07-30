@@ -25,6 +25,9 @@ import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatBadgeModule } from '@angular/material/badge';
+import { Capacitor } from '@capacitor/core';
+import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 
 import {
   AutocompleteBindingComponent,
@@ -132,6 +135,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   readonly lexicalSections = LEXICAL_SECTIONS;
   readonly lexicalEvidenceCodes = LEXICAL_EVIDENCE_CODES;
   readonly lexicalUnclassifiedFunction = LEXICAL_UNCLASSIFIED_FUNCTION;
+  readonly isNativeApp = Capacitor.isNativePlatform();
 
   // Document metadata
   project = signal<string>('');
@@ -1676,7 +1680,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
 
   // ---- Export ----
 
-  download(): void {
+  async download(): Promise<void> {
     this.flushActiveTime();
     this.flushPendingActiveTime();
     const now = new Date().toISOString();
@@ -1738,15 +1742,41 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       _annotationProtocol: this.annotationProtocol(),
       _lexicalInventory: this.lexicalInventory(),
     };
-    const blob = new Blob([JSON.stringify(output, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
     const stamp = now.slice(0, 10);
     const idPart = this.annotatorId() ? `_${this.annotatorId()}` : '';
-    a.href = url;
-    a.download = `SEMANTIAR_anotado${idPart}_${stamp}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    this.dirty.set(false);
+    const filename = `SEMANTIAR_anotado${idPart}_${stamp}.json`;
+    const json = JSON.stringify(output, null, 2);
+
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const file = await Filesystem.writeFile({
+          path: filename,
+          data: json,
+          directory: Directory.Cache,
+          encoding: Encoding.UTF8,
+        });
+        await Share.share({
+          title: 'Guardar avance de SemantIAr',
+          text: 'JSON de avance de la anotación',
+          files: [file.uri],
+          dialogTitle: 'Guardar o compartir JSON',
+        });
+      } else {
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+      this.dirty.set(false);
+    } catch {
+      this.snackBar.open(
+        'No se pudo guardar el JSON. Volvé a intentarlo o elegí otra aplicación de destino.',
+        'OK',
+        { duration: 5000 },
+      );
+    }
   }
 }
