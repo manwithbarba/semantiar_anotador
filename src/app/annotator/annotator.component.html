@@ -1,5 +1,5 @@
 <mat-toolbar color="primary" class="app-toolbar" [class.loaded-toolbar]="loaded()">
-  <span class="app-title">Semantic App</span>
+  <span class="app-title">SemantIAr App</span>
   <span class="spacer"></span>
 
   @if (loaded()) {
@@ -60,7 +60,7 @@
       <div class="home-card">
         <div class="home-hero">
           <mat-icon class="home-logo">local_hospital</mat-icon>
-          <h1>Semantic App</h1>
+          <h1>SemantIAr App</h1>
           <p class="home-sub">Herramienta de anotación clínica del proyecto SEMANTIAR</p>
         </div>
 
@@ -206,11 +206,19 @@
                 aria-label="Nota anterior">
           <mat-icon>chevron_left</mat-icon>
         </button>
-        <div class="case-pager-copy">
-          <span>Nota {{ activeCasePosition() + 1 }} de {{ filteredCaseEntries().length }}</span>
-          <strong>{{ currentCase.id }}</strong>
+        <label class="case-pager-copy">
+          <span>Ir a una nota · {{ activeCasePosition() + 1 }} de {{ filteredCaseEntries().length }}</span>
+          <select aria-label="Elegir nota"
+                  [ngModel]="activeCaseIndex()"
+                  (ngModelChange)="selectCaseAndScroll($event)">
+            @for (entry of filteredCaseEntries(); track entry.caseItem.id; let position = $index) {
+              <option [ngValue]="entry.index">
+                {{ position + 1 }} · {{ entry.caseItem.id }}{{ isCaseFinalized(entry.caseItem) ? ' · Revisada' : '' }}
+              </option>
+            }
+          </select>
           <small>{{ isCaseFinalized(currentCase) ? 'Revisada' : 'En revisión' }}</small>
-        </div>
+        </label>
         <button mat-icon-button
                 [disabled]="activeCasePosition() >= filteredCaseEntries().length - 1"
                 (click)="goToAdjacentCase(1)"
@@ -218,22 +226,29 @@
           <mat-icon>chevron_right</mat-icon>
         </button>
       </div>
-      <nav class="case-stage-navigation" aria-label="Etapas de la nota activa">
-        <button type="button" (click)="scrollCaseSection(activeCaseIndex(), 'source')">
+      <div class="case-stage-group">
+      <span class="case-stage-caption">Ir a una sección</span>
+      <nav class="case-stage-navigation" aria-label="Vínculos a las secciones de la nota activa">
+        <a [href]="'#case-source-' + activeCaseIndex()"
+           (click)="$event.preventDefault(); scrollCaseSection(activeCaseIndex(), 'source')">
           <span>1</span> Nota
-        </button>
+        </a>
         @if (lexicalLayerEnabled()) {
-          <button type="button" (click)="scrollCaseSection(activeCaseIndex(), 'lexical')">
+          <a [href]="'#case-lexical-' + activeCaseIndex()"
+             (click)="$event.preventDefault(); scrollCaseSection(activeCaseIndex(), 'lexical')">
             <span>2</span> Formas
-          </button>
+          </a>
         }
-        <button type="button" (click)="scrollCaseSection(activeCaseIndex(), 'concepts')">
+        <a [href]="'#case-concepts-' + activeCaseIndex()"
+           (click)="$event.preventDefault(); scrollCaseSection(activeCaseIndex(), 'concepts')">
           <span>{{ lexicalLayerEnabled() ? 3 : 2 }}</span> Conceptos
-        </button>
-        <button type="button" (click)="scrollCaseSection(activeCaseIndex(), 'finalize')">
+        </a>
+        <a [href]="'#case-finalize-' + activeCaseIndex()"
+           (click)="$event.preventDefault(); scrollCaseSection(activeCaseIndex(), 'finalize')">
           <span>{{ lexicalLayerEnabled() ? 4 : 3 }}</span> Cierre
-        </button>
+        </a>
       </nav>
+      </div>
     </section>
   }
 
@@ -811,20 +826,27 @@
           @for (entry of conceptsInDescendingOrder(caseItem); track entry.index) {
             @let concept = entry.concept;
             @let cj = entry.index;
-            <div class="concept-block">
-              <div class="concept-head">
+            <details class="concept-block"
+                     open
+                     [attr.name]="'concept-accordion-' + ci"
+                     [attr.data-concept-index]="cj">
+              <summary class="concept-head">
                 <div class="concept-title">
                   <span class="concept-num">C{{ concept.sequence ?? cj + 1 }}</span>
                   <div>
-                    <strong>Concepto clínico</strong>
-                    <span>Jerarquía → búsqueda SNOMED CT → literal → contexto</span>
+                    <strong>{{ concept.term || 'Concepto clínico sin codificar' }}</strong>
+                    <span>
+                      {{ concept.cat || 'Sin jerarquía' }} ·
+                      {{ concept.sctid ? 'Codificado' : 'Pendiente' }}
+                    </span>
                   </div>
                 </div>
                 <button mat-icon-button color="warn" class="remove-btn"
-                        matTooltip="Quitar concepto" (click)="removeConcept(ci, cj)">
+                        matTooltip="Quitar concepto"
+                        (click)="$event.stopPropagation(); removeConcept(ci, cj)">
                   <mat-icon>close</mat-icon>
                 </button>
-              </div>
+              </summary>
 
               <div class="concept-core-fields">
                 <!-- Category -->
@@ -909,7 +931,7 @@
                   </mat-select>
                 </mat-form-field>
               </div>
-            </div>
+            </details>
           }
         </div>
         </section>

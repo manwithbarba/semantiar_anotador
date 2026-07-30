@@ -1295,6 +1295,11 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     }
   }
 
+  selectCaseAndScroll(caseIdx: number): void {
+    this.selectCase(Number(caseIdx));
+    this.scrollActiveCaseIntoView(Number(caseIdx));
+  }
+
   scrollCaseSection(caseIdx: number, section: 'source' | 'lexical' | 'concepts' | 'finalize'): void {
     const element = document.getElementById(`case-${section}-${caseIdx}`);
     element?.scrollIntoView({ behavior: 'smooth', block: 'start' });

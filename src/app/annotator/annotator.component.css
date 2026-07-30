@@ -406,6 +406,22 @@
   display: grid;
   min-width: 150px;
 }
+.case-pager-copy select {
+  width: min(380px, 42vw);
+  min-height: 34px;
+  border: 1px solid #c5d2e2;
+  border-radius: 7px;
+  background: #fff;
+  color: #263958;
+  padding: 4px 28px 4px 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+.case-pager-copy select:focus-visible {
+  border-color: #4778ad;
+  outline: 2px solid rgba(71, 120, 173, 0.2);
+}
 .case-pager-copy span,
 .case-pager-copy small {
   color: #67738a;
@@ -418,11 +434,22 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.case-stage-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.case-stage-caption {
+  color: #67738a;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
 .case-stage-navigation {
   display: flex;
   gap: 6px;
 }
-.case-stage-navigation button {
+.case-stage-navigation a {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -436,14 +463,15 @@
   font: inherit;
   font-size: 12px;
   font-weight: 700;
+  text-decoration: none;
 }
-.case-stage-navigation button:hover,
-.case-stage-navigation button:focus-visible {
+.case-stage-navigation a:hover,
+.case-stage-navigation a:focus-visible {
   border-color: #6f91ba;
   background: #eaf2fb;
   outline: none;
 }
-.case-stage-navigation button span {
+.case-stage-navigation a span {
   display: inline-grid;
   width: 20px;
   height: 20px;
@@ -604,6 +632,28 @@
   margin-bottom: 12px;
   background: #fff;
   box-shadow: 0 3px 12px rgba(45, 62, 95, 0.06);
+}
+.concept-block > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.concept-block > summary::-webkit-details-marker {
+  display: none;
+}
+.concept-block > summary::after {
+  flex: 0 0 auto;
+  color: #2f6fae;
+  content: '▾';
+  font-size: 16px;
+  transition: transform 0.18s ease;
+}
+.concept-block[open] > summary::after {
+  transform: rotate(180deg);
+}
+.concept-block:not([open]) > .concept-head {
+  margin-bottom: 0;
+  border-bottom: 0;
+  padding-bottom: 0;
 }
 .concept-head {
   display: flex;
@@ -1599,12 +1649,24 @@
     min-width: 0;
     text-align: center;
   }
+  .case-pager-copy select {
+    width: 100%;
+    max-width: 245px;
+    margin: 2px auto;
+  }
+  .case-stage-group {
+    display: grid;
+    gap: 4px;
+  }
+  .case-stage-caption {
+    padding-left: 2px;
+  }
   .case-stage-navigation {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
     gap: 4px;
   }
-  .case-stage-navigation button {
+  .case-stage-navigation a {
     justify-content: center;
     min-width: 0;
     min-height: 38px;
@@ -1612,7 +1674,7 @@
     padding: 0 4px;
     font-size: 11px;
   }
-  .case-stage-navigation button span {
+  .case-stage-navigation a span {
     width: 18px;
     height: 18px;
   }
