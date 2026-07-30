@@ -64,7 +64,7 @@ describe('App', () => {
     const originalWidth = window.innerWidth;
 
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
-    expect(annotator.lexicalPanelWidth()).toBe('auto');
+    expect(annotator.lexicalPanelWidth()).toBe('calc(100vw - 24px)');
 
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth });
     expect(annotator.lexicalPanelWidth()).toBe('420px');

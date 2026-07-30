@@ -782,7 +782,8 @@
                     <mat-form-field appearance="outline" subscriptSizing="dynamic">
                       <mat-label>¿En qué parte de la nota aparece?</mat-label>
                       <mat-select
-                        panelWidth="420px"
+                        [panelWidth]="lexicalPanelWidth()"
+                        panelClass="semantiar-lexical-select-panel"
                         [ngModel]="mention.annotation.section"
                         (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'section', $event)">
                         <mat-select-trigger>
@@ -809,7 +810,8 @@
                     <mat-form-field appearance="outline" subscriptSizing="dynamic">
                       <mat-label>¿Qué pistas usaste?</mat-label>
                       <mat-select
-                        panelWidth="420px"
+                        [panelWidth]="lexicalPanelWidth()"
+                        panelClass="semantiar-lexical-select-panel"
                         multiple
                         [ngModel]="mention.annotation.evidenceCodes"
                         (ngModelChange)="updateLexicalEvidence(ci, mention.mentionId, $event)">
