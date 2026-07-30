@@ -197,9 +197,50 @@
     </section>
   }
 
+  @if (activeCase(); as currentCase) {
+    <section class="case-flow-navigation" aria-label="Navegación entre notas">
+      <div class="case-pager">
+        <button mat-icon-button
+                [disabled]="activeCasePosition() <= 0"
+                (click)="goToAdjacentCase(-1)"
+                aria-label="Nota anterior">
+          <mat-icon>chevron_left</mat-icon>
+        </button>
+        <div class="case-pager-copy">
+          <span>Nota {{ activeCasePosition() + 1 }} de {{ filteredCaseEntries().length }}</span>
+          <strong>{{ currentCase.id }}</strong>
+          <small>{{ isCaseFinalized(currentCase) ? 'Revisada' : 'En revisión' }}</small>
+        </div>
+        <button mat-icon-button
+                [disabled]="activeCasePosition() >= filteredCaseEntries().length - 1"
+                (click)="goToAdjacentCase(1)"
+                aria-label="Nota siguiente">
+          <mat-icon>chevron_right</mat-icon>
+        </button>
+      </div>
+      <nav class="case-stage-navigation" aria-label="Etapas de la nota activa">
+        <button type="button" (click)="scrollCaseSection(activeCaseIndex(), 'source')">
+          <span>1</span> Nota
+        </button>
+        @if (lexicalLayerEnabled()) {
+          <button type="button" (click)="scrollCaseSection(activeCaseIndex(), 'lexical')">
+            <span>2</span> Formas
+          </button>
+        }
+        <button type="button" (click)="scrollCaseSection(activeCaseIndex(), 'concepts')">
+          <span>{{ lexicalLayerEnabled() ? 3 : 2 }}</span> Conceptos
+        </button>
+        <button type="button" (click)="scrollCaseSection(activeCaseIndex(), 'finalize')">
+          <span>{{ lexicalLayerEnabled() ? 4 : 3 }}</span> Cierre
+        </button>
+      </nav>
+    </section>
+  }
+
   @for (caseItem of cases(); track caseItem.id; let ci = $index) {
     <mat-card class="case-card"
               [attr.data-case-index]="ci"
+              [class.case-hidden]="ci !== activeCaseIndex()"
               (pointerenter)="activateCase(ci)"
               (focusin)="activateCase(ci)"
               [class.case-annotated]="isCaseFinalized(caseItem)"
@@ -257,7 +298,7 @@
           }
         </section>
         <div class="case-workspace">
-          <div class="case-source">
+          <div class="case-source" [attr.id]="'case-source-' + ci">
             <p class="case-source-label">Nota clínica · queda visible durante la revisión</p>
         <div
           #caseText
@@ -357,7 +398,7 @@
         }
 
         @if (lexicalLayerEnabled()) {
-          <section class="quick-lexical-add" aria-label="Agregar forma breve sin seleccionar texto">
+          <section class="quick-lexical-add" [attr.id]="'case-lexical-' + ci" aria-label="Agregar forma breve sin seleccionar texto">
             <div class="quick-lexical-head">
               <mat-icon aria-hidden="true">short_text</mat-icon>
               <div>
@@ -485,25 +526,29 @@
 
             <div class="lexical-mentions">
               @for (mention of caseItem.lexicalMentions ?? []; track mention.mentionId) {
-                <article
+                <details
                   class="lexical-card"
+                  [attr.name]="'lexical-accordion-' + ci"
                   [class.lexical-card-complete]="isLexicalMentionComplete(mention)"
                   [attr.aria-label]="'Forma breve ' + mention.surface">
-                  <div class="lexical-card-head">
+                  <summary class="lexical-card-head">
                     <div>
                       <strong>“{{ mention.surface }}”</strong>
-                      <span>{{ lexicalOriginLabel(mention.origin) }}</span>
+                      <span>
+                        {{ isLexicalMentionComplete(mention) ? 'Decidida' : 'Pendiente' }} ·
+                        {{ lexicalOriginLabel(mention.origin) }}
+                      </span>
                     </div>
                     @if (mention.origin === 'human') {
                       <button
                         mat-icon-button
                         color="warn"
                         matTooltip="Quitar aparición agregada manualmente"
-                        (click)="removeHumanLexicalMention(ci, mention.mentionId)">
+                        (click)="$event.stopPropagation(); removeHumanLexicalMention(ci, mention.mentionId)">
                         <mat-icon>close</mat-icon>
                       </button>
                     }
-                  </div>
+                  </summary>
 
                   @if (lexicalSenseOptions(mention).length) {
                     <div class="lexical-candidates">
@@ -727,7 +772,7 @@
                       </mat-hint>
                     </mat-form-field>
                   </div>
-                </article>
+                </details>
               }
             </div>
 
@@ -750,7 +795,7 @@
           </section>
         }
 
-        <section class="concepts-section" aria-label="Conceptos clínicos SNOMED CT">
+        <section class="concepts-section" [attr.id]="'case-concepts-' + ci" aria-label="Conceptos clínicos SNOMED CT">
           <div class="concepts-section-head">
             <div>
               <span class="concepts-kicker">Información clínica</span>
@@ -869,7 +914,7 @@
         </div>
         </section>
 
-        <div class="case-finalization" [class.finalized]="isCaseFinalized(caseItem)">
+        <div class="case-finalization" [attr.id]="'case-finalize-' + ci" [class.finalized]="isCaseFinalized(caseItem)">
           @if (isCaseFinalized(caseItem)) {
             <div class="case-finalization-copy">
               <mat-icon>verified</mat-icon>

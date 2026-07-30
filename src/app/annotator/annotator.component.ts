@@ -531,8 +531,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     const idx = this.firstPendingIdx();
     if (idx < 0) return;
     this.selectCase(idx);
-    const el = document.querySelector(`[data-case-index="${idx}"]`) as HTMLElement | null;
-    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    this.scrollActiveCaseIntoView(idx);
   }
 
   toggleProtocol(): void {
@@ -1290,7 +1289,22 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     const currentPosition = this.activeCasePosition();
     if (currentPosition < 0) return;
     const nextEntry = entries[currentPosition + direction];
-    if (nextEntry) this.selectCase(nextEntry.index);
+    if (nextEntry) {
+      this.selectCase(nextEntry.index);
+      this.scrollActiveCaseIntoView(nextEntry.index);
+    }
+  }
+
+  scrollCaseSection(caseIdx: number, section: 'source' | 'lexical' | 'concepts' | 'finalize'): void {
+    const element = document.getElementById(`case-${section}-${caseIdx}`);
+    element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  private scrollActiveCaseIntoView(caseIdx: number): void {
+    window.setTimeout(() => {
+      const element = document.querySelector(`[data-case-index="${caseIdx}"]`) as HTMLElement | null;
+      element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   }
 
   hasAnnotatedConcept(caseItem: CaseAnnotation): boolean {
@@ -1431,13 +1445,16 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       item.finalizedAt = finalizedAt;
       item.finalizationOutcome = outcome;
     });
+    const hasNextCase = this.activeCasePosition() < this.filteredCaseEntries().length - 1;
     this.snackBar.open(
       outcome === 'coded'
         ? 'Nota marcada como revisada.'
         : 'Nota registrada sin conceptos anotables.',
-      'OK',
-      { duration: 3000 }
-    );
+      hasNextCase ? 'Siguiente nota' : 'OK',
+      { duration: 5000 }
+    ).onAction().subscribe(() => {
+      if (hasNextCase) this.goToAdjacentCase(1);
+    });
   }
 
   confirmSelectedSpan(caseIdx: number): void {

@@ -385,6 +385,74 @@
 }
 
 /* Cases */
+.case-flow-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 0 0 12px;
+  border: 1px solid #c8d5e7;
+  border-radius: 12px;
+  background: #fff;
+  padding: 8px 12px;
+  box-shadow: 0 3px 12px rgba(45, 62, 95, 0.06);
+}
+.case-pager {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.case-pager-copy {
+  display: grid;
+  min-width: 150px;
+}
+.case-pager-copy span,
+.case-pager-copy small {
+  color: #67738a;
+  font-size: 11px;
+}
+.case-pager-copy strong {
+  overflow: hidden;
+  color: #263958;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.case-stage-navigation {
+  display: flex;
+  gap: 6px;
+}
+.case-stage-navigation button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 36px;
+  border: 1px solid #ced8e6;
+  border-radius: 18px;
+  background: #f7f9fc;
+  color: #425574;
+  cursor: pointer;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+.case-stage-navigation button:hover,
+.case-stage-navigation button:focus-visible {
+  border-color: #6f91ba;
+  background: #eaf2fb;
+  outline: none;
+}
+.case-stage-navigation button span {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 50%;
+  background: #dce8f5;
+  color: #2f5f91;
+  font-size: 10px;
+}
 .case-card {
   margin-bottom: 18px;
   border-left: 4px solid var(--pending-color);
@@ -397,6 +465,15 @@
 .case-card mat-card-header {
   padding: 0;
   margin-bottom: 6px;
+}
+.case-card.case-hidden {
+  display: none;
+}
+.case-source,
+.quick-lexical-add,
+.concepts-section,
+.case-finalization {
+  scroll-margin-top: 150px;
 }
 .mobile-utility-actions {
   display: none;
@@ -1242,6 +1319,28 @@
   background: #fff;
   padding: 10px 12px;
 }
+.lexical-card > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.lexical-card > summary::-webkit-details-marker {
+  display: none;
+}
+.lexical-card > summary::after {
+  flex: 0 0 auto;
+  color: #6941a5;
+  content: '▾';
+  font-size: 16px;
+  transition: transform 0.18s ease;
+}
+.lexical-card[open] > summary::after {
+  transform: rotate(180deg);
+}
+.lexical-card[open] > summary {
+  margin-bottom: 10px;
+  border-bottom: 1px solid #eee8f6;
+  padding-bottom: 9px;
+}
 
 .lexical-card-complete {
   border-left: 4px solid #7c5ab8;
@@ -1445,6 +1544,9 @@
     padding: 12px;
   }
   .json-flow {
+    display: none;
+  }
+  .json-flow {
     gap: 10px;
   }
   .json-flow-status span {
@@ -1480,6 +1582,40 @@
   .annotation-protocol p {
     font-size: 13px;
   }
+  .case-flow-navigation {
+    position: sticky;
+    top: 82px;
+    z-index: 8;
+    display: grid;
+    gap: 7px;
+    margin-bottom: 10px;
+    padding: 7px 8px;
+  }
+  .case-pager {
+    justify-content: space-between;
+  }
+  .case-pager-copy {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: center;
+  }
+  .case-stage-navigation {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
+    gap: 4px;
+  }
+  .case-stage-navigation button {
+    justify-content: center;
+    min-width: 0;
+    min-height: 38px;
+    border-radius: 8px;
+    padding: 0 4px;
+    font-size: 11px;
+  }
+  .case-stage-navigation button span {
+    width: 18px;
+    height: 18px;
+  }
   .case-card {
     margin-bottom: 12px;
     padding: 12px;
@@ -1488,6 +1624,16 @@
     align-items: flex-start;
     gap: 6px;
     font-size: 13px;
+  }
+  .case-card mat-card-header,
+  .case-card ::ng-deep .mat-mdc-card-header-text,
+  .case-id {
+    width: 100%;
+    min-width: 0;
+  }
+  .case-id > span:nth-child(2) {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
   .case-status-badge {
     margin-left: 0;
