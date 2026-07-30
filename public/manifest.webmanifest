@@ -1,7 +1,7 @@
 {
   "name": "SemantIAr App · Anotador clínico",
   "short_name": "SemantIAr App",
-  "description": "Anotación clínica con SNOMED CT para el proyecto SEMANTIAR.",
+  "description": "Versión tester para anotación clínica académica con SNOMED CT en el proyecto SEMANTIAR.",
   "lang": "es-AR",
   "start_url": "./",
   "scope": "./",

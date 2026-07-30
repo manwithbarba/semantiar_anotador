@@ -178,6 +178,35 @@
 .app-toolbar button {
   margin-left: 4px;
 }
+.tester-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  width: min(1640px, calc(100% - 24px));
+  box-sizing: border-box;
+  margin: 10px auto 0;
+  border: 1px solid #d9c987;
+  border-radius: 10px;
+  background: #fff9df;
+  color: #5d4a16;
+  padding: 9px 12px;
+}
+.tester-notice mat-icon {
+  flex: 0 0 auto;
+  color: #8a6900;
+}
+.tester-notice strong,
+.tester-notice span {
+  display: block;
+}
+.tester-notice strong {
+  font-size: 12px;
+}
+.tester-notice span {
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.35;
+}
 
 .content {
   width: min(1640px, calc(100% - 24px));
@@ -1587,6 +1616,14 @@
   .content {
     width: min(100% - 12px, 1640px);
     padding: 12px 0 calc(28px + env(safe-area-inset-bottom));
+  }
+  .tester-notice {
+    width: calc(100% - 12px);
+    margin-top: 6px;
+    padding: 8px 10px;
+  }
+  .tester-notice span {
+    font-size: 10px;
   }
   .annotation-protocol,
   .json-flow {

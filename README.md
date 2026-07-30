@@ -6,6 +6,11 @@ usando el buscador embebido (`autocomplete-binding`) restringido por jerarquía.
 Pensada para el flujo de calibración de anotadores del proyecto SEMANTIAR
 (corpus clínico en español rioplatense).
 
+> **Versión tester pública para uso exclusivamente académico y de investigación.**
+> La aplicación está en evaluación y recibirá actualizaciones. No constituye
+> software médico, no debe utilizarse para atención clínica y no deben cargarse
+> datos identificatorios de pacientes.
+
 > 📄 Descripción técnica detallada (integración con el servidor de terminología,
 > autocompletado, búsqueda multi-prefijo, FHIR API): [`docs/IMPLEMENTACION.md`](docs/IMPLEMENTACION.md).
 
