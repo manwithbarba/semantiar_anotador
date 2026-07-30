@@ -219,6 +219,35 @@
         </mat-card-title>
       </mat-card-header>
       <mat-card-content>
+        <section class="case-guidance" aria-label="Orientaciones para esta nota">
+          <details>
+            <summary>
+              <mat-icon aria-hidden="true">fact_check</mat-icon>
+              Antes de la nota: revisión de menciones clínicas
+            </summary>
+            <div>
+              @if (coreBlindMode()) {
+                Identificá desde cero procedimientos, fármacos y hallazgos clínicos. Seleccioná la
+                expresión exacta en la nota para incorporarla y luego definí concepto y contexto.
+              } @else {
+                Los resaltados son sólo candidatos: aceptalos, ajustalos o descartalos. Revisá toda la
+                nota e incorporá las menciones clínicamente relevantes que no estén señaladas.
+              }
+            </div>
+          </details>
+          @if (lexicalLayerEnabled()) {
+            <details>
+              <summary>
+                <mat-icon aria-hidden="true">short_text</mat-icon>
+                Antes de la nota: formas breves
+              </summary>
+              <div>
+                Marcá cada sigla, abreviatura o acrónimo según su contexto local. Para agregar una,
+                escribila después de la nota y tocá la ocurrencia exacta; no necesitás arrastrar texto.
+              </div>
+            </details>
+          }
+        </section>
         <div class="case-workspace">
           <div class="case-source">
             <p class="case-source-label">Nota clínica · queda visible durante la revisión</p>

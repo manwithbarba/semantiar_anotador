@@ -450,6 +450,45 @@
 .case-review {
   min-width: 0;
 }
+.case-guidance {
+  display: grid;
+  gap: 7px;
+  margin: 4px 0 14px;
+}
+.case-guidance details {
+  border: 1px solid #d5dfec;
+  border-radius: 9px;
+  background: #f8fbff;
+}
+.case-guidance summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  color: #304869;
+  padding: 9px 11px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.case-guidance summary::marker {
+  content: '';
+}
+.case-guidance summary::-webkit-details-marker {
+  display: none;
+}
+.case-guidance summary mat-icon {
+  width: 18px;
+  height: 18px;
+  color: #2f6fae;
+  font-size: 18px;
+}
+.case-guidance details > div {
+  border-top: 1px solid #dce5f0;
+  color: #53627a;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.45;
+}
 
 /* Concept blocks */
 .concept-block {
