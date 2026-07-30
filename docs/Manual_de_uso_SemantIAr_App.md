@@ -46,8 +46,10 @@ directamente a cada etapa, evitando desplazamientos largos.
 - Lea la nota completa, aunque existan términos resaltados.
 - Un resaltado es un candidato: puede aceptarlo, descartarlo o ajustar sus
   límites.
-- Para incorporar una mención omitida, seleccione su expresión exacta en la
-  nota y use la acción de incorporación.
+- Para incorporar una mención omitida puede mantener pulsado y seleccionar su
+  expresión exacta. En celular se recomienda **Agregar mención clínica**:
+  escriba el texto y toque la aparición correcta que muestra la aplicación. El
+  sistema calcula y verifica los offsets sin depender del arrastre táctil.
 - En los lotes sin preanotaciones, agregue las menciones desde cero.
 
 ### Revisar formas breves
@@ -95,6 +97,12 @@ sistema para guardar o compartir el JSON. En la web se descarga el archivo.
 
 La aplicación no guarda anotaciones en GitHub ni en un servidor propio. Mientras
 no descargue el JSON, los cambios permanecen solamente en la sesión actual.
+
+El mismo archivo puede abrirse sucesivamente en Android y en la página web.
+Cada descarga identifica en `_meta.sessions` dónde se cargó o guardó, y
+`_meta.telemetry.cases[].byPlatform` separa tiempos, clics, búsquedas y errores
+entre `android` y `web`. Esta información es local y viaja únicamente dentro del
+JSON de avance.
 
 ## 6. Privacidad y funcionamiento sin conexión
 

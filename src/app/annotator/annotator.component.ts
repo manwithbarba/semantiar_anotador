@@ -44,6 +44,7 @@ import {
   CaseAnnotation,
   CaseReviewOutcome,
   CaseTelemetry,
+  CaseTelemetryBase,
   TelemetryClickTarget,
   TelemetryDeletionType,
   Category,
@@ -79,12 +80,19 @@ import {
   eclForCategory,
   newConcept,
   POLARITIES,
+  SEMANTIAR_SCHEMA_VERSION,
+  SEMANTIAR_TEXT_PROFILE,
   SessionEntry,
   SUBJECTS,
   TELEMETRY_APP_BUILD,
   TELEMETRY_IDLE_THRESHOLD_MS,
   TEMPORALITIES,
 } from '../models/annotation.model';
+import {
+  AnnotationInteropError,
+  isValidTextSpan,
+  prepareAnnotationDocument,
+} from '../models/annotation-interop';
 
 @Component({
   selector: 'app-annotator',
@@ -137,6 +145,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   readonly lexicalEvidenceCodes = LEXICAL_EVIDENCE_CODES;
   readonly lexicalUnclassifiedFunction = LEXICAL_UNCLASSIFIED_FUNCTION;
   readonly isNativeApp = Capacitor.isNativePlatform();
+  readonly currentPlatform = this.isNativeApp ? 'android' as const : 'web' as const;
 
   // Document metadata
   project = signal<string>('');
@@ -152,6 +161,8 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   // Terminology configuration (editable)
   terminologyServer = signal<string>(DEFAULT_TERMINOLOGY_SERVER);
   editionUri = signal<string>(DEFAULT_EDITION_URI);
+  snomedVersion = signal<string | null>(null);
+  displayLanguage = signal<string>('es');
   editionLabel = signal<string>('Detectando edición…');
 
   // Working set
@@ -164,6 +175,8 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   );
   /** Draft text used by the one-tap lexical mention flow on mobile. */
   lexicalQuickEntry = signal<Record<number, string>>({});
+  /** Draft text used to add an exact clinical mention without touch-dragging. */
+  mentionQuickEntry = signal<Record<number, string>>({});
   protocolExpanded = signal<boolean>(false);
 
   /** Session metadata (upload/download audit trail). */
@@ -334,10 +347,20 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
         this.cases().map((item) => item.id),
         meta.telemetry
       );
-      const cases = telemetry.cases.map((item, index) => ({
-        ...item,
-        activeMs: Math.round(item.activeMs + (pending.get(index) ?? 0)),
-      }));
+      const cases = telemetry.cases.map((item, index) => {
+        const elapsed = pending.get(index) ?? 0;
+        return {
+          ...item,
+          activeMs: Math.round(item.activeMs + elapsed),
+          byPlatform: {
+            ...item.byPlatform,
+            [this.currentPlatform]: {
+              ...item.byPlatform[this.currentPlatform],
+              activeMs: Math.round(item.byPlatform[this.currentPlatform].activeMs + elapsed),
+            },
+          },
+        };
+      });
       return {
         ...meta,
         telemetry: {
@@ -364,7 +387,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
 
   private updateCaseTelemetry(
     caseIdx: number,
-    mutate: (item: CaseTelemetry) => void
+    mutate: (item: CaseTelemetryBase) => void
   ): void {
     this.sessionMeta.update((meta) => {
       if (!meta) return meta;
@@ -381,8 +404,14 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
             selectedRanks: [...item.search.selectedRanks],
             queries: item.search.queries.map((query) => ({ ...query })),
           },
+          byPlatform: {
+            web: this.cloneCaseTelemetryBase(item.byPlatform.web),
+            android: this.cloneCaseTelemetryBase(item.byPlatform.android),
+          },
         };
+        const platformCopy = copy.byPlatform[this.currentPlatform];
         mutate(copy);
+        mutate(platformCopy);
         return copy;
       });
       return {
@@ -509,6 +538,8 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.editionLabel.set('Detectando edición…');
     this.terminologyService.detectEdition(this.terminologyServer()).subscribe((info) => {
       this.editionUri.set(info.editionUri);
+      this.snomedVersion.set(info.version);
+      this.displayLanguage.set(info.displayLanguage);
       this.editionLabel.set(info.label);
       // No notice on success (Argentina present). Only warn on the English fallback.
       if (!info.isArgentina) {
@@ -537,6 +568,19 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       maxHeight: '88vh',
       panelClass: 'manual-dialog-panel',
     });
+  }
+
+  private cloneCaseTelemetryBase(item: CaseTelemetryBase): CaseTelemetryBase {
+    return {
+      ...item,
+      clicksByTarget: { ...item.clicksByTarget },
+      deletionsByType: { ...item.deletionsByType },
+      search: {
+        ...item.search,
+        selectedRanks: [...item.search.selectedRanks],
+        queries: item.search.queries.map((query) => ({ ...query })),
+      },
+    };
   }
 
   async downloadManual(): Promise<void> {
@@ -600,17 +644,26 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const doc = JSON.parse(reader.result as string) as AnnotationDocument;
-        this.ingestDocument(doc, file.name);
-      } catch {
-        this.snackBar.open('El archivo no es un JSON válido.', 'OK', { duration: 4000 });
+        const raw = JSON.parse(reader.result as string) as unknown;
+        const prepared = prepareAnnotationDocument(raw);
+        this.ingestDocument(prepared.document, file.name, prepared.warnings);
+      } catch (error) {
+        const message =
+          error instanceof AnnotationInteropError
+            ? error.message
+            : 'El archivo no es un JSON válido.';
+        this.snackBar.open(message, 'OK', { duration: 7000 });
       }
     };
     reader.readAsText(file);
     input.value = ''; // allow re-selecting the same file
   }
 
-  private ingestDocument(doc: AnnotationDocument, fileName: string): void {
+  private ingestDocument(
+    doc: AnnotationDocument,
+    fileName: string,
+    migrationWarnings: string[] = []
+  ): void {
     if (!doc || !Array.isArray(doc.cases) || doc.cases.length === 0) {
       this.snackBar.open('El JSON no contiene "cases".', 'OK', { duration: 4000 });
       return;
@@ -623,6 +676,19 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.annotatorId.set(doc.annotatorId ?? '');
     this.sourceFile.set(doc.sourceFile ?? fileName);
     this.loadedFileName.set(fileName);
+
+    if (doc.terminology) {
+      this.terminologyServer.set(doc.terminology.server);
+      this.editionUri.set(doc.terminology.editionUri);
+      this.snomedVersion.set(doc.terminology.version);
+      this.displayLanguage.set(doc.terminology.displayLanguage);
+      this.terminologyService.setTerminologyServer(doc.terminology.server);
+      this.terminologyService.setEditionUri(doc.terminology.editionUri);
+      this.terminologyService.setDisplayLanguage(doc.terminology.displayLanguage);
+      this.editionLabel.set(
+        doc.terminology.version ? 'Versión restaurada del JSON' : 'Edición restaurada'
+      );
+    }
 
     const resolvedProtocol =
       doc._annotationProtocol?.mode === 'core-blind'
@@ -690,6 +756,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.selectedSpan.set(null);
     this.humanSpanDraft.set(null);
     this.lexicalQuickEntry.set({});
+    this.mentionQuickEntry.set({});
 
     // --- Session metadata: preserve existing or initialise ---
     const now = new Date().toISOString();
@@ -712,11 +779,22 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       reviewedCount: reviewed,
       totalCases: cases.length,
       appBuild: TELEMETRY_APP_BUILD,
+      platform: this.currentPlatform,
+      sourceFile: fileName,
+      schemaVersion: doc.schemaVersion ?? 'legacy',
+      terminologyVersion: doc.terminology?.version ?? null,
     };
     existingMeta.sessions = [...existingMeta.sessions, uploadEntry];
     this.sessionMeta.set(existingMeta);
 
     this.dirty.set(false);
+    if (migrationWarnings.length) {
+      this.snackBar.open(
+        `${migrationWarnings.length} ajuste(s) de interoperabilidad aplicados al cargar.`,
+        'OK',
+        { duration: 5500 }
+      );
+    }
     if (invalidSpans) {
       this.snackBar.open(
         `Se omitieron ${invalidSpans} spans inválidos: revisá offsets, texto y solapamientos.`,
@@ -777,6 +855,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.selectedSpan.set(null);
     this.humanSpanDraft.set(null);
     this.lexicalQuickEntry.set({});
+    this.mentionQuickEntry.set({});
     this.activeCaseIndex.set(0);
     this.caseSearch.set('');
     this.sessionMeta.set(null);
@@ -835,7 +914,13 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
 
   addConcept(caseIdx: number): void {
     this.mutateCase(caseIdx, (c) => {
-      c.concepts.push(newConcept(this.nextConceptSequence(c)));
+      c.concepts.push({
+        ...newConcept(this.nextConceptSequence(c)),
+        provenance: {
+          createdPlatform: this.currentPlatform,
+          lastEditedPlatform: this.currentPlatform,
+        },
+      });
     });
     this.updateCaseTelemetry(caseIdx, (item) => (item.conceptsAdded += 1));
   }
@@ -908,8 +993,26 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       return;
     }
 
+    let safeStart = start;
+    let safeEnd = end;
+    while (safeStart < safeEnd && /\s/u.test(caseItem.textNorm[safeStart])) safeStart += 1;
+    while (safeEnd > safeStart && /\s/u.test(caseItem.textNorm[safeEnd - 1])) safeEnd -= 1;
+    const safeLiteral = caseItem.textNorm.slice(safeStart, safeEnd);
+    if (!isValidTextSpan(caseItem.textNorm, safeStart, safeEnd, safeLiteral)) {
+      this.humanSpanDraft.set(null);
+      this.snackBar.open('La selección corta un carácter Unicode y no puede guardarse.', 'OK', {
+        duration: 4000,
+      });
+      return;
+    }
+
     // Store the source literal so the new span remains offset-valid after export.
-    this.humanSpanDraft.set({ caseIndex: caseIdx, start, end, textoLiteral: sourceLiteral });
+    this.humanSpanDraft.set({
+      caseIndex: caseIdx,
+      start: safeStart,
+      end: safeEnd,
+      textoLiteral: safeLiteral,
+    });
   }
 
   private selectionSourceOffset(root: HTMLElement, node: Node, offset: number): number | null {
@@ -946,30 +1049,75 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     const caseItem = this.cases()[caseIdx];
     if (!draft || draft.caseIndex !== caseIdx || !caseItem) return;
 
+    if (!this.createHumanSpan(caseIdx, draft.start, draft.end)) return;
+    this.humanSpanDraft.set(null);
+    window.getSelection()?.removeAllRanges();
+  }
+
+  mentionQuickValue(caseIdx: number): string {
+    return this.mentionQuickEntry()[caseIdx] ?? '';
+  }
+
+  setMentionQuickValue(caseIdx: number, value: string): void {
+    this.mentionQuickEntry.update((entries) => ({ ...entries, [caseIdx]: value }));
+  }
+
+  mentionQuickCandidates(caseIdx: number): Array<{
+    start: number;
+    end: number;
+    surface: string;
+    context: string;
+  }> {
+    return this.exactTextCandidates(this.cases()[caseIdx], this.mentionQuickValue(caseIdx));
+  }
+
+  addHumanSpanAt(caseIdx: number, start: number, end: number): void {
+    if (!this.createHumanSpan(caseIdx, start, end)) return;
+    const literal = this.cases()[caseIdx]?.textNorm.slice(start, end) ?? '';
+    this.snackBar.open(`Mención “${literal}” incorporada con offsets verificados.`, 'OK', {
+      duration: 3200,
+    });
+  }
+
+  private createHumanSpan(caseIdx: number, start: number, end: number): string | null {
+    const caseItem = this.cases()[caseIdx];
+    if (!caseItem || !isValidTextSpan(caseItem.textNorm, start, end)) {
+      this.snackBar.open('La selección no coincide con límites Unicode seguros.', 'OK', {
+        duration: 4000,
+      });
+      return null;
+    }
+    if (caseItem.spans.some((span) => span.start === start && span.end === end)) {
+      this.snackBar.open('Esa mención ya está incorporada.', 'OK', { duration: 3000 });
+      return null;
+    }
+
     const spanId = this.nextHumanSpanId(caseItem);
+    const now = new Date().toISOString();
     this.mutateCase(caseIdx, (targetCase) => {
       targetCase.spans.push({
         spanId,
-        start: draft.start,
-        end: draft.end,
-        textoLiteral: draft.textoLiteral,
+        start,
+        end,
+        textoLiteral: targetCase.textNorm.slice(start, end),
         origin: 'human',
         confidence: 1,
         status: 'pendiente',
         review: { disposition: 'elegible', reason: 'Span agregado manualmente por el anotador.' },
         humanAudit: {
           createdManually: true,
-          createdAt: new Date().toISOString(),
+          createdAt: now,
+          createdPlatform: this.currentPlatform,
           lastAction: 'created',
-          lastActionAt: new Date().toISOString(),
+          lastActionAt: now,
+          lastActionPlatform: this.currentPlatform,
         },
       });
       targetCase.spans.sort((left, right) => left.start - right.start || left.end - right.end);
     });
     this.selectedSpan.set({ caseIndex: caseIdx, spanId });
-    this.humanSpanDraft.set(null);
-    window.getSelection()?.removeAllRanges();
     this.updateCaseTelemetry(caseIdx, (item) => (item.manualSpansAdded += 1));
+    return spanId;
   }
 
   addHumanLexicalMention(caseIdx: number): void {
@@ -1014,8 +1162,14 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
 
   /** Exact, offset-safe occurrences for a typed short form. */
   lexicalQuickCandidates(caseIdx: number): Array<{ start: number; end: number; surface: string; context: string }> {
-    const caseItem = this.cases()[caseIdx];
-    const surface = this.lexicalQuickValue(caseIdx).trim();
+    return this.exactTextCandidates(this.cases()[caseIdx], this.lexicalQuickValue(caseIdx));
+  }
+
+  private exactTextCandidates(
+    caseItem: CaseAnnotation | undefined,
+    rawSurface: string
+  ): Array<{ start: number; end: number; surface: string; context: string }> {
+    const surface = rawSurface.trim().normalize('NFC');
     if (!caseItem || !surface) return [];
 
     const candidates: Array<{ start: number; end: number; surface: string; context: string }> = [];
@@ -1301,6 +1455,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
         boundaryAdjusted: true,
         lastAction: 'boundary_adjusted',
         lastActionAt: changedAt,
+        lastActionPlatform: this.currentPlatform,
       };
       targetSpan.start = draft.start;
       targetSpan.end = draft.end;
@@ -1527,6 +1682,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
         ...(fixedSpan.humanAudit ?? {}),
         lastAction: 'accepted',
         lastActionAt: new Date().toISOString(),
+        lastActionPlatform: this.currentPlatform,
       };
 
       const existing = caseItem.concepts.find((concept) => concept.spanId === fixedSpan.spanId);
@@ -1536,6 +1692,10 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
         sequence: this.nextConceptSequence(caseItem),
         spanId: fixedSpan.spanId,
         textoLiteral: fixedSpan.textoLiteral,
+        provenance: {
+          createdPlatform: this.currentPlatform,
+          lastEditedPlatform: this.currentPlatform,
+        },
       });
     });
     this.selectedSpan.set(null);
@@ -1555,6 +1715,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
         ...(fixedSpan.humanAudit ?? {}),
         lastAction: 'discarded',
         lastActionAt: new Date().toISOString(),
+        lastActionPlatform: this.currentPlatform,
       };
       caseItem.concepts = caseItem.concepts.filter((concept) => concept.spanId !== fixedSpan.spanId);
     });
@@ -1601,6 +1762,11 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.mutateCase(caseIdx, (c) => {
       const concept = c.concepts[conceptIdx];
       concept.cat = cat;
+      concept.provenance = {
+        createdPlatform: concept.provenance?.createdPlatform ?? this.currentPlatform,
+        lastEditedPlatform: this.currentPlatform,
+        terminologySelectedPlatform: concept.provenance?.terminologySelectedPlatform,
+      };
       // Changing hierarchy invalidates a previously chosen code
       concept.sctid = '';
       concept.term = '';
@@ -1620,6 +1786,11 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       const concept = c.concepts[conceptIdx];
       concept.sctid = selection?.code ?? '';
       concept.term = selection?.display ?? '';
+      concept.provenance = {
+        createdPlatform: concept.provenance?.createdPlatform ?? this.currentPlatform,
+        lastEditedPlatform: this.currentPlatform,
+        terminologySelectedPlatform: this.currentPlatform,
+      };
     });
     if (previousCode && selection?.code && previousCode !== selection.code) {
       this.updateCaseTelemetry(caseIdx, (item) => (item.conceptsReplaced += 1));
@@ -1637,12 +1808,16 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       const search = item.search;
       const queryMetric = () => {
         let query = search.queries.find(
-          (candidate) => candidate.query === event.query && candidate.category === category
+          (candidate) =>
+            candidate.query === event.query &&
+            candidate.category === category &&
+            candidate.platform === this.currentPlatform
         );
         if (!query) {
           query = {
             query: event.query,
             category,
+            platform: this.currentPlatform,
             requests: 0,
             zeroResults: 0,
             errors: 0,
@@ -1696,7 +1871,13 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     value: string
   ): void {
     this.mutateCase(caseIdx, (c) => {
-      (c.concepts[conceptIdx] as any)[field] = value;
+      const concept = c.concepts[conceptIdx];
+      (concept as any)[field] = value;
+      concept.provenance = {
+        createdPlatform: concept.provenance?.createdPlatform ?? this.currentPlatform,
+        lastEditedPlatform: this.currentPlatform,
+        terminologySelectedPlatform: concept.provenance?.terminologySelectedPlatform,
+      };
     });
   }
 
@@ -1723,6 +1904,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
 
   onEditionChange(value: string): void {
     this.editionUri.set(value);
+    this.snomedVersion.set(value.includes('/version/') ? value : null);
     this.terminologyService.setEditionUri(value);
     this.editionLabel.set('Edición manual');
   }
@@ -1751,6 +1933,10 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       reviewedCount: reviewed,
       totalCases: total,
       appBuild: TELEMETRY_APP_BUILD,
+      platform: this.currentPlatform,
+      sourceFile: this.loadedFileName() || this.sourceFile(),
+      schemaVersion: SEMANTIAR_SCHEMA_VERSION,
+      terminologyVersion: this.snomedVersion(),
     };
     const updatedMeta: AnnotationMeta = {
       ...currentMeta,
@@ -1762,6 +1948,20 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.sessionMeta.set(updatedMeta);
 
     const output: AnnotationOutput = {
+      schemaVersion: SEMANTIAR_SCHEMA_VERSION,
+      textProfile: { ...SEMANTIAR_TEXT_PROFILE },
+      terminology: {
+        server: this.terminologyServer(),
+        editionUri: this.editionUri(),
+        version: this.snomedVersion(),
+        displayLanguage: this.displayLanguage(),
+        capturedAt: now,
+      },
+      producer: {
+        app: 'SemantIAr',
+        build: TELEMETRY_APP_BUILD,
+        platform: this.currentPlatform,
+      },
       project: this.project() || undefined,
       batch: this.batch() || undefined,
       annotatorId: this.annotatorId() || undefined,

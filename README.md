@@ -72,6 +72,17 @@ Igual que la entrada + metadatos de exportación y, por caso, un array
 
 ```json
 {
+  "schemaVersion": "1.0.0",
+  "textProfile": {
+    "normalization": "NFC",
+    "lineEndings": "LF",
+    "offsetUnit": "utf16-code-unit"
+  },
+  "producer": {
+    "app": "SemantIAr",
+    "build": "SEMANTIAR-ANNOTATOR-2026.07",
+    "platform": "web"
+  },
   "annotatorId": "A048",
   "exportedAt": "2026-07-08T12:51:59.480Z",
   "terminologyServer": "https://implementation-demo.snomedtools.org/fhir",
@@ -101,6 +112,13 @@ Igual que la entrada + metadatos de exportación y, por caso, un array
 > Un JSON de salida puede volver a cargarse: las anotaciones existentes se
 > recuperan (la selección previa se muestra como chip; para cambiarla, re-buscar).
 
+El contrato formal está publicado en
+[`public/semantiar-annotation.schema.json`](public/semantiar-annotation.schema.json).
+Los SCTID se aceptan exclusivamente como cadenas. Antes de crear offsets,
+`textNorm` se normaliza a NFC y LF; los offsets se expresan siempre en unidades
+UTF-16. Los JSON anteriores sin `schemaVersion` se migran al cargarlos, por lo
+que no es necesario reemplazar los lotes ya asignados.
+
 ### Finalización explícita y métricas locales
 
 Cada nota debe cerrarse como **Revisada con conceptos** o **Sin conceptos
@@ -113,7 +131,7 @@ la aparición individual (el contador `X/Y formas decididas`) y luego confirmar
 **Revisión de formas**. Hasta completar ambos pasos, el cierre de la nota queda
 bloqueado y la nota sigue figurando como pendiente.
 
-La salida incorpora `_meta.telemetry` (`SEMANTIAR-TELEMETRY-1.0`) para comparar
+La salida incorpora `_meta.telemetry` (`SEMANTIAR-TELEMETRY-1.1`) para comparar
 de forma homogénea el flujo Core Blind y el flujo con spans:
 
 - tiempo activo total y por nota, con pausa por pestaña oculta y umbral de
@@ -125,6 +143,12 @@ de forma homogénea el flujo Core Blind y el flujo con spans:
   decisiones sobre spans;
 - interacciones pasivas de UI: `clicksTotal` y distribución en `clicksByTarget` por componente objetivo (`span-accept`, `span-discard`, `concept-add`, `concept-remove`, `concept-edit`, `category-select`, `context-toggle`, `search-interaction`, `lexical-review`, `general-ui`);
 - métricas de borrado e inhibición: `deletionsTotal` y desglose en `deletionsByType` (`concept`, `span`, `lexical-mention`, `comment`).
+- el mismo conjunto de métricas separado en `cases[].byPlatform.web` y
+  `cases[].byPlatform.android`, de modo que un único JSON pueda acumular y
+  comparar tiempos, clics, búsquedas, errores y ediciones de ambas interfaces;
+- `_meta.sessions[]` identifica cada carga y descarga con plataforma, versión de
+  esquema, archivo y release terminológico. Los spans manuales y conceptos
+  conservan además la plataforma donde fueron creados o seleccionados.
 
 La telemetría se mantiene exclusivamente en memoria y en el JSON descargado:
 no existe un backend analítico. Las consultas se guardan normalizadas y

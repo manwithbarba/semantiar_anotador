@@ -1,6 +1,36 @@
 /** Data model for the SEMANTIAR annotation tool. */
 import { environment } from '../../environments/environment';
 
+export const SEMANTIAR_SCHEMA_VERSION = '1.0.0' as const;
+
+export interface TextProfile {
+  normalization: 'NFC';
+  lineEndings: 'LF';
+  offsetUnit: 'utf16-code-unit';
+}
+
+export const SEMANTIAR_TEXT_PROFILE: TextProfile = {
+  normalization: 'NFC',
+  lineEndings: 'LF',
+  offsetUnit: 'utf16-code-unit',
+};
+
+export interface TerminologySnapshot {
+  server: string;
+  editionUri: string;
+  version: string | null;
+  displayLanguage: string;
+  capturedAt: string;
+}
+
+export interface ProducerMetadata {
+  app: 'SemantIAr';
+  build: string;
+  platform: 'web' | 'android';
+}
+
+export type AnnotationPlatform = ProducerMetadata['platform'];
+
 /** Clinical case loaded from the input JSON (read-only content). */
 export interface ClinicalCase {
   id: string;
@@ -45,6 +75,8 @@ export interface SpanHumanAudit {
   boundaryAdjusted?: boolean;
   lastAction?: 'created' | 'boundary_adjusted' | 'accepted' | 'discarded';
   lastActionAt?: string;
+  createdPlatform?: AnnotationPlatform;
+  lastActionPlatform?: AnnotationPlatform;
 }
 
 /** A fixed, premarked text span shared by all annotators. */
@@ -102,12 +134,25 @@ export function normalizePremarkedSpans(
   const ids = new Set<string>();
 
   for (const span of candidates) {
+    const splitsSurrogatePair = (offset: number) => {
+      if (offset <= 0 || offset >= textNorm.length) return false;
+      const previous = textNorm.charCodeAt(offset - 1);
+      const next = textNorm.charCodeAt(offset);
+      return (
+        previous >= 0xd800 &&
+        previous <= 0xdbff &&
+        next >= 0xdc00 &&
+        next <= 0xdfff
+      );
+    };
     const validOffsets =
       Number.isInteger(span.start) &&
       Number.isInteger(span.end) &&
       span.start >= 0 &&
       span.start < span.end &&
       span.end <= textNorm.length &&
+      !splitsSurrogatePair(span.start) &&
+      !splitsSurrogatePair(span.end) &&
       textNorm.slice(span.start, span.end) === span.textoLiteral;
 
     if (!validOffsets || ids.has(span.spanId)) {
@@ -452,6 +497,10 @@ export function reviewPremarkedSpan(span: PremarkedSpan, textNorm: string): Prem
 
 /** Input document uploaded by the annotator (or loaded from the example). */
 export interface AnnotationDocument {
+  schemaVersion?: string;
+  textProfile?: TextProfile;
+  terminology?: TerminologySnapshot;
+  producer?: ProducerMetadata;
   project?: string;
   batch?: string;
   annotatorId?: string;
@@ -1035,6 +1084,11 @@ export interface ConceptAnnotation {
   suj: Subject;
   /** Fixed source span when the concept was produced from premarking. */
   spanId?: string;
+  provenance?: {
+    createdPlatform: AnnotationPlatform;
+    lastEditedPlatform: AnnotationPlatform;
+    terminologySelectedPlatform?: AnnotationPlatform;
+  };
 }
 
 export type CaseReviewOutcome = 'coded' | 'no-eligible-concepts';
@@ -1065,11 +1119,17 @@ export interface SessionEntry {
   totalCases: number;
   reviewedCount?: number;
   appBuild?: string;
+  platform?: AnnotationPlatform;
+  sourceFile?: string;
+  schemaVersion?: string;
+  terminologyVersion?: string | null;
 }
 
 export interface SearchQueryTelemetry {
   query: string;
   category: Category | '';
+  /** Missing only in legacy telemetry produced before platform tracking. */
+  platform?: AnnotationPlatform;
   requests: number;
   zeroResults: number;
   errors: number;
@@ -1108,7 +1168,7 @@ export type TelemetryDeletionType =
   | 'lexical-mention'
   | 'comment';
 
-export interface CaseTelemetry {
+export interface CaseTelemetryBase {
   id: string;
   activeMs: number;
   visits: number;
@@ -1134,8 +1194,13 @@ export interface CaseTelemetry {
   search: SearchTelemetry;
 }
 
+export interface CaseTelemetry extends CaseTelemetryBase {
+  /** Same operational counters split by execution surface for friction analysis. */
+  byPlatform: Record<AnnotationPlatform, CaseTelemetryBase>;
+}
+
 export interface AnnotationTelemetry {
-  schemaVersion: '1.0';
+  schemaVersion: '1.1';
   collectionMode: 'local-export-only';
   appBuild: string;
   idleThresholdMs: number;
@@ -1146,7 +1211,7 @@ export interface AnnotationTelemetry {
 export const TELEMETRY_APP_BUILD = 'SEMANTIAR-ANNOTATOR-2026.07';
 export const TELEMETRY_IDLE_THRESHOLD_MS = 120_000;
 
-function emptyCaseTelemetry(id: string): CaseTelemetry {
+function emptyCaseTelemetryBase(id: string): CaseTelemetryBase {
   return {
     id,
     activeMs: 0,
@@ -1196,6 +1261,29 @@ function emptyCaseTelemetry(id: string): CaseTelemetry {
   };
 }
 
+function cloneCaseTelemetryBase(item: CaseTelemetryBase): CaseTelemetryBase {
+  return {
+    ...item,
+    clicksByTarget: { ...item.clicksByTarget },
+    deletionsByType: { ...item.deletionsByType },
+    search: {
+      ...item.search,
+      selectedRanks: [...item.search.selectedRanks],
+      queries: item.search.queries.map((query) => ({ ...query })),
+    },
+  };
+}
+
+function emptyCaseTelemetry(id: string): CaseTelemetry {
+  return {
+    ...emptyCaseTelemetryBase(id),
+    byPlatform: {
+      web: emptyCaseTelemetryBase(id),
+      android: emptyCaseTelemetryBase(id),
+    },
+  };
+}
+
 export function createAnnotationTelemetry(
   caseIds: readonly string[],
   existing?: AnnotationTelemetry
@@ -1225,10 +1313,18 @@ export function createAnnotationTelemetry(
         selectedRanks: [...(previous.search?.selectedRanks ?? [])],
         queries: (previous.search?.queries ?? []).map((query) => ({ ...query })),
       },
+      byPlatform: {
+        web: cloneCaseTelemetryBase(
+          previous.byPlatform?.web ?? emptyCaseTelemetryBase(id)
+        ),
+        android: cloneCaseTelemetryBase(
+          previous.byPlatform?.android ?? emptyCaseTelemetryBase(id)
+        ),
+      },
     };
   });
   return {
-    schemaVersion: '1.0',
+    schemaVersion: '1.1',
     collectionMode: 'local-export-only',
     appBuild: existing?.appBuild ?? TELEMETRY_APP_BUILD,
     idleThresholdMs: existing?.idleThresholdMs ?? TELEMETRY_IDLE_THRESHOLD_MS,
@@ -1259,6 +1355,10 @@ export interface AnnotationMeta {
 
 /** Full output document produced on download. */
 export interface AnnotationOutput {
+  schemaVersion: typeof SEMANTIAR_SCHEMA_VERSION;
+  textProfile: TextProfile;
+  terminology: TerminologySnapshot;
+  producer: ProducerMetadata;
   project?: string;
   batch?: string;
   annotatorId?: string;

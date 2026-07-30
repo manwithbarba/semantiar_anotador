@@ -380,6 +380,44 @@
               Si un resaltado tiene un número, hay varias menciones superpuestas: elegí cada una para revisarla.
             </p>
           }
+
+          <section
+            class="quick-lexical-add quick-mention-add"
+            [attr.id]="'case-mention-add-' + ci"
+            aria-label="Agregar una mención clínica escribiendo el texto">
+            <div class="quick-lexical-head">
+              <mat-icon aria-hidden="true">add_location_alt</mat-icon>
+              <div>
+                <strong>Agregar mención clínica</strong>
+                <span>En celular, escribí el texto y tocá la aparición exacta; no necesitás arrastrar.</span>
+              </div>
+            </div>
+            <mat-form-field appearance="outline" class="quick-lexical-input">
+              <mat-label>Texto exacto de la mención</mat-label>
+              <input
+                matInput
+                [ngModel]="mentionQuickValue(ci)"
+                (ngModelChange)="setMentionQuickValue(ci, $event)"
+                placeholder="Ej.: dolor abdominal"
+                autocomplete="off" />
+            </mat-form-field>
+            @if (mentionQuickValue(ci).trim()) {
+              <div class="quick-lexical-candidates" aria-live="polite">
+                @for (candidate of mentionQuickCandidates(ci); track candidate.start) {
+                  <button
+                    type="button"
+                    class="quick-lexical-candidate"
+                    (click)="addHumanSpanAt(ci, candidate.start, candidate.end)">
+                    <strong>“{{ candidate.surface }}”</strong>
+                    <span>…{{ candidate.context }}…</span>
+                    <mat-icon aria-hidden="true">add_circle</mat-icon>
+                  </button>
+                } @empty {
+                  <p>No hay coincidencias exactas en esta nota. Revisá tildes y mayúsculas.</p>
+                }
+              </div>
+            }
+          </section>
           </div>
 
           <div class="case-review">

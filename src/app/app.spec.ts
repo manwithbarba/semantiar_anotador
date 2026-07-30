@@ -136,6 +136,48 @@ describe('App', () => {
     });
   });
 
+  it('should add a mobile typed mention with verified offsets and platform provenance', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    const text = 'Dolor abdominal y dolor abdominal recurrente.';
+    annotator.cases.set([
+      {
+        id: 'MOBILE-SPAN-001',
+        text,
+        textNorm: text,
+        spans: [],
+        concepts: [],
+        comentarios: '',
+      },
+    ]);
+    annotator.sessionMeta.set({
+      sessions: [],
+      totalDownloads: 0,
+      firstLoadedAt: '2026-07-30T00:00:00.000Z',
+      telemetry: createAnnotationTelemetry(['MOBILE-SPAN-001']),
+    });
+
+    annotator.setMentionQuickValue(0, 'dolor abdominal');
+    const candidates = annotator.mentionQuickCandidates(0);
+    expect(candidates).toHaveLength(1);
+    annotator.addHumanSpanAt(0, candidates[0].start, candidates[0].end);
+
+    expect(annotator.cases()[0].spans[0]).toMatchObject({
+      start: text.indexOf('dolor abdominal'),
+      end: text.indexOf('dolor abdominal') + 'dolor abdominal'.length,
+      textoLiteral: 'dolor abdominal',
+      humanAudit: {
+        createdPlatform: 'web',
+        lastActionPlatform: 'web',
+      },
+    });
+    expect(
+      annotator.sessionMeta()?.telemetry?.cases[0].byPlatform.web.manualSpansAdded
+    ).toBe(1);
+  });
+
   it('should finalize a reviewed case and reopen it after an annotation edit', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
@@ -635,6 +677,20 @@ describe('App', () => {
     const output = JSON.parse(outputText);
     const annotation = output.cases[0].lexicalMentions[0].annotation;
 
+    expect(output).toMatchObject({
+      schemaVersion: '1.0.0',
+      textProfile: {
+        normalization: 'NFC',
+        lineEndings: 'LF',
+        offsetUnit: 'utf16-code-unit',
+      },
+      producer: { app: 'SemantIAr', platform: 'web' },
+    });
+    expect(output._meta.sessions.at(-1)).toMatchObject({
+      action: 'download',
+      platform: 'web',
+      schemaVersion: '1.0.0',
+    });
     expect(annotation).toMatchObject({
       decisionStatus: 'unknown',
       senseId: null,
@@ -711,9 +767,22 @@ describe('App', () => {
     expect(search?.queries[0]).toMatchObject({
       query: 'diabetes',
       category: 'Hallazgo clínico',
+      platform: 'web',
       requests: 1,
       selections: 1,
     });
+    expect(
+      annotator.sessionMeta()?.telemetry?.cases[0].byPlatform.web.search
+    ).toMatchObject({
+      episodes: 1,
+      requests: 1,
+      completedRequests: 1,
+      selections: 1,
+      totalLatencyMs: 85,
+    });
+    expect(
+      annotator.sessionMeta()?.telemetry?.cases[0].byPlatform.android.search.requests
+    ).toBe(0);
   });
 
   it('should track passive behavioral metrics (clicks, deletions, and target distribution)', async () => {
@@ -775,5 +844,9 @@ describe('App', () => {
     expect(caseTelem?.clicksByTarget['concept-add']).toBe(1);
     expect(caseTelem?.clicksByTarget['span-discard']).toBe(1);
     expect(caseTelem?.clicksTotal).toBeGreaterThanOrEqual(2);
+    expect(caseTelem?.byPlatform.web.conceptsAdded).toBe(1);
+    expect(caseTelem?.byPlatform.web.spansDiscarded).toBe(1);
+    expect(caseTelem?.byPlatform.web.clicksTotal).toBeGreaterThanOrEqual(2);
+    expect(caseTelem?.byPlatform.android.clicksTotal).toBe(0);
   });
 });

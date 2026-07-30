@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manwithbarba.github.io/semantiar_anotador/semantiar-annotation.schema.json",
+  "title": "SemantIAr Annotation Interchange",
+  "type": "object",
+  "required": ["schemaVersion", "textProfile", "terminology", "producer", "cases"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "textProfile": {
+      "type": "object",
+      "required": ["normalization", "lineEndings", "offsetUnit"],
+      "properties": {
+        "normalization": { "const": "NFC" },
+        "lineEndings": { "const": "LF" },
+        "offsetUnit": { "const": "utf16-code-unit" }
+      },
+      "additionalProperties": false
+    },
+    "terminology": {
+      "type": "object",
+      "required": ["server", "editionUri", "version", "displayLanguage", "capturedAt"],
+      "properties": {
+        "server": { "type": "string" },
+        "editionUri": { "type": "string" },
+        "version": { "type": ["string", "null"] },
+        "displayLanguage": { "type": "string" },
+        "capturedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "required": ["app", "build", "platform"],
+      "properties": {
+        "app": { "const": "SemantIAr" },
+        "build": { "type": "string" },
+        "platform": { "enum": ["web", "android"] }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "text"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "text": { "type": "string" },
+          "textNorm": { "type": "string" },
+          "spans": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["spanId", "start", "end", "textoLiteral"],
+              "properties": {
+                "spanId": { "type": "string", "minLength": 1 },
+                "start": { "type": "integer", "minimum": 0 },
+                "end": { "type": "integer", "minimum": 1 },
+                "textoLiteral": { "type": "string", "minLength": 1 }
+              }
+            }
+          },
+          "concepts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sctid": {
+                  "type": "string",
+                  "pattern": "^(|[0-9]{6,18})$"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
