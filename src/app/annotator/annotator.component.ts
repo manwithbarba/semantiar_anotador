@@ -280,10 +280,10 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   /**
    * Long lexical option cards need room on desktop, but a fixed 420px overlay
    * can be positioned beyond the viewport on a phone. On compact screens the
-   * Material panel follows the width of its trigger instead.
+   * panel uses the available viewport width, with a visible margin on both sides.
    */
   lexicalPanelWidth(): string {
-    return window.innerWidth <= 720 ? 'auto' : '420px';
+    return window.innerWidth <= 720 ? 'calc(100vw - 24px)' : '420px';
   }
 
   @HostListener('document:pointerdown', ['$event'])
