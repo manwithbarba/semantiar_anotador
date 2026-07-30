@@ -757,6 +757,22 @@
   border-left-color: #3e74aa;
   background: #f7fbff;
 }
+.selection-help {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: -6px 2px 14px;
+  color: #53627a;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.selection-help mat-icon {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  color: #2f6fae;
+  font-size: 18px;
+}
 .premarked-span {
   border: 0;
   border-bottom: 3px solid #0f766e;
@@ -1202,8 +1218,19 @@
     min-height: 44px;
     margin-left: 0;
   }
+  .load-btn,
+  .pending-btn,
+  .clear-btn {
+    min-width: 44px;
+    padding: 0 10px;
+  }
+  .load-btn .toolbar-label,
+  .pending-btn .toolbar-label,
+  .clear-btn .toolbar-label {
+    display: none;
+  }
   .download-btn {
-    flex: 1 1 calc(100% - 58px);
+    flex: 1 1 auto;
     min-width: 0;
     white-space: normal;
     line-height: 1.2;
@@ -1220,13 +1247,76 @@
     border-radius: 10px;
     padding: 12px;
   }
+  .json-flow {
+    gap: 10px;
+  }
+  .json-flow-status span {
+    font-size: 12px;
+  }
+  .json-flow-steps {
+    display: none;
+  }
+  .annotation-protocol {
+    gap: 10px;
+  }
+  .annotation-protocol-icon {
+    flex-basis: 32px;
+    height: 32px;
+  }
+  .annotation-protocol h2 {
+    font-size: 15px;
+  }
+  .annotation-protocol p {
+    font-size: 13px;
+  }
   .case-card {
     margin-bottom: 12px;
     padding: 12px;
   }
+  .case-id {
+    align-items: flex-start;
+    gap: 6px;
+    font-size: 13px;
+  }
+  .case-status-badge {
+    margin-left: 0;
+  }
+  .case-source-label {
+    margin-top: 2px;
+  }
   .case-text {
-    font-size: 16px;
+    font-size: 17px;
+    line-height: 1.6;
     padding: 12px;
+    -webkit-user-select: text;
+    user-select: text;
+    touch-action: pan-y;
+  }
+  .selection-help {
+    margin: 0 2px 12px;
+    font-size: 12px;
+  }
+  .human-span-draft {
+    position: sticky;
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    z-index: 3;
+    box-shadow: 0 8px 22px rgba(45, 62, 95, 0.18);
+  }
+  .concept-block {
+    padding: 12px;
+  }
+  .concepts-section-head,
+  .case-finalization {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .concepts-section-head button {
+    width: 100%;
+    min-height: 46px;
+  }
+  .context-row {
+    grid-template-columns: 1fr;
   }
   .span-actions,
   .case-finalization-actions {

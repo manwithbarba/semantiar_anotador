@@ -23,13 +23,13 @@
   }
 
   <input #fileInput type="file" accept="application/json,.json" hidden (change)="onFileSelected($event)" />
-  <button mat-stroked-button (click)="fileInput.click()">
-    <mat-icon>upload_file</mat-icon> Cargar JSON
+  <button mat-stroked-button class="load-btn" (click)="fileInput.click()" aria-label="Cargar JSON">
+    <mat-icon>upload_file</mat-icon> <span class="toolbar-label">Cargar JSON</span>
   </button>
   @if (loaded() && !complete()) {
-    <button mat-stroked-button color="accent" (click)="scrollToFirstPending()"
+    <button mat-stroked-button color="accent" class="pending-btn" (click)="scrollToFirstPending()"
             matTooltip="Ir al primer caso sin anotar">
-      <mat-icon>arrow_downward</mat-icon> {{ pendingButtonLabel() }}
+      <mat-icon>arrow_downward</mat-icon> <span class="toolbar-label">{{ pendingButtonLabel() }}</span>
     </button>
   }
   @if (loaded()) {
@@ -37,15 +37,15 @@
             matTooltip="Ver estadísticas de sesiones">
       <mat-icon>bar_chart</mat-icon>
     </button>
-    <button mat-stroked-button color="warn" (click)="clearAll()"
+    <button mat-stroked-button color="warn" class="clear-btn" (click)="clearAll()"
             matTooltip="Limpiar todo y empezar de nuevo">
-      <mat-icon>restart_alt</mat-icon> Limpiar
+      <mat-icon>restart_alt</mat-icon> <span class="toolbar-label">Limpiar</span>
     </button>
   }
   <button mat-flat-button color="accent" class="download-btn"
           [class.complete]="complete()" [disabled]="!loaded()" (click)="download()">
     <mat-icon>{{ complete() ? 'task_alt' : 'download' }}</mat-icon>
-    {{ downloadButtonLabel() }}
+    <span class="toolbar-label">{{ downloadButtonLabel() }}</span>
   </button>
   <button mat-icon-button class="settings-btn" (click)="openSettings()"
           matTooltip="Configuración de terminología">
@@ -216,7 +216,12 @@
           #caseText
           class="case-text"
           [class.has-spans]="caseItem.spans.length"
-          (mouseup)="captureTextSelection(ci, caseText)">
+          tabindex="0"
+          aria-describedby="selection-help-{{ ci }}"
+          (mouseup)="queueTextSelection(ci, caseText)"
+          (pointerup)="queueTextSelection(ci, caseText)"
+          (touchend)="queueTextSelection(ci, caseText)"
+          (keyup)="queueTextSelection(ci, caseText)">
           @for (segment of textSegments(caseItem); track $index; let si = $index) {
             @if (segment.kind === 'text') {
               <span [attr.data-source-start]="textSegmentStart(caseItem, si)">{{ segment.value }}</span>
@@ -244,6 +249,11 @@
             }
           }
         </div>
+        <p class="selection-help" id="selection-help-{{ ci }}">
+          <mat-icon aria-hidden="true">gesture</mat-icon>
+          Para agregar una mención: mantené pulsado sobre el texto, arrastrá los controles de selección y elegí
+          <strong>“Incorporar mención omitida”</strong>.
+        </p>
 
           @if (caseItem.spans.length > 1) {
             <p class="overlap-help">

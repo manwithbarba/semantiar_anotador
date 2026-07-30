@@ -114,6 +114,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   private timingCaseIndex: number | null = null;
   private lastActivityMarkMs = 0;
   private timingActive = false;
+  private textSelectionTimer: number | undefined;
   private pendingActiveMs = new Map<number, number>();
 
   @ViewChild('confirmClear') confirmClearTpl!: TemplateRef<unknown>;
@@ -247,6 +248,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    if (this.textSelectionTimer !== undefined) window.clearTimeout(this.textSelectionTimer);
     this.flushActiveTime();
     this.flushPendingActiveTime();
   }
@@ -792,6 +794,18 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     return caseItem.concepts
       .map((concept, index) => ({ concept, index }))
       .sort((left, right) => (right.concept.sequence ?? right.index) - (left.concept.sequence ?? left.index));
+  }
+
+  /**
+   * Android applies a long-press selection after the pointer event finishes.
+   * Deferring the read keeps mouse, keyboard and touch selections equivalent.
+   */
+  queueTextSelection(caseIdx: number, element: HTMLElement): void {
+    if (this.textSelectionTimer !== undefined) window.clearTimeout(this.textSelectionTimer);
+    this.textSelectionTimer = window.setTimeout(() => {
+      this.textSelectionTimer = undefined;
+      this.captureTextSelection(caseIdx, element);
+    }, 120);
   }
 
   captureTextSelection(caseIdx: number, element: HTMLElement): void {
