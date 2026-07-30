@@ -16,3 +16,15 @@ body {
 * {
   box-sizing: border-box;
 }
+
+/* CDK select panels live outside the component tree. Keep the explanatory
+   lexical options inside the phone viewport and let the list scroll vertically. */
+@media (max-width: 720px) {
+  .cdk-overlay-pane:has(.semantiar-lexical-select-panel) {
+    max-width: calc(100vw - 20px) !important;
+  }
+
+  .semantiar-lexical-select-panel {
+    max-height: min(58dvh, 420px) !important;
+  }
+}

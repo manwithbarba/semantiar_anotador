@@ -56,6 +56,20 @@ describe('App', () => {
     ).toHaveLength(1);
   });
 
+  it('should keep lexical select panels aligned with their field on a phone', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    const originalWidth = window.innerWidth;
+
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+    expect(annotator.lexicalPanelWidth()).toBe('auto');
+
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth });
+    expect(annotator.lexicalPanelWidth()).toBe('420px');
+  });
+
   it('should calculate the source offsets of a manual selection across rendered segments', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
