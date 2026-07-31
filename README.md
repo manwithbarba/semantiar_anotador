@@ -6,6 +6,31 @@ usando el buscador embebido (`autocomplete-binding`) restringido por jerarquía.
 Pensada para el flujo de calibración de anotadores del proyecto SEMANTIAR
 (corpus clínico en español rioplatense).
 
+## Empezar a anotar
+
+Esta aplicación está pensada para profesionales de la salud que participan en
+la anotación académica de notas clínicas. No necesitás conocimientos de
+programación ni de SNOMED CT para comenzar: el sistema te va guiando durante
+la revisión.
+
+1. Abrí la [versión web](https://manwithbarba.github.io/semantiar_anotador/),
+   o instalá la aplicación en Android desde
+   [GitHub Releases](https://github.com/manwithbarba/semantiar_anotador/releases).
+2. Elegí **Cargar JSON** y seleccioná el archivo que te asignó el equipo de
+   investigación.
+3. Revisá cada nota clínica, completá las formas breves y los conceptos que
+   correspondan, y marcá la nota como revisada cuando termines.
+4. Usá **Guardar avance** antes de cerrar. El archivo descargado permite
+   continuar más adelante o entregarlo al equipo coordinador.
+
+El detalle paso a paso, con imágenes y ejemplos, está en el
+[Manual de uso de SemantIAr App](docs/Manual_de_uso_SemantIAr_App.md) y en su
+[versión PDF](https://manwithbarba.github.io/semantiar_anotador/manuales/Manual_de_uso_SemantIAr_App.pdf).
+
+> La herramienta se utiliza exclusivamente para fines académicos. No sube los
+> datos a GitHub ni los comparte automáticamente: la información permanece en
+> el dispositivo hasta que descargás o compartís el archivo JSON de avance.
+
 > 📄 Descripción técnica detallada (integración con el servidor de terminología,
 > autocompletado, búsqueda multi-prefijo, FHIR API): [`docs/IMPLEMENTACION.md`](docs/IMPLEMENTACION.md).
 
