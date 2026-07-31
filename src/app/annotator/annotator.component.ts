@@ -180,6 +180,8 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   /** Draft text used to add an exact clinical mention without touch-dragging. */
   mentionQuickEntry = signal<Record<number, string>>({});
   protocolExpanded = signal<boolean>(false);
+  /** Native phone controls avoid CDK overlay positioning outside the viewport. */
+  compactMobile = signal<boolean>(false);
 
   /** Session metadata (upload/download audit trail). */
   sessionMeta = signal<AnnotationMeta | null>(null);
@@ -267,6 +269,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   );
 
   ngOnInit(): void {
+    this.refreshMobileLayout();
     this.detectEdition();
   }
 
@@ -277,13 +280,14 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.flushPendingActiveTime();
   }
 
-  /**
-   * Long lexical option cards need room on desktop, but a fixed 420px overlay
-   * can be positioned beyond the viewport on a phone. On compact screens the
-   * panel uses the available viewport width, with a visible margin on both sides.
-   */
-  lexicalPanelWidth(): string {
-    return window.innerWidth <= 720 ? 'calc(100vw - 24px)' : '420px';
+  /** Update the control pattern when the browser crosses the mobile breakpoint. */
+  refreshMobileLayout(): void {
+    this.compactMobile.set(window.innerWidth <= 720);
+  }
+
+  @HostListener('window:resize')
+  onWindowResize(): void {
+    this.refreshMobileLayout();
   }
 
   @HostListener('document:pointerdown', ['$event'])
