@@ -260,6 +260,13 @@ En Android, **Guardar avance** abre el selector del sistema para guardar o
 compartir el JSON fuera de la aplicación. La web conserva la descarga habitual
 del archivo en el navegador.
 
+### Versión iOS en preparación
+
+La rama `codex/ios-tester` contiene el proyecto de Capacitor para iPhone y
+iPad. Requiere una Mac con Xcode para compilar, instalar en un dispositivo y
+publicar una versión tester por TestFlight. Las instrucciones técnicas están en
+[`docs/IOS_TESTER.md`](docs/IOS_TESTER.md).
+
 ### Manual de SemantIAr App
 
 La guía operativa específica para Android y PWA está disponible en:
