@@ -56,7 +56,7 @@ describe('App', () => {
     ).toHaveLength(1);
   });
 
-  it('should keep lexical select panels aligned with their field on a phone', async () => {
+  it('should use native lexical controls on a phone', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
@@ -64,10 +64,37 @@ describe('App', () => {
     const originalWidth = window.innerWidth;
 
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
-    expect(annotator.lexicalPanelWidth()).toBe('calc(100vw - 24px)');
+    annotator.refreshMobileLayout();
+    expect(annotator.compactMobile()).toBe(true);
 
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth });
-    expect(annotator.lexicalPanelWidth()).toBe('420px');
+    annotator.refreshMobileLayout();
+    expect(annotator.compactMobile()).toBe(false);
+  });
+
+  it('should render lexical decisions as native controls on a phone', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    annotator.compactMobile.set(true);
+    annotator.annotationProtocol.set({ ...ASSISTED_ANNOTATION_PROTOCOL, lexicalLayerEnabled: true });
+    annotator.cases.set([
+      {
+        id: 'MOBILE-LEXICAL-001',
+        text: 'IAM sin datos adicionales.',
+        textNorm: 'IAM sin datos adicionales.',
+        spans: [],
+        concepts: [],
+        lexicalMentions: [newHumanLexicalMention('lex-mobile-001', 0, 3, 'IAM')],
+        comentarios: '',
+      },
+    ]);
+
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelectorAll('.lexical-native-field select')).toHaveLength(5);
+    expect(fixture.nativeElement.querySelectorAll('.lexical-grid mat-select')).toHaveLength(0);
   });
 
   it('should calculate the source offsets of a manual selection across rendered segments', async () => {

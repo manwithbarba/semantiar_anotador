@@ -631,128 +631,180 @@
                   }
 
                   <div class="lexical-grid">
-                    <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                      <mat-label>¿Cómo está escrita?</mat-label>
-                      <mat-select
-                        [panelWidth]="lexicalPanelWidth()"
-                        panelClass="semantiar-lexical-select-panel"
-                        [attr.aria-describedby]="'lexical-form-help-' + ci + '-' + mention.mentionId"
-                        [ngModel]="mention.annotation.formType"
-                        (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'formType', $event)">
-                        <mat-select-trigger>
-                          {{ lexicalFormLabel(mention.annotation.formType) }}
-                        </mat-select-trigger>
-                        @for (option of lexicalFormTypes; track option.value) {
-                          <mat-option class="lexical-mat-option" [value]="option.value">
-                            <span class="lexical-option">
-                              <strong>{{ option.label }}</strong>
-                              <span>{{ option.description }}</span>
-                              @if (option.example) {
-                                <small>{{ option.example }}</small>
-                              }
-                            </span>
-                          </mat-option>
-                        }
-                      </mat-select>
-                      <mat-hint [id]="'lexical-form-help-' + ci + '-' + mention.mentionId">
-                        {{ lexicalFormSuggestion(mention) }}
-                      </mat-hint>
-                    </mat-form-field>
-
-                    <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                      <mat-label>¿Podés saber qué significa aquí?</mat-label>
-                      <mat-select
-                        [panelWidth]="lexicalPanelWidth()"
-                        panelClass="semantiar-lexical-select-panel"
-                        [attr.aria-describedby]="'lexical-decision-help-' + ci + '-' + mention.mentionId"
-                        [ngModel]="mention.annotation.decisionStatus"
-                        (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'decisionStatus', $event)">
-                        <mat-select-trigger>
-                          {{ lexicalDecisionLabel(mention.annotation.decisionStatus) }}
-                        </mat-select-trigger>
-                        @for (option of lexicalDecisions; track option.value) {
-                          <mat-option
-                            class="lexical-mat-option"
-                            [value]="option.value">
-                            <span class="lexical-option">
-                              <strong>{{ option.label }}</strong>
-                              <span>{{ option.description }}</span>
-                              @if (option.example) {
-                                <small>{{ option.example }}</small>
-                              }
-                            </span>
-                          </mat-option>
-                        }
-                      </mat-select>
-                      <mat-hint [id]="'lexical-decision-help-' + ci + '-' + mention.mentionId">
-                        Pendiente bloquea el cierre; ambigua y no puedo determinarla son
-                        abstenciones finales válidas. “Resuelta” requiere elegir un significado disponible.
-                      </mat-hint>
-                    </mat-form-field>
-
-                    <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                      <mat-label>¿Qué papel cumple en esta parte de la nota?</mat-label>
-                      <mat-select
-                        [panelWidth]="lexicalPanelWidth()"
-                        panelClass="semantiar-lexical-select-panel"
-                        [attr.aria-describedby]="'lexical-function-help-' + ci + '-' + mention.mentionId"
-                        [ngModel]="mention.annotation.function"
-                        (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'function', $event)">
-                        <mat-select-trigger>
-                          {{ lexicalFunctionLabel(mention.annotation.function) }}
-                        </mat-select-trigger>
-                        <mat-option
-                          class="lexical-mat-option"
-                          [value]="lexicalUnclassifiedFunction.value">
-                          <span class="lexical-option">
-                            <strong>{{ lexicalUnclassifiedFunction.label }}</strong>
-                            <span>{{ lexicalUnclassifiedFunction.description }}</span>
-                          </span>
-                        </mat-option>
-                        @for (option of lexicalFunctions; track option.value) {
-                          <mat-option class="lexical-mat-option" [value]="option.value">
-                            <span class="lexical-option">
-                              <strong>{{ option.label }}</strong>
-                              <span>{{ option.description }}</span>
-                              @if (option.example) {
-                                <small>{{ option.example }}</small>
-                              }
-                            </span>
-                          </mat-option>
-                        }
-                      </mat-select>
-                      <mat-hint [id]="'lexical-function-help-' + ci + '-' + mention.mentionId">
-                        Sin clasificar deja el papel vacío; Otra función es una elección explícita.
-                      </mat-hint>
-                    </mat-form-field>
-
-                    @if (mention.annotation.decisionStatus === 'resolved') {
+                    @if (compactMobile()) {
+                      <label class="lexical-native-field">
+                        <span>¿Cómo está escrita?</span>
+                        <select
+                          [ngModel]="mention.annotation.formType"
+                          (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'formType', $event)">
+                          <option [ngValue]="null">Sin seleccionar</option>
+                          @for (option of lexicalFormTypes; track option.value) {
+                            <option [value]="option.value">{{ option.label }}</option>
+                          }
+                        </select>
+                        <small>{{ lexicalFormSuggestion(mention) }}</small>
+                      </label>
+                    } @else {
                       <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                        <mat-label>¿Qué significa aquí?</mat-label>
-                        @if (lexicalSenseOptions(mention).length) {
-                          <mat-select
-                            [panelWidth]="lexicalPanelWidth()"
-                            panelClass="semantiar-lexical-select-panel"
-                            [ngModel]="mention.annotation.senseId"
-                            (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'senseId', $event)">
-                            <mat-select-trigger>
-                              {{ lexicalSenseLabel(mention) }}
-                            </mat-select-trigger>
-                            @for (sense of lexicalSenseOptions(mention); track sense.senseId) {
-                              <mat-option [value]="sense.senseId">{{ sense.expansion }}</mat-option>
-                            }
-                          </mat-select>
-                        } @else {
-                          <input
-                            matInput
-                            [ngModel]="mention.annotation.senseId"
-                            (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'senseId', $event)"
-                            placeholder="Escribí el sentido o su identificador" />
-                        }
-                        <mat-hint>
-                          Elegí un significado disponible o escribí el sentido manualmente si el JSON no trajo inventario para esta forma.
+                        <mat-label>¿Cómo está escrita?</mat-label>
+                        <mat-select
+                          panelWidth="420px"
+                          [attr.aria-describedby]="'lexical-form-help-' + ci + '-' + mention.mentionId"
+                          [ngModel]="mention.annotation.formType"
+                          (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'formType', $event)">
+                          <mat-select-trigger>
+                            {{ lexicalFormLabel(mention.annotation.formType) }}
+                          </mat-select-trigger>
+                          @for (option of lexicalFormTypes; track option.value) {
+                            <mat-option class="lexical-mat-option" [value]="option.value">
+                              <span class="lexical-option">
+                                <strong>{{ option.label }}</strong>
+                                <span>{{ option.description }}</span>
+                                @if (option.example) {
+                                  <small>{{ option.example }}</small>
+                                }
+                              </span>
+                            </mat-option>
+                          }
+                        </mat-select>
+                        <mat-hint [id]="'lexical-form-help-' + ci + '-' + mention.mentionId">
+                          {{ lexicalFormSuggestion(mention) }}
                         </mat-hint>
                       </mat-form-field>
+                    }
+
+                    @if (compactMobile()) {
+                      <label class="lexical-native-field">
+                        <span>¿Podés saber qué significa aquí?</span>
+                        <select
+                          [ngModel]="mention.annotation.decisionStatus"
+                          (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'decisionStatus', $event)">
+                          <option [ngValue]="null">Sin seleccionar</option>
+                          @for (option of lexicalDecisions; track option.value) {
+                            <option [value]="option.value">{{ option.label }}</option>
+                          }
+                        </select>
+                        <small>Pendiente bloquea el cierre; “Resuelta” requiere elegir un significado.</small>
+                      </label>
+                    } @else {
+                      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                        <mat-label>¿Podés saber qué significa aquí?</mat-label>
+                        <mat-select
+                          panelWidth="420px"
+                          [attr.aria-describedby]="'lexical-decision-help-' + ci + '-' + mention.mentionId"
+                          [ngModel]="mention.annotation.decisionStatus"
+                          (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'decisionStatus', $event)">
+                          <mat-select-trigger>
+                            {{ lexicalDecisionLabel(mention.annotation.decisionStatus) }}
+                          </mat-select-trigger>
+                          @for (option of lexicalDecisions; track option.value) {
+                            <mat-option class="lexical-mat-option" [value]="option.value">
+                              <span class="lexical-option">
+                                <strong>{{ option.label }}</strong>
+                                <span>{{ option.description }}</span>
+                                @if (option.example) {
+                                  <small>{{ option.example }}</small>
+                                }
+                              </span>
+                            </mat-option>
+                          }
+                        </mat-select>
+                        <mat-hint [id]="'lexical-decision-help-' + ci + '-' + mention.mentionId">
+                          Pendiente bloquea el cierre; ambigua y no puedo determinarla son
+                          abstenciones finales válidas. “Resuelta” requiere elegir un significado disponible.
+                        </mat-hint>
+                      </mat-form-field>
+                    }
+
+                    @if (compactMobile()) {
+                      <label class="lexical-native-field">
+                        <span>¿Qué papel cumple en esta parte de la nota?</span>
+                        <select
+                          [ngModel]="mention.annotation.function"
+                          (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'function', $event)">
+                          <option [value]="lexicalUnclassifiedFunction.value">{{ lexicalUnclassifiedFunction.label }}</option>
+                          @for (option of lexicalFunctions; track option.value) {
+                            <option [value]="option.value">{{ option.label }}</option>
+                          }
+                        </select>
+                        <small>Sin clasificar deja el papel vacío; Otra función es una elección explícita.</small>
+                      </label>
+                    } @else {
+                      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                        <mat-label>¿Qué papel cumple en esta parte de la nota?</mat-label>
+                        <mat-select
+                          panelWidth="420px"
+                          [attr.aria-describedby]="'lexical-function-help-' + ci + '-' + mention.mentionId"
+                          [ngModel]="mention.annotation.function"
+                          (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'function', $event)">
+                          <mat-select-trigger>
+                            {{ lexicalFunctionLabel(mention.annotation.function) }}
+                          </mat-select-trigger>
+                          <mat-option class="lexical-mat-option" [value]="lexicalUnclassifiedFunction.value">
+                            <span class="lexical-option">
+                              <strong>{{ lexicalUnclassifiedFunction.label }}</strong>
+                              <span>{{ lexicalUnclassifiedFunction.description }}</span>
+                            </span>
+                          </mat-option>
+                          @for (option of lexicalFunctions; track option.value) {
+                            <mat-option class="lexical-mat-option" [value]="option.value">
+                              <span class="lexical-option">
+                                <strong>{{ option.label }}</strong>
+                                <span>{{ option.description }}</span>
+                                @if (option.example) {
+                                  <small>{{ option.example }}</small>
+                                }
+                              </span>
+                            </mat-option>
+                          }
+                        </mat-select>
+                        <mat-hint [id]="'lexical-function-help-' + ci + '-' + mention.mentionId">
+                          Sin clasificar deja el papel vacío; Otra función es una elección explícita.
+                        </mat-hint>
+                      </mat-form-field>
+                    }
+
+                    @if (mention.annotation.decisionStatus === 'resolved') {
+                      @if (compactMobile() && lexicalSenseOptions(mention).length) {
+                        <label class="lexical-native-field">
+                          <span>¿Qué significa aquí?</span>
+                          <select
+                            [ngModel]="mention.annotation.senseId"
+                            (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'senseId', $event)">
+                            <option [ngValue]="null">Sin seleccionar</option>
+                            @for (sense of lexicalSenseOptions(mention); track sense.senseId) {
+                              <option [value]="sense.senseId">{{ sense.expansion }}</option>
+                            }
+                          </select>
+                          <small>Elegí el significado que corresponde a esta aparición.</small>
+                        </label>
+                      } @else {
+                        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                          <mat-label>¿Qué significa aquí?</mat-label>
+                          @if (lexicalSenseOptions(mention).length) {
+                            <mat-select
+                              panelWidth="420px"
+                              [ngModel]="mention.annotation.senseId"
+                              (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'senseId', $event)">
+                              <mat-select-trigger>
+                                {{ lexicalSenseLabel(mention) }}
+                              </mat-select-trigger>
+                              @for (sense of lexicalSenseOptions(mention); track sense.senseId) {
+                                <mat-option [value]="sense.senseId">{{ sense.expansion }}</mat-option>
+                              }
+                            </mat-select>
+                          } @else {
+                            <input
+                              matInput
+                              [ngModel]="mention.annotation.senseId"
+                              (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'senseId', $event)"
+                              placeholder="Escribí el sentido o su identificador" />
+                          }
+                          <mat-hint>
+                            Elegí un significado disponible o escribí el sentido manualmente si el JSON no trajo inventario para esta forma.
+                          </mat-hint>
+                        </mat-form-field>
+                      }
                     }
 
                     @if (mention.annotation.decisionStatus === 'new_sense_proposed') {
@@ -779,61 +831,97 @@
                       </mat-form-field>
                     }
 
-                    <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                      <mat-label>¿En qué parte de la nota aparece?</mat-label>
-                      <mat-select
-                        [panelWidth]="lexicalPanelWidth()"
-                        panelClass="semantiar-lexical-select-panel"
-                        [ngModel]="mention.annotation.section"
-                        (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'section', $event)">
-                        <mat-select-trigger>
-                          {{ lexicalSectionLabel(mention.annotation.section) }}
-                        </mat-select-trigger>
-                        <mat-option [value]="null">Sin especificar</mat-option>
-                        @if (mention.annotation.section && !isKnownLexicalSection(mention.annotation.section)) {
-                          <mat-option [value]="mention.annotation.section">
-                            Valor existente: {{ mention.annotation.section }}
-                          </mat-option>
-                        }
-                        @for (option of lexicalSections; track option.value) {
-                          <mat-option class="lexical-mat-option" [value]="option.value">
-                            <span class="lexical-option">
-                              <strong>{{ option.label }}</strong>
-                              <span>{{ option.description }}</span>
-                            </span>
-                          </mat-option>
-                        }
-                      </mat-select>
-                      <mat-hint>Elegí la ubicación local; no una especialidad global.</mat-hint>
-                    </mat-form-field>
+                    @if (compactMobile()) {
+                      <label class="lexical-native-field">
+                        <span>¿En qué parte de la nota aparece?</span>
+                        <select
+                          [ngModel]="mention.annotation.section"
+                          (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'section', $event)">
+                          <option [ngValue]="null">Sin especificar</option>
+                          @if (mention.annotation.section && !isKnownLexicalSection(mention.annotation.section)) {
+                            <option [value]="mention.annotation.section">Valor existente: {{ mention.annotation.section }}</option>
+                          }
+                          @for (option of lexicalSections; track option.value) {
+                            <option [value]="option.value">{{ option.label }}</option>
+                          }
+                        </select>
+                        <small>Elegí la ubicación local; no una especialidad global.</small>
+                      </label>
+                    } @else {
+                      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                        <mat-label>¿En qué parte de la nota aparece?</mat-label>
+                        <mat-select
+                          panelWidth="420px"
+                          [ngModel]="mention.annotation.section"
+                          (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'section', $event)">
+                          <mat-select-trigger>
+                            {{ lexicalSectionLabel(mention.annotation.section) }}
+                          </mat-select-trigger>
+                          <mat-option [value]="null">Sin especificar</mat-option>
+                          @if (mention.annotation.section && !isKnownLexicalSection(mention.annotation.section)) {
+                            <mat-option [value]="mention.annotation.section">
+                              Valor existente: {{ mention.annotation.section }}
+                            </mat-option>
+                          }
+                          @for (option of lexicalSections; track option.value) {
+                            <mat-option class="lexical-mat-option" [value]="option.value">
+                              <span class="lexical-option">
+                                <strong>{{ option.label }}</strong>
+                                <span>{{ option.description }}</span>
+                              </span>
+                            </mat-option>
+                          }
+                        </mat-select>
+                        <mat-hint>Elegí la ubicación local; no una especialidad global.</mat-hint>
+                      </mat-form-field>
+                    }
 
-                    <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                      <mat-label>¿Qué pistas usaste?</mat-label>
-                      <mat-select
-                        [panelWidth]="lexicalPanelWidth()"
-                        panelClass="semantiar-lexical-select-panel"
-                        multiple
-                        [ngModel]="mention.annotation.evidenceCodes"
-                        (ngModelChange)="updateLexicalEvidence(ci, mention.mentionId, $event)">
-                        <mat-select-trigger>
-                          {{ lexicalEvidenceSummary(mention.annotation.evidenceCodes) }}
-                        </mat-select-trigger>
-                        @for (code of unlistedLexicalEvidenceCodes(mention); track code) {
-                          <mat-option [value]="code">Valor existente: {{ code }}</mat-option>
-                        }
-                        @for (option of lexicalEvidenceCodes; track option.value) {
-                          <mat-option class="lexical-mat-option" [value]="option.value">
-                            <span class="lexical-option">
-                              <strong>{{ option.label }}</strong>
-                              <span>{{ option.description }}</span>
-                            </span>
-                          </mat-option>
-                        }
-                      </mat-select>
-                      <mat-hint>
-                        Podés elegir varias. Solo marcá las pistas realmente observadas.
-                      </mat-hint>
-                    </mat-form-field>
+                    @if (compactMobile()) {
+                      <label class="lexical-native-field">
+                        <span>¿Qué pistas usaste?</span>
+                        <select
+                          class="lexical-native-multiple"
+                          multiple
+                          size="5"
+                          [ngModel]="mention.annotation.evidenceCodes"
+                          (ngModelChange)="updateLexicalEvidence(ci, mention.mentionId, $event)">
+                          @for (code of unlistedLexicalEvidenceCodes(mention); track code) {
+                            <option [value]="code">Valor existente: {{ code }}</option>
+                          }
+                          @for (option of lexicalEvidenceCodes; track option.value) {
+                            <option [value]="option.value">{{ option.label }}</option>
+                          }
+                        </select>
+                        <small>Podés elegir varias. Solo marcá las pistas realmente observadas.</small>
+                      </label>
+                    } @else {
+                      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                        <mat-label>¿Qué pistas usaste?</mat-label>
+                        <mat-select
+                          panelWidth="420px"
+                          multiple
+                          [ngModel]="mention.annotation.evidenceCodes"
+                          (ngModelChange)="updateLexicalEvidence(ci, mention.mentionId, $event)">
+                          <mat-select-trigger>
+                            {{ lexicalEvidenceSummary(mention.annotation.evidenceCodes) }}
+                          </mat-select-trigger>
+                          @for (code of unlistedLexicalEvidenceCodes(mention); track code) {
+                            <mat-option [value]="code">Valor existente: {{ code }}</mat-option>
+                          }
+                          @for (option of lexicalEvidenceCodes; track option.value) {
+                            <mat-option class="lexical-mat-option" [value]="option.value">
+                              <span class="lexical-option">
+                                <strong>{{ option.label }}</strong>
+                                <span>{{ option.description }}</span>
+                              </span>
+                            </mat-option>
+                          }
+                        </mat-select>
+                        <mat-hint>
+                          Podés elegir varias. Solo marcá las pistas realmente observadas.
+                        </mat-hint>
+                      </mat-form-field>
+                    }
 
                     <mat-form-field appearance="outline" subscriptSizing="dynamic">
                       <mat-label>¿Hay algo importante que no quedó registrado arriba?</mat-label>
