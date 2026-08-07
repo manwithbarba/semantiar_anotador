@@ -1306,10 +1306,18 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     });
   }
 
-  lexicalSenseOptions(mention: LexicalMention): LexicalSenseOption[] {
+  /**
+   * Returns only senses supplied by the inventory or candidate matching.
+   *
+   * This intentionally excludes the synthetic "Sentido guardado" option
+   * used to display an already persisted free-form value. The template uses
+   * this distinction to keep the free-form input mounted while the annotator
+   * types; otherwise the first character creates a synthetic option, replaces
+   * the input with a select, and truncates the value at one character.
+   */
+  lexicalSenseChoices(mention: LexicalMention): LexicalSenseOption[] {
     const allEntries = this.lexicalInventory()?.abbreviations ?? [];
     const allSenses = this.uniqueLexicalSenseOptions(allEntries.flatMap((entry) => entry.senses));
-    const selectedSenseId = mention.annotation.senseId?.trim() ?? '';
 
     const candidateMatches = mention.candidateSenseIds.length
       ? this.uniqueLexicalSenseOptions(
@@ -1322,11 +1330,19 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
         .flatMap((entry) => entry.senses)
     );
 
-    const options = candidateMatches.length ? candidateMatches : surfaceMatches;
+    return candidateMatches.length ? candidateMatches : surfaceMatches;
+  }
+
+  lexicalSenseOptions(mention: LexicalMention): LexicalSenseOption[] {
+    const options = this.lexicalSenseChoices(mention);
+    const selectedSenseId = mention.annotation.senseId?.trim() ?? '';
     if (!selectedSenseId) return options;
 
     if (options.some((option) => option.senseId === selectedSenseId)) return options;
 
+    const allSenses = this.uniqueLexicalSenseOptions(
+      (this.lexicalInventory()?.abbreviations ?? []).flatMap((entry) => entry.senses)
+    );
     const knownSelected = allSenses.find((option) => option.senseId === selectedSenseId);
     return this.uniqueLexicalSenseOptions([
       ...options,
