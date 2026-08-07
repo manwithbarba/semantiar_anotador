@@ -1032,6 +1032,16 @@ constituyen reglas de expansión automática.</span></p>
 <table class=MsoNormalTable border=1 cellspacing=0 cellpadding=0 width=624
  style='margin-left:6.0pt;border-collapse:collapse;border:none'>
  <tr style='page-break-inside:avoid'>
+  <td width=624 style='width:468.0pt;border:none;border-left:solid #2E74B5 2.25pt;
+  background:#E8EEF5;padding:4.0pt 6.0pt 4.0pt 6.0pt'>
+  <p class=TableText><b><span lang=EN-US style='color:#2E74B5'>Material de fundamentos. </span></b><span lang=EN-US>Este manual explica cómo ejecutar la tarea. Para comprender cómo se construyen las reglas, qué diferencia hay entre reconocimiento de entidades, spans, normalización y mapeo clínico, y cómo interpretar las preanotaciones, consulte </span><a href='Fundamentos_metodologicos_para_anotadores_SemantIAr.docx'><span lang=EN-US>Fundamentos metodológicos para anotadores SemantIAr</span></a><span lang=EN-US>.</span></p>
+  </td>
+ </tr>
+</table>
+
+<table class=MsoNormalTable border=1 cellspacing=0 cellpadding=0 width=624
+ style='margin-left:6.0pt;border-collapse:collapse;border:none'>
+ <tr style='page-break-inside:avoid'>
   <td width=624 style='width:468.0pt;border:none;border-left:solid #6941A5 2.25pt;
   background:#F2ECFA;padding:4.0pt 6.0pt 4.0pt 6.0pt'>
   <p class=TableText><b><span lang=EN-US style='color:#6941A5'>En una frase. </span></b><span
@@ -1802,7 +1812,7 @@ color:#5D6875'>Lectura sencilla de los campos de la tarjeta.</span></b></p>
   <td width=260 valign=top style='width:195.0pt;border-top:none;border-left:
   none;border-bottom:solid #C9D0D8 1.0pt;border-right:solid #C9D0D8 1.0pt;
   background:#F7F8FA;padding:4.0pt 6.0pt 4.0pt 6.0pt'>
-  <p class=TableText><span lang=EN-US>¿Podés saber qué significa aquí?</span></p>
+  <p class=TableText><span lang=EN-US>¿Cómo se decide el significado?</span></p>
   </td>
   <td width=217 valign=top style='width:163.0pt;border-top:none;border-left:
   none;border-bottom:solid #C9D0D8 1.0pt;border-right:solid #C9D0D8 1.0pt;
@@ -1878,23 +1888,6 @@ color:#5D6875'>Lectura sencilla de los campos de la tarjeta.</span></b></p>
   background:#F7F8FA;padding:4.0pt 6.0pt 4.0pt 6.0pt'>
   <p class=TableText><span lang=EN-US>Encabezado cercano, valor, medicación o
   negación.</span></p>
-  </td>
- </tr>
- <tr style='page-break-inside:avoid'>
-  <td width=147 valign=top style='width:110.0pt;border:solid #C9D0D8 1.0pt;
-  border-top:none;padding:4.0pt 6.0pt 4.0pt 6.0pt'>
-  <p class=TableText><span lang=EN-US>Comentario</span></p>
-  </td>
-  <td width=260 valign=top style='width:195.0pt;border-top:none;border-left:
-  none;border-bottom:solid #C9D0D8 1.0pt;border-right:solid #C9D0D8 1.0pt;
-  padding:4.0pt 6.0pt 4.0pt 6.0pt'>
-  <p class=TableText><span lang=EN-US>¿Quedó algo importante sin registrar?</span></p>
-  </td>
-  <td width=217 valign=top style='width:163.0pt;border-top:none;border-left:
-  none;border-bottom:solid #C9D0D8 1.0pt;border-right:solid #C9D0D8 1.0pt;
-  padding:4.0pt 6.0pt 4.0pt 6.0pt'>
-  <p class=TableText><span lang=EN-US>Dos sentidos siguen siendo posibles por
-  falta de contexto.</span></p>
   </td>
  </tr>
 </table>
@@ -2434,9 +2427,11 @@ médico.</span></p>
 <h2><span lang=EN-US>8.1 Qué es una selección textual o span</span></h2>
 
 <p class=MsoNormal><span lang=EN-US>Una <b>selección textual</b>, también
-llamada <b>span</b>, es el fragmento exacto y continuo de la nota que queda
-resaltado para sostener una anotación clínica. Es el lugar del texto al que
-queda unido el concepto. Por ejemplo, en </span><span lang=EN-US
+llamada <b>span</b>, es el fragmento exacto del texto que queda resaltado para
+sostener una anotación clínica. En el protocolo operativo actual, las
+selecciones son habitualmente continuas; las superposiciones se conservan solo
+cuando representan menciones distintas y defendibles. Es el lugar del texto al
+que queda unido el concepto. Por ejemplo, en </span><span lang=EN-US
 style='font-size:9.0pt;line-height:125%;font-family:Consolas;color:#6941A5'>AP:
 ASMA</span><span lang=EN-US>, la mención clínica es </span><span lang=EN-US
 style='font-size:9.0pt;line-height:125%;font-family:Consolas;color:#6941A5'>ASMA</span><span
@@ -2483,8 +2478,9 @@ valor una vez revisadas.</span></p>
 
 <p class=MsoListBulletCxSpFirst><span lang=EN-US style='font-family:Symbol'>·<span
 style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp; </span></span><span
-lang=EN-US>Seleccione el <b>menor tramo textual completo</b> que expresa la
-mención clínica.</span></p>
+lang=EN-US>Seleccione la <b>mínima mención suficiente</b> que expresa el
+concepto según la regla del protocolo. No recorte ni amplíe el texto solo para
+hacer coincidir un concepto terminológico.</span></p>
 
 <p class=MsoListBulletCxSpMiddle><span lang=EN-US style='font-family:Symbol'>·<span
 style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp; </span></span><span
@@ -2499,8 +2495,10 @@ comprenderlo.</span></p>
 
 <p class=MsoListBulletCxSpLast><span lang=EN-US style='font-family:Symbol'>·<span
 style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp; </span></span><span
-lang=EN-US>No cree varias selecciones anidadas para representar distintos
-niveles de detalle de una misma mención.</span></p>
+lang=EN-US>No cree varias selecciones superpuestas o anidadas solo para
+representar distintos niveles de detalle de una misma mención. Conserve dos
+selecciones únicamente cuando el protocolo las reconozca como menciones
+clínicas diferentes.</span></p>
 
 <p class=MsoNormal style='margin-top:5.0pt;margin-right:0cm;margin-bottom:4.0pt;
 margin-left:0cm'><b><span lang=EN-US style='font-size:9.0pt;line-height:125%;
@@ -3306,8 +3304,8 @@ independiente cada vez que aparecen.</span></p>
 
 <p class=MsoNormal style='margin-top:0cm;margin-right:0cm;margin-bottom:4.0pt;
 margin-left:27.0pt;text-indent:-13.55pt'><b><span lang=EN-US style='color:#6941A5'>☐
-</span></b><span lang=EN-US>Los límites conservan el menor tramo completo y no
-se ajustaron solo para hacer coincidir un código.</span></p>
+</span></b><span lang=EN-US>Los límites conservan la mínima mención suficiente
+según la regla aplicable y no se ajustaron solo para hacer coincidir un código.</span></p>
 
 <p class=MsoNormal style='margin-top:0cm;margin-right:0cm;margin-bottom:4.0pt;
 margin-left:27.0pt;text-indent:-13.55pt'><b><span lang=EN-US style='color:#6941A5'>☐

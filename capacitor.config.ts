@@ -6,6 +6,7 @@ const config: CapacitorConfig = {
   webDir: 'dist/semantiar-anotador/browser',
   server: {
     androidScheme: 'https',
+    iosScheme: 'https',
   },
 };
 

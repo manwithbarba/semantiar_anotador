@@ -951,9 +951,10 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   }
 
   addConcept(caseIdx: number): void {
+    const sequence = this.nextConceptSequence(this.cases()[caseIdx]);
     this.mutateCase(caseIdx, (c) => {
       c.concepts.push({
-        ...newConcept(this.nextConceptSequence(c)),
+        ...newConcept(sequence),
         provenance: {
           createdPlatform: this.currentPlatform,
           lastEditedPlatform: this.currentPlatform,
@@ -961,6 +962,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       });
     });
     this.updateCaseTelemetry(caseIdx, (item) => (item.conceptsAdded += 1));
+    this.focusConcept(caseIdx, sequence);
   }
 
   textSegments(caseItem: CaseAnnotation): TextSegment[] {
@@ -974,10 +976,51 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       .reduce((offset, segment) => offset + segment.value.length, 0);
   }
 
-  conceptsInDescendingOrder(caseItem: CaseAnnotation): { concept: ConceptAnnotation; index: number }[] {
+  conceptsInSequenceOrder(caseItem: CaseAnnotation): { concept: ConceptAnnotation; index: number }[] {
     return caseItem.concepts
       .map((concept, index) => ({ concept, index }))
-      .sort((left, right) => (right.concept.sequence ?? right.index) - (left.concept.sequence ?? left.index));
+      // Keep the creation order in the reading direction. New concepts are
+      // appended at the point where the annotator is working instead of being
+      // moved to the top of a long list.
+      .sort((left, right) => (left.concept.sequence ?? left.index) - (right.concept.sequence ?? right.index));
+  }
+
+  /**
+   * Use the terminology term when it exists and otherwise keep the literal
+   * mention visible. This is especially important for concepts added from a
+   * selection, which have no SNOMED term until the annotator codes them.
+   */
+  conceptDisplayLabel(concept: ConceptAnnotation): string {
+    return concept.term?.trim() || concept.textoLiteral?.trim() || 'Mención clínica sin texto';
+  }
+
+  /**
+   * Translate the internal concept state into wording an annotator can act on.
+   * “Pendiente” alone does not say whether the missing step is coding or
+   * completing a new block.
+   */
+  conceptMetaLabel(concept: ConceptAnnotation): string {
+    const category = concept.cat?.trim();
+    if (concept.sctid?.trim()) {
+      return `${category || 'Concepto clínico'} · Codificado`;
+    }
+    if (concept.textoLiteral?.trim() || concept.term?.trim()) {
+      return `${category || 'Mención clínica'} · Pendiente de codificación`;
+    }
+    return `${category || 'Mención clínica'} · Pendiente de completar`;
+  }
+
+  private focusConcept(caseIdx: number, sequence: number): void {
+    // The card is rendered after the signal update. Waiting one frame keeps
+    // the scroll anchored to the card that was just created, including when
+    // the action came from a selected mention rather than the section header.
+    window.setTimeout(() => {
+      const element = document.getElementById(`case-concept-${caseIdx}-${sequence}`);
+      element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (element instanceof HTMLElement) {
+        element.focus({ preventScroll: true });
+      }
+    }, 0);
   }
 
   /**
@@ -1607,6 +1650,15 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     );
   }
 
+  caseNavigationStatusLabel(caseItem: CaseAnnotation): string {
+    if (this.isCaseFinalized(caseItem)) {
+      return caseItem.review?.outcome === 'no-eligible-concepts'
+        ? 'Revisada sin conceptos'
+        : 'Revisada';
+    }
+    return this.caseHasStarted(caseItem) ? 'Anotación guardada' : 'En revisión';
+  }
+
   lexicalCompletedCount(caseItem: CaseAnnotation): number {
     return (caseItem.lexicalMentions ?? []).filter((mention) => lexicalMentionComplete(mention)).length;
   }
@@ -1722,6 +1774,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   confirmSelectedSpan(caseIdx: number): void {
     const span = this.selectedSpanFor(caseIdx);
     if (!span) return;
+    let createdSequence: number | undefined;
 
     this.mutateCase(caseIdx, (caseItem) => {
       const fixedSpan = caseItem.spans.find((item) => item.spanId === span.spanId);
@@ -1736,9 +1789,10 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
 
       const existing = caseItem.concepts.find((concept) => concept.spanId === fixedSpan.spanId);
       if (existing) return;
+      createdSequence = this.nextConceptSequence(caseItem);
       caseItem.concepts.push({
         ...newConcept(),
-        sequence: this.nextConceptSequence(caseItem),
+        sequence: createdSequence,
         spanId: fixedSpan.spanId,
         textoLiteral: fixedSpan.textoLiteral,
         provenance: {
@@ -1750,6 +1804,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.selectedSpan.set(null);
     this.humanSpanDraft.set(null);
     this.updateCaseTelemetry(caseIdx, (item) => (item.spansAccepted += 1));
+    if (createdSequence !== undefined) this.focusConcept(caseIdx, createdSequence);
   }
 
   discardSelectedSpan(caseIdx: number): void {

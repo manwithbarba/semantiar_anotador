@@ -21,14 +21,18 @@ aparición y no crea automáticamente un concepto SNOMED CT.
 | Pregunta para el anotador | Valor persistido |
 |---|---|
 | ¿Cómo está escrita? | `annotation.formType` |
-| ¿Podés saber qué significa aquí? | `annotation.decisionStatus` |
+| ¿Cómo se decide el significado? | `annotation.decisionStatus` |
 | ¿Qué significa aquí? | `annotation.senseId`, sólo con `resolved` |
 | ¿Qué significado proponés? | `annotation.proposedExpansion`, sólo con `new_sense_proposed` |
 | ¿Cómo debería estar escrita? | `annotation.correctedForm`, sólo con `form_error` |
 | ¿Qué papel cumple en esta parte de la nota? | `annotation.function` |
 | ¿En qué parte de la nota aparece? | `annotation.section` |
 | ¿Qué pistas usaste? | `annotation.evidenceCodes` |
-| ¿Hay algo importante que no quedó registrado arriba? | `annotation.comment` |
+
+`annotation.comment` se conserva por compatibilidad y trazabilidad de lotes
+anteriores, pero no se presenta como un campo de captura en la tarjeta: la
+interfaz reserva la captura semántica para `¿Qué significa aquí?` y sus campos
+condicionales.
 
 Los identificadores internos de sentido son el valor de persistencia del
 selector, pero la interfaz muestra su expansión clínica y no el código. Los

@@ -524,10 +524,6 @@
 .case-card.case-annotated {
   border-left-color: var(--done-color);
 }
-.case-card mat-card-header {
-  padding: 0;
-  margin-bottom: 6px;
-}
 .case-card.case-hidden {
   display: none;
 }
@@ -579,48 +575,6 @@
   gap: 10px;
   padding: 12px 24px 18px;
 }
-.case-id {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--brand);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.case-order {
-  border-radius: 999px;
-  background: #eef2fb;
-  color: #53627a;
-  padding: 2px 7px;
-  font-size: 11px;
-  font-weight: 700;
-}
-.case-status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  border-radius: 12px;
-  padding: 1px 8px;
-  font-size: 11px;
-  font-weight: 600;
-}
-.case-status-badge mat-icon {
-  font-size: 13px;
-  height: 13px;
-  width: 13px;
-}
-.done-badge {
-  background: #e6f4ea;
-  color: var(--done-color);
-}
-.pending-badge {
-  background: #f0f2f6;
-  color: var(--pending-color);
-}
-.editing-badge {
-  background: #fff3cd;
-  color: #8a5a00;
-}
 .case-text {
   font-size: 17px;
   font-weight: 500;
@@ -656,47 +610,13 @@
 }
 .case-review {
   min-width: 0;
+  position: sticky;
+  top: 78px;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+  border-left: 1px solid #ded6ee;
+  padding: 2px 8px 12px 18px;
 }
-.case-guidance {
-  display: grid;
-  gap: 7px;
-  margin: 4px 0 14px;
-}
-.case-guidance details {
-  border: 1px solid #d5dfec;
-  border-radius: 9px;
-  background: #f8fbff;
-}
-.case-guidance summary {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  cursor: pointer;
-  color: #304869;
-  padding: 9px 11px;
-  font-size: 12px;
-  font-weight: 700;
-}
-.case-guidance summary::marker {
-  content: '';
-}
-.case-guidance summary::-webkit-details-marker {
-  display: none;
-}
-.case-guidance summary mat-icon {
-  width: 18px;
-  height: 18px;
-  color: #2f6fae;
-  font-size: 18px;
-}
-.case-guidance details > div {
-  border-top: 1px solid #dce5f0;
-  color: #53627a;
-  padding: 10px 12px;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
 /* Concept blocks */
 .concept-block {
   border: 1px solid #e2e6ec;
@@ -705,6 +625,10 @@
   margin-bottom: 12px;
   background: #fff;
   box-shadow: 0 3px 12px rgba(45, 62, 95, 0.06);
+}
+.concept-block:focus-visible {
+  outline: 3px solid rgba(47, 111, 174, 0.45);
+  outline-offset: 3px;
 }
 .concept-block > summary {
   cursor: pointer;
@@ -945,6 +869,13 @@
     overflow: visible;
     padding: 0;
   }
+  .case-review {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    border-left: 0;
+    padding: 0;
+  }
   .concept-core-fields {
     grid-template-columns: 1fr;
   }
@@ -1079,6 +1010,10 @@
   border-radius: 10px;
   background: #fbf9ff;
   padding: 12px;
+}
+.quick-brief-add {
+  border-left: 5px solid #6941a5;
+  background: #fbf9ff;
 }
 .quick-lexical-head {
   display: flex;
@@ -1225,6 +1160,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 14px;
   border-radius: 10px;
   padding: 12px 14px;
@@ -1255,13 +1191,17 @@
 }
 .span-actions {
   display: flex;
-  flex: 0 0 auto;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  min-width: 0;
   gap: 8px;
 }
+.span-actions button {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+}
 @media (max-width: 760px) {
-  .case-id {
-    flex-wrap: wrap;
-  }
   .human-span-draft,
   .span-panel {
     align-items: flex-start;
@@ -1306,12 +1246,12 @@
 .lexical-review-actions span {
   margin: 0;
   color: #625873;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .lexical-kicker {
   color: #6941a5;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1323,7 +1263,7 @@
   background: #f1eafd;
   color: #6941a5;
   padding: 4px 10px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -1351,12 +1291,12 @@
 }
 .lexical-step-label {
   color: #50317f;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
 }
 .lexical-flow-copy strong {
   color: #38255c;
-  font-size: 12px;
+  font-size: 13px;
 }
 .lexical-progress-bar {
   border-radius: 5px;
@@ -1365,7 +1305,7 @@
 }
 .lexical-flow-hint {
   color: #625873;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.35;
 }
 
@@ -1384,7 +1324,7 @@
   padding: 0 12px;
   color: #50317f;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -1410,13 +1350,13 @@
 
 .lexical-help-content strong {
   color: #38255c;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .lexical-help-content p {
   margin: 3px 0 0;
   color: #625873;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -1426,7 +1366,7 @@
   border-radius: 8px;
   color: #625873;
   padding: 10px 12px;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .lexical-mentions {
@@ -1476,12 +1416,12 @@
 
 .lexical-card-head strong {
   color: #2f2442;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .lexical-card-head span {
   color: #746987;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .lexical-candidates {
@@ -1491,7 +1431,7 @@
   gap: 6px;
   margin: 8px 0;
   color: #746987;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .lexical-candidate {
@@ -1543,7 +1483,7 @@
 
 .lexical-native-field small {
   color: #625873;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
   line-height: 1.35;
 }
@@ -1566,14 +1506,14 @@
 
 .lexical-option strong {
   color: #2f2442;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.25;
 }
 
 .lexical-option span,
 .lexical-option small {
   color: #625873;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.3;
 }
 
@@ -1796,24 +1736,6 @@
   .case-card {
     margin-bottom: 12px;
     padding: 12px;
-  }
-  .case-id {
-    align-items: flex-start;
-    gap: 6px;
-    font-size: 13px;
-  }
-  .case-card mat-card-header,
-  .case-card ::ng-deep .mat-mdc-card-header-text,
-  .case-id {
-    width: 100%;
-    min-width: 0;
-  }
-  .case-id > span:nth-child(2) {
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
-  .case-status-badge {
-    margin-left: 0;
   }
   .case-source-label {
     margin-top: 2px;

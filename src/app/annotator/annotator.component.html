@@ -163,7 +163,7 @@
                 [attr.aria-expanded]="protocolExpanded()">
           <span class="annotation-protocol-icon" aria-hidden="true"><mat-icon>fact_check</mat-icon></span>
           <span>
-            <h2 id="annotation-protocol-title">Revisión exhaustiva de menciones clínicas</h2>
+            <h2 id="annotation-protocol-title">Revisión exhaustiva de información clínica</h2>
             <small>{{ protocolExpanded() ? 'Ocultar instrucciones' : 'Ver instrucciones' }}</small>
           </span>
           <mat-icon class="annotation-protocol-chevron" aria-hidden="true">
@@ -231,11 +231,11 @@
                   (ngModelChange)="selectCaseAndScroll($event)">
             @for (entry of filteredCaseEntries(); track entry.caseItem.id; let position = $index) {
               <option [ngValue]="entry.index">
-                {{ position + 1 }} · {{ entry.caseItem.id }}{{ isCaseFinalized(entry.caseItem) ? ' · Revisada' : '' }}
+                {{ position + 1 }} · {{ entry.caseItem.id }} · {{ caseNavigationStatusLabel(entry.caseItem) }}
               </option>
             }
           </select>
-          <small>{{ isCaseFinalized(currentCase) ? 'Revisada' : 'En revisión' }}</small>
+          <small>Estado: {{ caseNavigationStatusLabel(currentCase) }}</small>
         </label>
         <button mat-icon-button
                 [disabled]="activeCasePosition() >= filteredCaseEntries().length - 1"
@@ -278,58 +278,7 @@
               (focusin)="activateCase(ci)"
               [class.case-annotated]="isCaseFinalized(caseItem)"
               [class.case-pending]="!isCaseFinalized(caseItem)">
-      <mat-card-header>
-        <mat-card-title class="case-id">
-          <span class="case-order">{{ ci + 1 }}/{{ cases().length }}</span>
-          <span>{{ caseItem.id }}</span>
-          @if (caseItem.review?.status === 'finalized') {
-            <span class="case-status-badge done-badge">
-              <mat-icon>check_circle</mat-icon>
-              {{ caseItem.review?.outcome === 'no-eligible-concepts' ? 'Revisada sin conceptos' : 'Revisada' }}
-            </span>
-          } @else if (caseHasStarted(caseItem)) {
-            <span
-              class="case-status-badge editing-badge"
-              matTooltip="El cambio quedó registrado en esta sesión. Descargá el JSON para conservarlo fuera de esta pestaña.">
-              <mat-icon>save</mat-icon> Anotación guardada
-            </span>
-          } @else {
-            <span class="case-status-badge pending-badge">
-              <mat-icon>radio_button_unchecked</mat-icon> Pendiente
-            </span>
-          }
-        </mat-card-title>
-      </mat-card-header>
       <mat-card-content>
-        <section class="case-guidance" aria-label="Orientaciones para esta nota">
-          <details>
-            <summary>
-              <mat-icon aria-hidden="true">fact_check</mat-icon>
-              Antes de la nota: revisión de menciones clínicas
-            </summary>
-            <div>
-              @if (coreBlindMode()) {
-                Identificá desde cero procedimientos, fármacos y hallazgos clínicos. Seleccioná la
-                expresión exacta en la nota para incorporarla y luego definí concepto y contexto.
-              } @else {
-                Los resaltados son sólo candidatos: aceptalos, ajustalos o descartalos. Revisá toda la
-                nota e incorporá las menciones clínicamente relevantes que no estén señaladas.
-              }
-            </div>
-          </details>
-          @if (lexicalLayerEnabled()) {
-            <details>
-              <summary>
-                <mat-icon aria-hidden="true">short_text</mat-icon>
-                Antes de la nota: formas breves
-              </summary>
-              <div>
-                Marcá cada sigla, abreviatura o acrónimo según su contexto local. Para agregar una,
-                escribila después de la nota y tocá la ocurrencia exacta; no necesitás arrastrar texto.
-              </div>
-            </details>
-          }
-        </section>
         <div class="case-workspace">
           <div class="case-source" [attr.id]="'case-source-' + ci">
             <p class="case-source-label">Nota clínica · queda visible durante la revisión</p>
@@ -381,10 +330,11 @@
             </p>
           }
 
-          <section
-            class="quick-lexical-add quick-mention-add"
-            [attr.id]="'case-mention-add-' + ci"
-            aria-label="Agregar una mención clínica escribiendo el texto">
+          @if (compactMobile()) {
+            <section
+              class="quick-lexical-add quick-mention-add"
+              [attr.id]="'case-mention-add-' + ci"
+              aria-label="Agregar una mención clínica escribiendo el texto">
             <div class="quick-lexical-head">
               <mat-icon aria-hidden="true">add_location_alt</mat-icon>
               <div>
@@ -417,93 +367,100 @@
                 }
               </div>
             }
-          </section>
+            </section>
+          }
+
+          @if (lexicalLayerEnabled() && compactMobile()) {
+            <section
+              class="quick-lexical-add quick-brief-add"
+              [attr.id]="'case-lexical-' + ci"
+              aria-label="Agregar mención breve sin seleccionar texto">
+              <div class="quick-lexical-head">
+                <mat-icon aria-hidden="true">short_text</mat-icon>
+                <div>
+                  <strong>Agregar mención breve</strong>
+                  <span>Escribí la sigla, abreviatura o acrónimo y elegí la ocurrencia exacta.</span>
+                </div>
+              </div>
+              <mat-form-field appearance="outline" class="quick-lexical-input">
+                <mat-label>Forma breve en esta nota</mat-label>
+                <input
+                  matInput
+                  [ngModel]="lexicalQuickValue(ci)"
+                  (ngModelChange)="setLexicalQuickValue(ci, $event)"
+                  placeholder="Ej.: FC"
+                  autocomplete="off"
+                  autocapitalize="characters" />
+              </mat-form-field>
+              @if (lexicalQuickValue(ci).trim()) {
+                <div class="quick-lexical-candidates" aria-live="polite">
+                  @for (candidate of lexicalQuickCandidates(ci); track candidate.start) {
+                    <button
+                      type="button"
+                      class="quick-lexical-candidate"
+                      (click)="addHumanLexicalMentionAt(ci, candidate.start, candidate.end)">
+                      <strong>“{{ candidate.surface }}”</strong>
+                      <span>…{{ candidate.context }}…</span>
+                      <mat-icon aria-hidden="true">add_circle</mat-icon>
+                    </button>
+                  } @empty {
+                    <p>No hay coincidencias exactas en esta nota.</p>
+                  }
+                </div>
+              }
+            </section>
+          }
+
+          @if (humanSpanDraft(); as draft) {
+            @if (draft.caseIndex === ci) {
+              <div class="human-span-draft">
+                <div>
+                  <span class="human-span-draft-label">Texto seleccionado</span>
+                  <strong>“{{ draft.textoLiteral }}”</strong>
+                </div>
+                <div class="span-actions">
+                  @if (selectedSpanFor(ci)) {
+                    <button mat-stroked-button color="primary" (click)="adjustSelectedSpanBounds(ci)">
+                      <mat-icon>border_color</mat-icon> Usar como nuevos límites
+                    </button>
+                  }
+                  <button mat-stroked-button color="primary" (click)="addHumanSpan(ci)">
+                    <mat-icon>add</mat-icon> Incorporar mención omitida
+                  </button>
+                  @if (lexicalLayerEnabled()) {
+                    <button mat-stroked-button color="accent" (click)="addHumanLexicalMention(ci)">
+                      <mat-icon>short_text</mat-icon> Incorporar forma breve
+                    </button>
+                  }
+                </div>
+              </div>
+            }
+          }
+
+          @if (selectedSpanFor(ci); as span) {
+            <div class="span-panel">
+              <div>
+                <span class="span-panel-label">Mención candidata pendiente de decisión</span>
+                <strong>{{ span.textoLiteral }}</strong>
+                <span class="span-review-reason">
+                  Decidí de forma independiente si corresponde anotarla y cuál es su jerarquía.
+                </span>
+              </div>
+              <div class="span-actions">
+                <button mat-stroked-button color="primary" (click)="confirmSelectedSpan(ci)">
+                  <mat-icon>check</mat-icon> Aceptar y completar
+                </button>
+                <button mat-stroked-button color="warn" (click)="discardSelectedSpan(ci)">
+                  <mat-icon>block</mat-icon> Descartar
+                </button>
+              </div>
+            </div>
+          }
           </div>
 
           <div class="case-review">
 
-        @if (humanSpanDraft(); as draft) {
-          @if (draft.caseIndex === ci) {
-            <div class="human-span-draft">
-              <div>
-                <span class="human-span-draft-label">Texto seleccionado</span>
-                <strong>“{{ draft.textoLiteral }}”</strong>
-              </div>
-              <div class="span-actions">
-                @if (selectedSpanFor(ci)) {
-                  <button mat-stroked-button color="primary" (click)="adjustSelectedSpanBounds(ci)">
-                    <mat-icon>border_color</mat-icon> Usar como nuevos límites
-                  </button>
-                }
-                <button mat-stroked-button color="primary" (click)="addHumanSpan(ci)">
-                  <mat-icon>add</mat-icon> Incorporar mención omitida
-                </button>
-                @if (lexicalLayerEnabled()) {
-                  <button mat-stroked-button color="accent" (click)="addHumanLexicalMention(ci)">
-                    <mat-icon>short_text</mat-icon> Incorporar forma breve
-                  </button>
-                }
-              </div>
-            </div>
-          }
-        }
-
-        @if (selectedSpanFor(ci); as span) {
-          <div class="span-panel">
-            <div>
-              <span class="span-panel-label">Mención candidata pendiente de decisión</span>
-              <strong>{{ span.textoLiteral }}</strong>
-              <span class="span-review-reason">
-                Decida de forma independiente si corresponde anotarla y cuál es su jerarquía.
-              </span>
-            </div>
-            <div class="span-actions">
-              <button mat-stroked-button color="primary" (click)="confirmSelectedSpan(ci)">
-                <mat-icon>check</mat-icon> Aceptar y completar
-              </button>
-              <button mat-stroked-button color="warn" (click)="discardSelectedSpan(ci)">
-                <mat-icon>block</mat-icon> Descartar
-              </button>
-            </div>
-          </div>
-        }
-
         @if (lexicalLayerEnabled()) {
-          <section class="quick-lexical-add" [attr.id]="'case-lexical-' + ci" aria-label="Agregar forma breve sin seleccionar texto">
-            <div class="quick-lexical-head">
-              <mat-icon aria-hidden="true">short_text</mat-icon>
-              <div>
-                <strong>Agregar forma breve</strong>
-                <span>Escribí la sigla y tocá la ocurrencia exacta.</span>
-              </div>
-            </div>
-            <mat-form-field appearance="outline" class="quick-lexical-input">
-              <mat-label>Forma breve en esta nota</mat-label>
-              <input
-                matInput
-                [ngModel]="lexicalQuickValue(ci)"
-                (ngModelChange)="setLexicalQuickValue(ci, $event)"
-                placeholder="Ej.: FC"
-                autocomplete="off"
-                autocapitalize="characters" />
-            </mat-form-field>
-            @if (lexicalQuickValue(ci).trim()) {
-              <div class="quick-lexical-candidates" aria-live="polite">
-                @for (candidate of lexicalQuickCandidates(ci); track candidate.start) {
-                  <button
-                    type="button"
-                    class="quick-lexical-candidate"
-                    (click)="addHumanLexicalMentionAt(ci, candidate.start, candidate.end)">
-                    <strong>“{{ candidate.surface }}”</strong>
-                    <span>…{{ candidate.context }}…</span>
-                    <mat-icon aria-hidden="true">add_circle</mat-icon>
-                  </button>
-                } @empty {
-                  <p>No hay coincidencias exactas en esta nota.</p>
-                }
-              </div>
-            }
-          </section>
           <section class="lexical-layer" aria-label="Revisión de formas breves">
             <div class="lexical-layer-head">
               <div>
@@ -562,7 +519,7 @@
                   </p>
                 </div>
                 <div>
-                  <strong>¿Podés saber qué significa aquí?</strong>
+                  <strong>¿Cómo se decide el significado?</strong>
                   <p>
                     <b>Pendiente</b> significa que todavía no decidiste y bloquea el cierre.
                     <b>Ambigua aun con contexto</b> y <b>No puedo determinarla</b> son cierres
@@ -673,9 +630,76 @@
                       </mat-form-field>
                     }
 
+                    @if (mention.annotation.decisionStatus === 'resolved') {
+                      @if (compactMobile() && lexicalSenseOptions(mention).length) {
+                        <label class="lexical-native-field">
+                          <span>¿Qué significa aquí?</span>
+                          <select
+                            [ngModel]="mention.annotation.senseId"
+                            (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'senseId', $event)">
+                            <option [ngValue]="null">Sin seleccionar</option>
+                            @for (sense of lexicalSenseOptions(mention); track sense.senseId) {
+                              <option [value]="sense.senseId">{{ sense.expansion }}</option>
+                            }
+                          </select>
+                          <small>Elegí el significado que corresponde a esta aparición.</small>
+                        </label>
+                      } @else {
+                        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                          <mat-label>¿Qué significa aquí?</mat-label>
+                          @if (lexicalSenseOptions(mention).length) {
+                            <mat-select
+                              panelWidth="420px"
+                              [ngModel]="mention.annotation.senseId"
+                              (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'senseId', $event)">
+                              <mat-select-trigger>
+                                {{ lexicalSenseLabel(mention) }}
+                              </mat-select-trigger>
+                              @for (sense of lexicalSenseOptions(mention); track sense.senseId) {
+                                <mat-option [value]="sense.senseId">{{ sense.expansion }}</mat-option>
+                              }
+                            </mat-select>
+                          } @else {
+                            <input
+                              matInput
+                              [ngModel]="mention.annotation.senseId"
+                              (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'senseId', $event)"
+                              placeholder="Escribí el sentido o su identificador" />
+                          }
+                          <mat-hint>
+                            Elegí el significado que corresponde a esta aparición; este valor es el que se incorpora a la anotación.
+                          </mat-hint>
+                        </mat-form-field>
+                      }
+                    }
+
+                    @if (mention.annotation.decisionStatus === 'new_sense_proposed') {
+                      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                        <mat-label>¿Qué significado proponés?</mat-label>
+                        <input
+                          matInput
+                          required
+                          [ngModel]="mention.annotation.proposedExpansion"
+                          (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'proposedExpansion', $event)" />
+                        <mat-hint>Es obligatorio para cerrar esta decisión.</mat-hint>
+                      </mat-form-field>
+                    }
+
+                    @if (mention.annotation.decisionStatus === 'form_error') {
+                      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                        <mat-label>¿Cómo debería estar escrita?</mat-label>
+                        <input
+                          matInput
+                          required
+                          [ngModel]="mention.annotation.correctedForm"
+                          (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'correctedForm', $event)" />
+                        <mat-hint>Es obligatorio para cerrar esta decisión.</mat-hint>
+                      </mat-form-field>
+                    }
+
                     @if (compactMobile()) {
                       <label class="lexical-native-field">
-                        <span>¿Podés saber qué significa aquí?</span>
+                        <span>¿Cómo se decide el significado?</span>
                         <select
                           [ngModel]="mention.annotation.decisionStatus"
                           (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'decisionStatus', $event)">
@@ -684,11 +708,11 @@
                             <option [value]="option.value">{{ option.label }}</option>
                           }
                         </select>
-                        <small>Pendiente bloquea el cierre; “Resuelta” requiere elegir un significado.</small>
+                          <small>Pendiente bloquea el cierre; “Sentido resuelto” requiere elegir un significado.</small>
                       </label>
                     } @else {
                       <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                        <mat-label>¿Podés saber qué significa aquí?</mat-label>
+                        <mat-label>¿Cómo se decide el significado?</mat-label>
                         <mat-select
                           panelWidth="420px"
                           [attr.aria-describedby]="'lexical-decision-help-' + ci + '-' + mention.mentionId"
@@ -711,7 +735,7 @@
                         </mat-select>
                         <mat-hint [id]="'lexical-decision-help-' + ci + '-' + mention.mentionId">
                           Pendiente bloquea el cierre; ambigua y no puedo determinarla son
-                          abstenciones finales válidas. “Resuelta” requiere elegir un significado disponible.
+                          abstenciones finales válidas. “Sentido resuelto” requiere elegir un significado disponible.
                         </mat-hint>
                       </mat-form-field>
                     }
@@ -761,73 +785,6 @@
                         <mat-hint [id]="'lexical-function-help-' + ci + '-' + mention.mentionId">
                           Sin clasificar deja el papel vacío; Otra función es una elección explícita.
                         </mat-hint>
-                      </mat-form-field>
-                    }
-
-                    @if (mention.annotation.decisionStatus === 'resolved') {
-                      @if (compactMobile() && lexicalSenseOptions(mention).length) {
-                        <label class="lexical-native-field">
-                          <span>¿Qué significa aquí?</span>
-                          <select
-                            [ngModel]="mention.annotation.senseId"
-                            (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'senseId', $event)">
-                            <option [ngValue]="null">Sin seleccionar</option>
-                            @for (sense of lexicalSenseOptions(mention); track sense.senseId) {
-                              <option [value]="sense.senseId">{{ sense.expansion }}</option>
-                            }
-                          </select>
-                          <small>Elegí el significado que corresponde a esta aparición.</small>
-                        </label>
-                      } @else {
-                        <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                          <mat-label>¿Qué significa aquí?</mat-label>
-                          @if (lexicalSenseOptions(mention).length) {
-                            <mat-select
-                              panelWidth="420px"
-                              [ngModel]="mention.annotation.senseId"
-                              (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'senseId', $event)">
-                              <mat-select-trigger>
-                                {{ lexicalSenseLabel(mention) }}
-                              </mat-select-trigger>
-                              @for (sense of lexicalSenseOptions(mention); track sense.senseId) {
-                                <mat-option [value]="sense.senseId">{{ sense.expansion }}</mat-option>
-                              }
-                            </mat-select>
-                          } @else {
-                            <input
-                              matInput
-                              [ngModel]="mention.annotation.senseId"
-                              (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'senseId', $event)"
-                              placeholder="Escribí el sentido o su identificador" />
-                          }
-                          <mat-hint>
-                            Elegí un significado disponible o escribí el sentido manualmente si el JSON no trajo inventario para esta forma.
-                          </mat-hint>
-                        </mat-form-field>
-                      }
-                    }
-
-                    @if (mention.annotation.decisionStatus === 'new_sense_proposed') {
-                      <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                        <mat-label>¿Qué significado proponés?</mat-label>
-                        <input
-                          matInput
-                          required
-                          [ngModel]="mention.annotation.proposedExpansion"
-                          (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'proposedExpansion', $event)" />
-                        <mat-hint>Es obligatorio para cerrar esta decisión.</mat-hint>
-                      </mat-form-field>
-                    }
-
-                    @if (mention.annotation.decisionStatus === 'form_error') {
-                      <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                        <mat-label>¿Cómo debería estar escrita?</mat-label>
-                        <input
-                          matInput
-                          required
-                          [ngModel]="mention.annotation.correctedForm"
-                          (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'correctedForm', $event)" />
-                        <mat-hint>Es obligatorio para cerrar esta decisión.</mat-hint>
                       </mat-form-field>
                     }
 
@@ -923,19 +880,6 @@
                       </mat-form-field>
                     }
 
-                    <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                      <mat-label>¿Hay algo importante que no quedó registrado arriba?</mat-label>
-                      <textarea
-                        matInput
-                        rows="2"
-                        [ngModel]="mention.annotation.comment"
-                        (ngModelChange)="updateLexicalAnnotation(ci, mention.mentionId, 'comment', $event)">
-                      </textarea>
-                      <mat-hint>
-                        Opcional. Incluí aquí observaciones sobre un posible significado no
-                        codificado.
-                      </mat-hint>
-                    </mat-form-field>
                   </div>
                 </details>
               }
@@ -973,22 +917,21 @@
           </div>
 
         <div class="concepts">
-          @for (entry of conceptsInDescendingOrder(caseItem); track entry.index) {
+          @for (entry of conceptsInSequenceOrder(caseItem); track entry.index) {
             @let concept = entry.concept;
             @let cj = entry.index;
             <details class="concept-block"
                      open
                      [attr.name]="'concept-accordion-' + ci"
+                     [attr.id]="'case-concept-' + ci + '-' + (concept.sequence ?? cj + 1)"
+                     tabindex="-1"
                      [attr.data-concept-index]="cj">
               <summary class="concept-head">
                 <div class="concept-title">
                   <span class="concept-num">C{{ concept.sequence ?? cj + 1 }}</span>
                   <div>
-                    <strong>{{ concept.term || 'Concepto clínico sin codificar' }}</strong>
-                    <span>
-                      {{ concept.cat || 'Sin jerarquía' }} ·
-                      {{ concept.sctid ? 'Codificado' : 'Pendiente' }}
-                    </span>
+                    <strong>{{ conceptDisplayLabel(concept) }}</strong>
+                    <span>{{ conceptMetaLabel(concept) }}</span>
                   </div>
                 </div>
                 <button mat-icon-button color="warn" class="remove-btn"

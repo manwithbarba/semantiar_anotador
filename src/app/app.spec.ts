@@ -10,6 +10,7 @@ import {
   buildTextSegments,
   newHumanLexicalMention,
   newLexicalReview,
+  newConcept,
   normalizeLexicalMentions,
   normalizePremarkedSpans,
   NONCODED_SEMANTICS_COMMENT,
@@ -95,6 +96,40 @@ describe('App', () => {
 
     expect(fixture.nativeElement.querySelectorAll('.lexical-native-field select')).toHaveLength(5);
     expect(fixture.nativeElement.querySelectorAll('.lexical-grid mat-select')).toHaveLength(0);
+    expect(fixture.nativeElement.querySelector('.case-source #case-lexical-0')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('.case-source #case-mention-add-0')).toBeTruthy();
+  });
+
+  it('should keep incorporation actions in the left source panel', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    annotator.annotationProtocol.set({ ...ASSISTED_ANNOTATION_PROTOCOL, lexicalLayerEnabled: true });
+    annotator.cases.set([
+      {
+        id: 'LAYOUT-001',
+        text: 'Paciente con fiebre.',
+        textNorm: 'Paciente con fiebre.',
+        spans: [],
+        concepts: [],
+        comentarios: '',
+        lexicalMentions: [],
+        lexicalReview: newLexicalReview(),
+      },
+    ]);
+    annotator.humanSpanDraft.set({
+      caseIndex: 0,
+      start: 14,
+      end: 20,
+      textoLiteral: 'fiebre',
+    });
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('.case-source .human-span-draft')).toBeTruthy();
+    expect(root.querySelector('.case-review .human-span-draft')).toBeNull();
+    expect(root.querySelector('.case-source .span-actions')).toBeTruthy();
   });
 
   it('should calculate the source offsets of a manual selection across rendered segments', async () => {
@@ -664,12 +699,20 @@ describe('App', () => {
 
     const compiled = fixture.nativeElement as HTMLElement;
     const text = compiled.textContent ?? '';
+    expect(text).toContain('Revisión exhaustiva de información clínica');
+    expect(text).not.toContain('Revisión exhaustiva de menciones clínicas');
+    expect(compiled.querySelector('.case-guidance')).toBeNull();
     expect(text).toContain('¿Cómo está escrita?');
-    expect(text).toContain('¿Podés saber qué significa aquí?');
+    expect(text).toContain('¿Cómo se decide el significado?');
+    expect(text).not.toContain('¿Podés saber qué significa aquí?');
+    expect(text).not.toContain('¿Qué significa aquí?');
     expect(text).toContain('¿Qué papel cumple en esta parte de la nota?');
     expect(text).toContain('¿En qué parte de la nota aparece?');
     expect(text).toContain('¿Qué pistas usaste?');
-    expect(text).toContain('¿Hay algo importante que no quedó registrado arriba?');
+    expect(text).not.toContain('¿Hay algo importante que no quedó registrado arriba?');
+    expect(text).not.toContain('Agregar mención breve');
+    expect(compiled.querySelector('.case-source #case-lexical-0')).toBeNull();
+    expect(compiled.querySelector('.case-review #case-lexical-0')).toBeNull();
     expect(text).toContain('Pendiente significa que todavía no decidiste');
     expect(text).toContain('Sin clasificar deja el papel sin decidir');
     expect(text).toContain('las mayúsculas no prueban que sea una sigla');
@@ -713,6 +756,8 @@ describe('App', () => {
 
     const compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.querySelector('.case-close-jump')).toBeFalsy();
+    expect(compiled.querySelector('.case-id')).toBeFalsy();
+    expect(compiled.querySelector('.case-pager-copy small')?.textContent).toContain('Anotación guardada');
     expect(compiled.textContent).toContain('Anotación guardada');
     expect(compiled.querySelectorAll('.json-flow-download')).toHaveLength(0);
     expect(
@@ -720,6 +765,41 @@ describe('App', () => {
         button.textContent?.includes('Descargar JSON de avance')
       )
     ).toHaveLength(1);
+  });
+
+  it('should label coded concepts and added mentions with actionable status text', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    const coded = newConcept(1);
+    coded.cat = 'Hallazgo clínico';
+    coded.sctid = '386661006';
+    coded.term = 'Adecuadamente hidratado';
+    coded.textoLiteral = 'adecuadamente hidratado';
+    const added = newConcept(2);
+    added.textoLiteral = 'alta médica';
+
+    annotator.cases.set([
+      {
+        id: 'CONCEPT-LABEL-001',
+        text: 'Adecuadamente hidratado. Alta médica.',
+        textNorm: 'Adecuadamente hidratado. Alta médica.',
+        spans: [],
+        concepts: [coded, added],
+        comentarios: '',
+        review: { status: 'pending' },
+      },
+    ]);
+    fixture.detectChanges();
+
+    const conceptCards = fixture.nativeElement.querySelectorAll('.concept-block');
+    expect(conceptCards[0].textContent).toContain('Adecuadamente hidratado');
+    expect(conceptCards[0].textContent).toContain('Hallazgo clínico · Codificado');
+    expect(conceptCards[1].textContent).toContain('alta médica');
+    expect(conceptCards[1].textContent).toContain('Mención clínica · Pendiente de codificación');
+    expect(fixture.nativeElement.textContent).not.toContain('Concepto clínico sin codificar');
+    expect(fixture.nativeElement.textContent).not.toContain('Sin jerarquía · Pendiente');
   });
 
   it('should export the same canonical lexical contract used on import', async () => {
