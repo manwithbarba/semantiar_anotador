@@ -71,6 +71,7 @@ RELATED_LINKS = {
         ("8-1-que-es-una-seleccion-textual-o-span", "Qué es un span"),
         ("8-4-elegir-categoria-y-concepto", "Categoría y concepto"),
         ("spans-superpuestos", "Spans superpuestos"),
+        ("spans-discontinuos", "Política de spans discontinuos"),
     ],
     "9-ejemplos-concretos": [
         ("5-como-completar-una-tarjeta-lexica", "Aplicar los ejemplos a la tarjeta"),
@@ -141,11 +142,17 @@ UPDATE_HTML = """
 <section class="manual-section" id="actualizacion-interfaz-20260728" aria-labelledby="actualizacion-titulo">
   <h1 id="actualizacion-titulo">Actualización de interfaz: revisión visible y spans superpuestos</h1>
   <p>Esta versión está dirigida a profesionales de salud que anotan notas clínicas. La aplicación conserva la nota a la vista mientras se completa la revisión: el texto clínico queda fijo en la columna izquierda y los controles avanzan en la columna derecha. Así puede verificar el literal y el contexto sin perder el lugar de trabajo.</p>
-  <p>Para reducir escritura repetitiva, “¿En qué parte de la nota aparece?” se elige en una lista y “¿Qué pistas usaste?” permite seleccionar varias opciones. El único campo abierto de uso habitual es el comentario, para registrar un dato relevante que no esté contemplado.</p>
+  <p>Este documento explica el uso de la aplicación. Para el marco metodológico —construcción de reglas, reconocimiento de entidades, selección de spans, normalización, mapeo clínico y preanotación— consulte <a href="Fundamentos_metodologicos_para_anotadores_SemantIAr.docx">Fundamentos metodológicos para anotadores SemantIAr</a>.</p>
+  <p>Para reducir escritura repetitiva, “¿En qué parte de la nota aparece?” se elige en una lista y “¿Qué pistas usaste?” permite seleccionar varias opciones. Cuando la decisión es “Sentido resuelto”, “¿Qué significa aquí?” permite elegir el significado disponible o escribirlo si el inventario no ofrece una opción; ese valor es el que se incorpora a la anotación. El campo técnico <code>annotation.comment</code> se conserva solo para compatibilidad y trazabilidad de lotes anteriores y no se usa como pregunta de captura en la interfaz actual.</p>
   <p>En cada desplegable, el campo cerrado muestra únicamente la etiqueta breve elegida. Al abrirlo, cada renglón muestra esa etiqueta y su explicación completa. Así se conserva la lectura de las opciones sin agrandar ni deformar los campos de la tarjeta.</p>
   <figure class="manual-figure"><img src="captura_revision_formas_breves.png" alt="Captura de referencia de la revisión de formas breves, con la nota clínica fija a la izquierda y los campos a la derecha."><figcaption>Captura usada para revisar el diseño. En la versión corregida, las explicaciones largas se leen al abrir la lista y no quedan concatenadas en el valor seleccionado.</figcaption></figure>
   <h2 id="spans-superpuestos">Spans que se superponen</h2>
-  <p>Dos menciones válidas pueden compartir parte del mismo texto. La aplicación ahora las conserva y las muestra con un resaltado rayado y un número. Seleccione cada marca para revisarla por separado. No cambie los límites solo para evitar una superposición; aplique la <a href="#8-como-revisar-la-informacion-clinica">regla de anclaje del span</a> y conserve cada mención clínicamente defendible.</p>
+  <p>Dos menciones válidas pueden compartir parte del mismo texto. La aplicación ahora las conserva y las muestra con un resaltado rayado y un número. Seleccione cada marca para revisarla por separado. No cambie los límites solo para evitar una superposición; aplique la <a href="#8-como-revisar-la-informacion-clinica">regla de anclaje del span</a> y conserve cada mención clínicamente defendible. No cree superposiciones únicamente para representar niveles de granularidad de una misma mención.</p>
+  <h2 id="spans-discontinuos">Política para spans discontinuos</h2>
+  <p>La versión actual de SemantIAr utiliza spans continuos como modalidad predeterminada. Los spans discontinuos se registran como casos candidatos, pero no deben construirse desde la interfaz ni forzarse dentro de un único resaltado.</p>
+  <p>Si la mención puede representarse con un tramo continuo sin incluir palabras ajenas, use un span continuo. Si la expresión parece discontinua pero puede dividirse en menciones clínicas independientes, sepárelas solo si cada una tiene sentido propio. Si un span continuo incorporaría material que no pertenece a la mención y dividirla distorsionaría el significado, marque el caso para adjudicación o absténgase según el protocolo.</p>
+  <p>Esta decisión es gradual: los spans discontinuos pueden ser más fieles al texto, pero requieren una interfaz de selección múltiple, un formato de offsets diferente y reglas adicionales para solapamientos, adjudicación, métricas y modelos. La política se apoya en la revisión sistemática de 44 estudios de Alhassan et al. (2025), en el modelo específico de Dai et al. (2020) y en la evaluación de reconocimiento y normalización de Trivedi et al. (2020). La evidencia y las referencias completas están en <a href="Fundamentos_metodologicos_para_anotadores_SemantIAr.docx">Fundamentos metodológicos para anotadores SemantIAr</a>.</p>
+  <aside class="callout key" role="note"><h2>Regla práctica</h2><p>No incluya palabras intermedias que no pertenecen a la entidad solo para evitar una discontinuidad. Registrar el caso para revisión es preferible a alterar el literal o introducir ruido semántico.</p></aside>
   <h2 id="sentido-resuelto">Qué significa “Sentido resuelto”</h2>
   <p>Use “Sentido resuelto” únicamente después de elegir un significado disponible. Si la interfaz no ofrece un significado que pueda confirmar, use “Proponer sentido nuevo”, “Ambigua aun con contexto” o “No puedo determinarla”, según corresponda. Una decisión resuelta sin significado vuelve a <strong>Pendiente</strong> al cargar el archivo y no permite completar la revisión. Consulte <a href="#6-como-decidir-el-significado">Cómo decidir el significado</a> y la lista de <a href="#11-1-antes-de-cerrar">verificación antes del cierre</a>.</p>
   <aside class="callout key" role="note"><h2>Regla práctica</h2><p>Primero confirme el texto y su contexto; después decida la forma breve y el concepto clínico. No fuerce una resolución para cerrar la nota.</p></aside>
@@ -221,9 +228,16 @@ def build_docx():
         "los controles se desarrollan hacia abajo en la columna de revisión."
     )
     document.add_paragraph(
+        "Este documento explica el uso de la aplicación. Para el marco metodológico sobre construcción de reglas, "
+        "reconocimiento de entidades, selección de spans, normalización, mapeo clínico y preanotación, consulte "
+        "Fundamentos metodológicos para anotadores SemantIAr."
+    )
+    document.add_paragraph(
         "Para reducir escritura repetitiva, la sección local de la nota se elige en una lista y las pistas "
-        "contextuales admiten selección múltiple. El comentario queda como el campo abierto para registrar "
-        "un dato relevante que no esté contemplado."
+        "contextuales admiten selección múltiple. Cuando la decisión es “Sentido resuelto”, el campo "
+        "“¿Qué significa aquí?” permite elegir o escribir el significado que se incorporará a la anotación. "
+        "El campo técnico de comentario solo se conserva por compatibilidad con lotes anteriores; no es una "
+        "pregunta de captura de la interfaz actual."
     )
     document.add_paragraph(
         "En cada desplegable, el campo cerrado muestra únicamente la etiqueta breve elegida. Al abrirlo, cada "
@@ -244,8 +258,30 @@ def build_docx():
     document.add_paragraph(
         "Dos menciones válidas pueden compartir parte del mismo texto. La aplicación ahora conserva esos spans "
         "y los muestra con un resaltado rayado y una marca numerada. Seleccione cada marca para revisarla por "
-        "separado. No modifique los límites solo para evitar la superposición: conserve el menor tramo textual "
-        "completo que represente cada mención clínica."
+        "separado. No modifique los límites solo para evitar la superposición: conserve la mínima mención suficiente "
+        "que represente cada mención clínica. No cree superposiciones únicamente para representar niveles de "
+        "granularidad de una misma mención."
+    )
+    document.add_heading("Política para spans discontinuos", level=2)
+    document.add_paragraph(
+        "La versión actual de SemantIAr utiliza spans continuos como modalidad predeterminada. Los spans discontinuos "
+        "se registran como casos candidatos, pero no deben construirse desde la interfaz ni forzarse dentro de un único resaltado."
+    )
+    document.add_paragraph(
+        "Si la mención puede representarse con un tramo continuo sin incluir palabras ajenas, use un span continuo. "
+        "Si la expresión parece discontinua pero puede dividirse en menciones clínicas independientes, sepárelas solo "
+        "si cada una tiene sentido propio. Si un span continuo incorporaría material que no pertenece a la mención y "
+        "dividirla distorsionaría el significado, marque el caso para adjudicación o absténgase según el protocolo."
+    )
+    document.add_paragraph(
+        "Esta decisión es gradual: los spans discontinuos pueden ser más fieles al texto, pero requieren una interfaz "
+        "de selección múltiple, un formato de offsets diferente y reglas adicionales para solapamientos, adjudicación, "
+        "métricas y modelos. La evidencia y las referencias completas están en Fundamentos metodológicos para anotadores "
+        "SemantIAr: Alhassan et al. (2025), Dai et al. (2020) y Trivedi et al. (2020)."
+    )
+    document.add_paragraph(
+        "Regla práctica: no incluya palabras intermedias que no pertenecen a la entidad solo para evitar una discontinuidad. "
+        "Registrar el caso para revisión es preferible a alterar el literal o introducir ruido semántico."
     )
     document.add_heading("Sentido resuelto y cierre", level=2)
     document.add_paragraph(
@@ -257,8 +293,37 @@ def build_docx():
         "Regla práctica: primero confirme el texto y el contexto; después registre la decisión léxica y el concepto clínico. "
         "No fuerce una resolución para completar una nota."
     )
+    normalize_legacy_lexical_prompts(document)
+    mark_docx_table_headers(document)
     add_word_navigation(document)
     document.save(DOCX_TARGET)
+
+
+def normalize_legacy_lexical_prompts(document):
+    """Keep the generated Word manual aligned with the current lexical UI."""
+    for table in document.tables:
+        for row in list(table.rows):
+            values = [cell.text.strip() for cell in row.cells]
+            if any(value == "¿Podés saber qué significa aquí?" for value in values):
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        for run in paragraph.runs:
+                            run.text = run.text.replace(
+                                "¿Podés saber qué significa aquí?", "¿Cómo se decide el significado?"
+                            )
+            if values and values[0] == "Comentario" and any(
+                "¿Quedó algo importante sin registrar?" in value for value in values
+            ):
+                table._tbl.remove(row._tr)
+
+
+def mark_docx_table_headers(document):
+    for table in document.tables:
+        if not table.rows or len(table.rows[0].cells) <= 1:
+            continue
+        tr_pr = table.rows[0]._tr.get_or_add_trPr()
+        if tr_pr.find(qn("w:tblHeader")) is None:
+            tr_pr.append(OxmlElement("w:tblHeader"))
 
 
 def add_bookmark(paragraph, name, bookmark_id):
