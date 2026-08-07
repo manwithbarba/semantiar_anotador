@@ -100,6 +100,50 @@ describe('App', () => {
     expect(fixture.nativeElement.querySelector('.case-source #case-mention-add-0')).toBeTruthy();
   });
 
+  it('should keep the free-form meaning input mounted while typing', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    const mention = newHumanLexicalMention('lex-freeform-001', 0, 2, 'BM');
+    mention.annotation.decisionStatus = 'resolved';
+    annotator.annotationProtocol.set({ ...ASSISTED_ANNOTATION_PROTOCOL, lexicalLayerEnabled: true });
+    annotator.lexicalInventory.set({
+      schemaVersion: '2.0',
+      layerVersion: 'SEMANTIAR-LEXICAL-2.0',
+      inventoryVersion: 'SEMANTIAR-LEXICAL-SENSES-2.0',
+      locale: 'es-AR',
+      status: 'provisional',
+      rankingPresent: false,
+      probabilitiesPresent: false,
+      annotatorMayProposeNewSense: true,
+      annotatorMayAbstain: true,
+      abbreviations: [],
+    });
+    annotator.cases.set([
+      {
+        id: 'LEX-FREEFORM-001',
+        text: 'BM',
+        textNorm: 'BM',
+        spans: [],
+        concepts: [],
+        lexicalMentions: [mention],
+        lexicalReview: newLexicalReview(),
+        comentarios: '',
+      },
+    ]);
+
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('input[placeholder="Escribí el sentido o su identificador"]')).toBeTruthy();
+
+    annotator.updateLexicalAnnotation(0, mention.mentionId, 'senseId', 'B');
+    fixture.detectChanges();
+
+    expect(annotator.cases()[0].lexicalMentions?.[0].annotation.senseId).toBe('B');
+    expect(fixture.nativeElement.querySelector('input[placeholder="Escribí el sentido o su identificador"]')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('mat-select[aria-label="¿Qué significa aquí?"]')).toBeNull();
+  });
+
   it('should keep incorporation actions in the left source panel', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();

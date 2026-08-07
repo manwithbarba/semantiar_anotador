@@ -631,7 +631,7 @@
                     }
 
                     @if (mention.annotation.decisionStatus === 'resolved') {
-                      @if (compactMobile() && lexicalSenseOptions(mention).length) {
+                      @if (compactMobile() && lexicalSenseChoices(mention).length) {
                         <label class="lexical-native-field">
                           <span>¿Qué significa aquí?</span>
                           <select
@@ -642,12 +642,14 @@
                               <option [value]="sense.senseId">{{ sense.expansion }}</option>
                             }
                           </select>
-                          <small>Elegí el significado que corresponde a esta aparición.</small>
+                          <small>
+                            Elegí el significado que corresponde a esta aparición; este valor es el que se incorpora a la anotación.
+                          </small>
                         </label>
                       } @else {
                         <mat-form-field appearance="outline" subscriptSizing="dynamic">
                           <mat-label>¿Qué significa aquí?</mat-label>
-                          @if (lexicalSenseOptions(mention).length) {
+                          @if (lexicalSenseChoices(mention).length) {
                             <mat-select
                               panelWidth="420px"
                               [ngModel]="mention.annotation.senseId"
