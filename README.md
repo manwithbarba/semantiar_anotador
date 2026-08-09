@@ -6,6 +6,15 @@ usando el buscador embebido (`autocomplete-binding`) restringido por jerarquía.
 Pensada para el flujo de calibración de anotadores del proyecto SEMANTIAR
 (corpus clínico en español rioplatense).
 
+## Versión vigente · 9 de agosto de 2026
+
+La versión actual incorpora el flujo unificado de revisión que se está
+evaluando con anotadores profesionales de salud. La revisión de cada celda se
+organiza en una secuencia visible y no mezcla la lectura exhaustiva de la nota
+con la decisión detallada de cada aparición. La publicación operativa se hace
+desde `main` mediante GitHub Pages; los lotes clínicos de trabajo no forman
+parte de la publicación.
+
 ## Empezar a anotar
 
 Esta aplicación está pensada para profesionales de la salud que participan en
@@ -34,19 +43,43 @@ El detalle paso a paso, con imágenes y ejemplos, está en el
 > 📄 Descripción técnica detallada (integración con el servidor de terminología,
 > autocompletado, búsqueda multi-prefijo, FHIR API): [`docs/IMPLEMENTACION.md`](docs/IMPLEMENTACION.md).
 
-## Flujo
+## Flujo unificado de revisión
 
 1. **Cargar JSON** con los textos a anotar, o reabrir un JSON de salida previo
    para continuar el trabajo de cualquier anotador.
-2. Por cada nota, revisar exhaustivamente el texto y completar las decisiones
-   de formas breves que aparezcan.
-3. Por cada concepto clínico del texto: elegir **Categoría** (jerarquía SNOMED),
-   buscar y seleccionar el concepto, y completar **Texto literal** + contexto
-   (Polaridad / Certeza / Temporalidad / Sujeto). Se pueden registrar tantos
-   conceptos por caso como sean clínicamente relevantes.
-4. **Cerrar la nota** con **Revisada con conceptos** o **Sin conceptos anotables**.
-   El contador superior disminuye en este paso, no al modificar un campo.
-5. **Descargar** el JSON de avance o final.
+2. **Paso 1 · Celda / lectura:** abrir la nota clínica completa y, si es
+   posible, elegir la **especialidad sospechada de la nota**. Esta selección es
+   una pista contextual de la nota, no reemplaza la decisión del concepto.
+3. **Paso 2 · Marcación de pendientes:** recorrer todo el texto antes de
+   resolver las candidatas. Seleccionar cada mención clínica relevante, ajustar
+   los límites cuando corresponda y usar **Marcar para revisar**. Los spans
+   superpuestos se pueden seleccionar de manera independiente. También se
+   pueden incorporar menciones omitidas y formas breves sin abandonar la nota.
+4. **Paso 3 · Decisión de menciones:** revisar una cola secuencial de marcas,
+   con navegación **Anterior / Siguiente**. Cada aparición se clasifica como:
+   **Término con información clínica**, **Término sin información clínica**,
+   **Ambos** o **No anotar**. La misma marca puede conservar las dos dimensiones
+   cuando el contexto lo justifica.
+5. **Detalle de la marca:** para una marca clínica se completa jerarquía,
+   concepto SNOMED CT, literal y contexto; para una forma breve se resuelve su
+   significado, tipo, función, ubicación y pistas. El detalle se abre junto a
+   la marca activa y permite volver a la cola sin perder la posición.
+6. **Cerrar la nota** con **Revisada con conceptos** o **Sin conceptos
+   anotables**. El contador superior disminuye únicamente después del cierre
+   exhaustivo y de completar las decisiones obligatorias.
+7. **Descargar** el JSON de avance o final.
+
+La vista de escritorio mantiene la nota disponible durante la revisión y
+prioriza el desplazamiento vertical. En celular se conservan controles rápidos
+de escritura como alternativa de incorporación; la decisión semántica sigue
+siendo la misma y se guarda en el modelo canónico.
+
+### Estados legibles de los conceptos
+
+Las tarjetas muestran el literal o el término SNOMED disponible y un estado
+accionable: **Pendiente de codificación**, **Codificado** o **Pendiente de
+completar**. Los identificadores de tarjeta (`C1`, `C9`, `C10`, etc.) quedan
+visibles sin reemplazar el texto que debe revisar el anotador.
 
 La página trabaja en el navegador y no guarda cambios en GitHub ni en un
 servidor. Mientras el estado diga **Cambios sin descargar**, el trabajo está
@@ -105,7 +138,7 @@ Igual que la entrada + metadatos de exportación y, por caso, un array
   },
   "producer": {
     "app": "SemantIAr",
-    "build": "SEMANTIAR-ANNOTATOR-2026.07",
+    "build": "SEMANTIAR-ANNOTATOR-2026.08",
     "platform": "web"
   },
   "annotatorId": "A048",
@@ -189,6 +222,34 @@ explícito. Los códigos, reglas de completitud, normalización de pistas, schem
 compatibilidad de recarga están definidos en
 [`docs/CONTRATO_CAPA_LEXICA_V2.md`](docs/CONTRATO_CAPA_LEXICA_V2.md).
 
+En la interfaz actual, los campos de la forma breve se eligen mediante listas
+desplegables: **Cómo está escrita**, **Qué significa aquí**, **Qué papel cumple
+en esta parte de la nota**, **En qué parte de la nota aparece** y **Qué pistas
+usaste**. El único espacio abierto queda reservado para observaciones
+adicionales. Si el inventario no ofrece sentidos disponibles, el campo libre de
+significado permanece activo durante toda la escritura y conserva el texto
+completo, incluido el primer carácter.
+
+La consigna **¿Qué significa aquí?** aclara que el valor elegido es el que se
+incorpora a la anotación. No se utiliza la pregunta obsoleta “¿Hay algo
+importante que no quedó registrado arriba?”.
+
+## Manuales y trazabilidad editorial
+
+La versión del Angular y la documentación se mantienen alineadas. Los manuales
+regenerados están disponibles en los formatos siguientes:
+
+- [Manual consolidado navegable en HTML](docs/Manual_del_anotador_SemantIAr_v2_consolidado.html).
+- [Manual consolidado en Word](docs/Manual_del_anotador_SemantIAr_v2_consolidado.docx).
+- [Manual base de spans en HTML](docs/Manual_base_spans.html).
+- [Manual base de spans en Word](docs/Manual_base_spans.docx).
+
+El HTML usa navegación interna para saltar entre las partes relacionadas y las
+imágenes se empaquetan dentro del documento o del sitio. El Word conserva la
+misma secuencia, rótulos y ejemplos. Los manuales no deben incluir notas
+clínicas reales ni JSON de anotación; los lotes se cargan localmente por el
+anotador.
+
 ## Categorías → jerarquía SNOMED (ECL)
 
 La búsqueda se restringe a la jerarquía elegida (root concepts verificados vía `$lookup`):
@@ -229,7 +290,12 @@ cambios de código.
 npm start                 # http://localhost:4200 (o 4270 vía launch.json)
 npm run build             # build de desarrollo
 npm run build:pages       # build de producción para GitHub Pages (base-href ./ + .nojekyll)
+npm test -- --watch=false --no-progress  # pruebas unitarias y de interfaz
 ```
+
+El build de Pages publica el contenido de `dist/semantiar-anotador` desde el
+workflow de GitHub Actions. La rama `gh-pages` histórica no es la fuente
+operativa; la configuración vigente usa el workflow asociado a `main`.
 
 ## SemantIAr Mobile · PWA (Sprint 1)
 

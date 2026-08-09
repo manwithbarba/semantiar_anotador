@@ -73,6 +73,8 @@ export function isValidTextSpan(
 export interface ClinicalCase {
   id: string;
   text: string;
+  /** Specialty suspected to originate the note; selected by the annotator. */
+  specialty?: string | null;
   /** Offset base for premarked spans. Defaults to `text` when not provided. */
   textNorm?: string;
   spans?: PremarkedSpan[];
@@ -1233,7 +1235,7 @@ export interface AnnotationTelemetry {
   cases: CaseTelemetry[];
 }
 
-export const TELEMETRY_APP_BUILD = 'SEMANTIAR-ANNOTATOR-2026.07';
+export const TELEMETRY_APP_BUILD = 'SEMANTIAR-ANNOTATOR-2026.08';
 export const TELEMETRY_IDLE_THRESHOLD_MS = 120_000;
 
 function emptyCaseTelemetryBase(id: string): CaseTelemetryBase {
@@ -1436,6 +1438,51 @@ export const POLARITIES: Polarity[] = ['Activo', 'Negado'];
 export const CERTAINTIES: Certainty[] = ['Confirmado', 'Sospecha', 'Diferencial'];
 export const TEMPORALITIES: Temporality[] = ['Actual', 'Histórico'];
 export const SUBJECTS: Subject[] = ['Paciente', 'Familiar'];
+
+/** Medical specialties offered for note-level provenance, sorted alphabetically. */
+export const MEDICAL_SPECIALTIES: string[] = [
+  'Alergología e inmunología clínica',
+  'Anatomía patológica',
+  'Anestesiología',
+  'Angiología y cirugía vascular',
+  'Cardiología',
+  'Cirugía cardiovascular',
+  'Cirugía general',
+  'Cirugía maxilofacial',
+  'Cirugía pediátrica',
+  'Cirugía plástica y reparadora',
+  'Clínica médica',
+  'Dermatología',
+  'Endocrinología',
+  'Enfermedades infecciosas',
+  'Gastroenterología',
+  'Genética médica',
+  'Geriatría',
+  'Ginecología y obstetricia',
+  'Hematología',
+  'Hepatología',
+  'Medicina de emergencias',
+  'Medicina familiar',
+  'Medicina intensiva',
+  'Medicina interna',
+  'Medicina legal',
+  'Medicina nuclear',
+  'Nefrología',
+  'Neumología',
+  'Neurocirugía',
+  'Neurología',
+  'Nutrición',
+  'Oftalmología',
+  'Oncología',
+  'Otorrinolaringología',
+  'Pediatría',
+  'Psiquiatría',
+  'Radiología y diagnóstico por imágenes',
+  'Reumatología',
+  'Toxicología',
+  'Traumatología y ortopedia',
+  'Urología',
+].sort((left, right) => left.localeCompare(right, 'es-AR', { sensitivity: 'base' }));
 
 /**
  * Retained as a compatibility export for downstream consumers. The annotator

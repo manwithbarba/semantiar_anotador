@@ -57,6 +57,7 @@ import {
   LEXICAL_FUNCTIONS,
   LEXICAL_SECTIONS,
   LEXICAL_UNCLASSIFIED_FUNCTION,
+  MEDICAL_SPECIALTIES,
   LexicalInventory,
   LexicalInventoryEntry,
   LexicalMention,
@@ -93,6 +94,28 @@ import {
   AnnotationInteropError,
   prepareAnnotationDocument,
 } from '../models/annotation-interop';
+
+type UnifiedReviewItemKind = 'pending' | 'clinical' | 'lexical' | 'both' | 'skipped';
+type UnifiedReviewChoice = 'clinical' | 'lexical' | 'both' | 'skip';
+type UnifiedDetailTarget = 'clinical' | 'lexical' | 'both';
+type CaseWorkflowStep = 'cell' | 'marking' | 'decisions';
+
+/**
+ * Presentation-only grouping for the local unified-review prototype.
+ * The persisted model deliberately keeps spans, clinical concepts and lexical
+ * mentions independent for traceability; this object only lets the interface
+ * present the three records as one decision when they share a source range.
+ */
+interface UnifiedReviewItem {
+  key: string;
+  start: number;
+  end: number;
+  surface: string;
+  span: PremarkedSpan | null;
+  lexicalMention: LexicalMention | null;
+  concept: ConceptAnnotation | null;
+  kind: UnifiedReviewItemKind;
+}
 
 @Component({
   selector: 'app-annotator',
@@ -143,6 +166,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   readonly lexicalFormTypes = LEXICAL_FORM_TYPES;
   readonly lexicalFunctions = LEXICAL_FUNCTIONS;
   readonly lexicalSections = LEXICAL_SECTIONS;
+  readonly medicalSpecialties = MEDICAL_SPECIALTIES;
   readonly lexicalEvidenceCodes = LEXICAL_EVIDENCE_CODES;
   readonly lexicalUnclassifiedFunction = LEXICAL_UNCLASSIFIED_FUNCTION;
   readonly isNativeApp = Capacitor.isNativePlatform();
@@ -179,9 +203,22 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   lexicalQuickEntry = signal<Record<number, string>>({});
   /** Draft text used to add an exact clinical mention without touch-dragging. */
   mentionQuickEntry = signal<Record<number, string>>({});
-  protocolExpanded = signal<boolean>(false);
   /** Native phone controls avoid CDK overlay positioning outside the viewport. */
   compactMobile = signal<boolean>(false);
+  /** Local-only UI experiment: classify a mark after selecting it, not before. */
+  unifiedReviewPrototype = signal<boolean>(true);
+  /** Presentation-only pointer for the sequential review queue. */
+  private unifiedActiveItemKeys = signal<Record<number, string>>({});
+  /** Two-phase flow: mark the note independently before exposing candidates. */
+  private unifiedMarkingPhase = signal<Record<number, boolean>>({});
+  /** Compact three-step navigation for the active cell. */
+  private caseWorkflowSteps = signal<Record<number, CaseWorkflowStep>>({});
+  /** The active branch is local UI state; it is not persisted in the annotation JSON. */
+  private unifiedDetailContext = signal<{
+    caseIdx: number;
+    key: string;
+    target: UnifiedDetailTarget;
+  } | null>(null);
 
   /** Session metadata (upload/download audit trail). */
   sessionMeta = signal<AnnotationMeta | null>(null);
@@ -630,7 +667,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
           directory: Directory.Cache,
         });
         await Share.share({
-          title: 'Manual de SemantIAr App',
+          title: 'Manual de SemantIAr Anotador',
           text: 'Manual de uso para anotadores clínicos',
           files: [file.uri],
           dialogTitle: 'Guardar o compartir manual',
@@ -656,10 +693,6 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     if (idx < 0) return;
     this.selectCase(idx);
     this.scrollActiveCaseIntoView(idx);
-  }
-
-  toggleProtocol(): void {
-    this.protocolExpanded.update((expanded) => !expanded);
   }
 
   // ---- Loading ----
@@ -776,6 +809,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       return {
         id: String(c.id ?? ''),
         text,
+        specialty: typeof c.specialty === 'string' && c.specialty.trim() ? c.specialty.trim() : null,
         textNorm,
         spans: normalizedSpans.spans,
         concepts,
@@ -794,6 +828,10 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.humanSpanDraft.set(null);
     this.lexicalQuickEntry.set({});
     this.mentionQuickEntry.set({});
+    this.unifiedActiveItemKeys.set({});
+    this.unifiedMarkingPhase.set(Object.fromEntries(cases.map((_, index) => [index, true])));
+    this.caseWorkflowSteps.set(Object.fromEntries(cases.map((_, index) => [index, 'cell' as CaseWorkflowStep])));
+    this.unifiedDetailContext.set(null);
 
     // --- Session metadata: preserve existing or initialise ---
     const now = new Date().toISOString();
@@ -894,6 +932,10 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.humanSpanDraft.set(null);
     this.lexicalQuickEntry.set({});
     this.mentionQuickEntry.set({});
+    this.unifiedActiveItemKeys.set({});
+    this.unifiedMarkingPhase.set({});
+    this.caseWorkflowSteps.set({});
+    this.unifiedDetailContext.set(null);
     this.activeCaseIndex.set(0);
     this.caseSearch.set('');
     this.sessionMeta.set(null);
@@ -1010,10 +1052,532 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     return `${category || 'Mención clínica'} · Pendiente de completar`;
   }
 
+  /** Switches only the local prototype view; it does not transform annotation data. */
+  toggleUnifiedReviewPrototype(): void {
+    this.unifiedReviewPrototype.update((enabled) => !enabled);
+  }
+
+  unifiedMarkingPhaseActive(caseIdx: number): boolean {
+    return this.unifiedReviewPrototype() && (this.unifiedMarkingPhase()[caseIdx] ?? true);
+  }
+
+  caseWorkflowStep(caseIdx: number): CaseWorkflowStep {
+    return this.caseWorkflowSteps()[caseIdx] ?? 'cell';
+  }
+
+  setCaseWorkflowStep(caseIdx: number, step: CaseWorkflowStep): void {
+    const caseItem = this.cases()[caseIdx];
+    if (!caseItem) return;
+    if (step === 'decisions' && this.unifiedMarkingPhaseActive(caseIdx)) {
+      this.snackBar.open('Primero completá la marcación de pendientes en la nota.', 'OK', {
+        duration: 3500,
+      });
+      return;
+    }
+    this.caseWorkflowSteps.update((current) => ({ ...current, [caseIdx]: step }));
+    if (step !== 'decisions') {
+      this.unifiedMarkingPhase.update((current) => ({ ...current, [caseIdx]: true }));
+      this.unifiedDetailContext.set(null);
+      this.selectedSpan.set(null);
+      this.humanSpanDraft.set(null);
+      this.scrollCaseSection(caseIdx, 'source');
+      return;
+    }
+    const items = this.unifiedReviewItems(caseItem);
+    const first = items.find((item) => this.unifiedItemRequiresAction(item)) ?? items[0];
+    if (first) this.setUnifiedActiveItem(caseIdx, first.key);
+    this.scrollCaseSection(caseIdx, 'unified');
+  }
+
+  unifiedMarkingAddedCount(caseItem: CaseAnnotation): number {
+    return caseItem.spans.filter((span) => span.origin === 'human').length;
+  }
+
+  finishUnifiedMarking(caseIdx: number): void {
+    const caseItem = this.cases()[caseIdx];
+    if (!caseItem) return;
+    if (this.humanSpanDraft()?.caseIndex === caseIdx) {
+      this.snackBar.open(
+        'Hay una selección sin marcar. Pulsá “Marcar para revisar” o limpiá la selección antes de continuar.',
+        'OK',
+        { duration: 4500 }
+      );
+      return;
+    }
+    this.unifiedMarkingPhase.update((current) => ({ ...current, [caseIdx]: false }));
+    this.caseWorkflowSteps.update((current) => ({ ...current, [caseIdx]: 'decisions' }));
+    this.unifiedDetailContext.set(null);
+    const items = this.unifiedReviewItems(caseItem);
+    const first = items.find((item) => this.unifiedItemRequiresAction(item)) ?? items[0];
+    if (first) this.setUnifiedActiveItem(caseIdx, first.key);
+  }
+
+  returnToUnifiedMarking(caseIdx: number): void {
+    this.unifiedMarkingPhase.update((current) => ({ ...current, [caseIdx]: true }));
+    this.caseWorkflowSteps.update((current) => ({ ...current, [caseIdx]: 'marking' }));
+    this.unifiedDetailContext.set(null);
+    this.selectedSpan.set(null);
+    this.humanSpanDraft.set(null);
+  }
+
+  addClinicalToUnifiedDetail(caseIdx: number): void {
+    const context = this.unifiedDetailContext();
+    if (!context || context.caseIdx !== caseIdx) return;
+    this.classifyUnifiedItem(caseIdx, context.key, 'both');
+  }
+
+  goToUnifiedDetail(caseIdx: number, direction: -1 | 1): void {
+    const caseItem = this.cases()[caseIdx];
+    if (!caseItem) return;
+    const items = this.unifiedReviewItems(caseItem);
+    if (!items.length) return;
+    const current = this.unifiedActivePosition(caseIdx, items);
+    const next = items[(current + direction + items.length) % items.length];
+    if (!next) return;
+    this.setUnifiedActiveItem(caseIdx, next.key);
+    if (next.kind === 'pending' || next.kind === 'skipped') {
+      this.unifiedDetailContext.set(null);
+      return;
+    }
+    this.openUnifiedItemDetails(caseIdx, next.key);
+  }
+
+  unifiedActiveItemKey(caseIdx: number, items: UnifiedReviewItem[]): string | null {
+    const explicit = this.unifiedActiveItemKeys()[caseIdx];
+    if (explicit && items.some((item) => item.key === explicit)) return explicit;
+    return items.find((item) => this.unifiedItemRequiresAction(item))?.key ?? items[0]?.key ?? null;
+  }
+
+  unifiedActivePosition(caseIdx: number, items: UnifiedReviewItem[]): number {
+    const active = this.unifiedActiveItemKey(caseIdx, items);
+    const position = active ? items.findIndex((item) => item.key === active) : -1;
+    return position >= 0 ? position : 0;
+  }
+
+  setUnifiedActiveItem(caseIdx: number, key: string): void {
+    this.unifiedActiveItemKeys.update((current) => ({ ...current, [caseIdx]: key }));
+  }
+
+  unifiedDetailOpenFor(caseIdx: number): boolean {
+    return this.unifiedDetailContext()?.caseIdx === caseIdx;
+  }
+
+  unifiedDetailTargetFor(caseIdx: number): UnifiedDetailTarget | null {
+    const context = this.unifiedDetailContext();
+    return context?.caseIdx === caseIdx ? context.target : null;
+  }
+
+  /**
+   * The secondary action belongs only to a lexical-only mark. A mark already
+   * classified as both must not show a misleading second "add clinical"
+   * action when its lexical details are opened.
+   */
+  unifiedDetailCanAddClinical(caseIdx: number): boolean {
+    const context = this.unifiedDetailContext();
+    if (!context || context.caseIdx !== caseIdx || context.target !== 'lexical') return false;
+    const caseItem = this.cases()[caseIdx];
+    if (!caseItem) return false;
+    const item = this.unifiedReviewItems(caseItem).find(
+      (candidate) => candidate.key === context.key
+    );
+    return !!item?.lexicalMention && !item.concept;
+  }
+
+  unifiedDetailLabelFor(caseIdx: number): string {
+    const target = this.unifiedDetailTargetFor(caseIdx);
+    if (target === 'both') return 'Ambos · una misma marca';
+    if (target === 'clinical') return 'Término con información clínica';
+    return 'Término sin información clínica';
+  }
+
+  unifiedDetailMatchesMention(caseIdx: number, mention: LexicalMention): boolean {
+    if (!this.unifiedReviewPrototype()) return true;
+    const context = this.unifiedDetailContext();
+    return context?.caseIdx === caseIdx
+      && context.key === `range-${mention.start}-${mention.end}`;
+  }
+
+  unifiedDetailMatchesConcept(caseIdx: number, concept: ConceptAnnotation, caseItem: CaseAnnotation): boolean {
+    if (!this.unifiedReviewPrototype()) return true;
+    const context = this.unifiedDetailContext();
+    if (context?.caseIdx !== caseIdx) return false;
+    return this.unifiedReviewItems(caseItem).some(
+      (item) => item.key === context.key && item.concept === concept
+    );
+  }
+
+  closeUnifiedDetails(): void {
+    this.unifiedDetailContext.set(null);
+  }
+
+  goToUnifiedItem(caseIdx: number, direction: -1 | 1): void {
+    const caseItem = this.cases()[caseIdx];
+    if (!caseItem) return;
+    const items = this.unifiedReviewItems(caseItem);
+    if (!items.length) return;
+    const current = this.unifiedActivePosition(caseIdx, items);
+    const ordered = direction > 0
+      ? [...items.slice(current + 1), ...items.slice(0, current)]
+      : [...items.slice(0, current).reverse(), ...items.slice(current + 1).reverse()];
+    const next = ordered.find((item) => item.kind !== 'skipped') ?? items[(current + direction + items.length) % items.length];
+    if (!next) return;
+    this.setUnifiedActiveItem(caseIdx, next.key);
+    this.openUnifiedReviewItem(caseIdx, next.key);
+  }
+
+  private unifiedItemRequiresAction(item: UnifiedReviewItem): boolean {
+    if (item.kind === 'pending') return true;
+    if (item.kind === 'clinical') return !this.unifiedConceptComplete(item);
+    if (item.kind === 'lexical') return !this.unifiedLexicalComplete(item);
+    if (item.kind === 'both') {
+      return !this.unifiedConceptComplete(item) || !this.unifiedLexicalComplete(item);
+    }
+    return false;
+  }
+
+  private unifiedConceptComplete(item: UnifiedReviewItem): boolean {
+    const concept = item.concept;
+    return !!concept?.cat && !!concept.sctid && !!concept.textoLiteral?.trim();
+  }
+
+  private unifiedLexicalComplete(item: UnifiedReviewItem): boolean {
+    return !!item.lexicalMention && this.isLexicalMentionComplete(item.lexicalMention);
+  }
+
+  /**
+   * Groups records with the same source range for a single, user-facing
+   * decision. The underlying span/concept/lexical records remain separate.
+   */
+  unifiedReviewItems(caseItem: CaseAnnotation): UnifiedReviewItem[] {
+    const grouped = new Map<
+      string,
+      Omit<UnifiedReviewItem, 'kind'>
+    >();
+    const addRange = (start: number, end: number, surface: string) => {
+      const key = `range-${start}-${end}`;
+      const existing = grouped.get(key);
+      if (existing) return existing;
+      const item: Omit<UnifiedReviewItem, 'kind'> = {
+        key,
+        start,
+        end,
+        surface,
+        span: null,
+        lexicalMention: null,
+        concept: null,
+      };
+      grouped.set(key, item);
+      return item;
+    };
+
+    for (const span of caseItem.spans) {
+      addRange(span.start, span.end, span.textoLiteral).span = span;
+    }
+    for (const mention of caseItem.lexicalMentions ?? []) {
+      addRange(mention.start, mention.end, mention.surface).lexicalMention = mention;
+    }
+    for (const concept of caseItem.concepts) {
+      const linkedSpan = concept.spanId
+        ? caseItem.spans.find((span) => span.spanId === concept.spanId)
+        : undefined;
+      if (linkedSpan) {
+        addRange(linkedSpan.start, linkedSpan.end, linkedSpan.textoLiteral).concept = concept;
+        continue;
+      }
+      const literal = concept.textoLiteral.trim();
+      const start = literal ? caseItem.textNorm.indexOf(literal) : -1;
+      if (start >= 0) {
+        addRange(start, start + literal.length, literal).concept = concept;
+      }
+    }
+
+    return [...grouped.values()]
+      .map((item): UnifiedReviewItem => {
+        const kind: UnifiedReviewItemKind =
+          item.span?.status === 'descartado' && !item.lexicalMention && !item.concept
+            ? 'skipped'
+            : item.concept && item.lexicalMention
+              ? 'both'
+              : item.concept
+                ? 'clinical'
+                : item.lexicalMention
+                  ? 'lexical'
+                  : 'pending';
+        return { ...item, kind };
+      })
+      .sort((left, right) => left.start - right.start || left.end - right.end || left.key.localeCompare(right.key));
+  }
+
+  unifiedPendingCount(caseItem: CaseAnnotation): number {
+    return this.unifiedReviewItems(caseItem).filter((item) => this.unifiedItemRequiresAction(item)).length;
+  }
+
+  unifiedTotalCount(caseItem: CaseAnnotation): number {
+    return this.unifiedReviewItems(caseItem).length;
+  }
+
+  unifiedResolvedCount(caseItem: CaseAnnotation): number {
+    return Math.max(0, this.unifiedTotalCount(caseItem) - this.unifiedPendingCount(caseItem));
+  }
+
+  unifiedItemStatus(item: UnifiedReviewItem): string {
+    if (item.kind === 'pending') {
+      return item.span?.origin === 'human'
+        ? 'Nueva marca · elegí qué representa'
+        : 'Candidata · elegí qué representa';
+    }
+    if (item.kind === 'skipped') return 'No anotar';
+    if (item.kind === 'both') {
+      const clinicalStatus = this.unifiedConceptComplete(item) ? 'con información clínica: codificado' : 'con información clínica: pendiente';
+      const lexicalStatus = this.unifiedLexicalComplete(item)
+        ? 'sin información clínica: decidido'
+        : 'sin información clínica: pendiente';
+      return `Ambos · ${clinicalStatus} · ${lexicalStatus}`;
+    }
+    if (item.kind === 'clinical') {
+      return this.unifiedConceptComplete(item)
+        ? 'Término con información clínica · codificado'
+        : 'Término con información clínica · pendiente de codificación';
+    }
+    return this.unifiedLexicalComplete(item)
+      ? 'Término sin información clínica · significado decidido'
+      : 'Término sin información clínica · significado pendiente';
+  }
+
+  markDraftForUnifiedReview(caseIdx: number): void {
+    const draft = this.humanSpanDraft();
+    if (!draft || draft.caseIndex !== caseIdx) return;
+    const spanId = this.createHumanSpan(caseIdx, draft.start, draft.end);
+    if (!spanId) return;
+    this.humanSpanDraft.set(null);
+    this.selectedSpan.set(null);
+    window.getSelection()?.removeAllRanges();
+    if (this.unifiedMarkingPhaseActive(caseIdx)) {
+      this.caseWorkflowSteps.update((current) => ({ ...current, [caseIdx]: 'marking' }));
+      this.snackBar.open(
+        'Marca incorporada. Continuá recorriendo la nota; las decisiones se abren en la segunda fase.',
+        'OK',
+        { duration: 3200 }
+      );
+      return;
+    }
+    this.openUnifiedReviewItem(caseIdx, `range-${draft.start}-${draft.end}`);
+  }
+
+  classifyUnifiedItem(caseIdx: number, key: string, choice: UnifiedReviewChoice): void {
+    const caseItem = this.cases()[caseIdx];
+    const item = caseItem && this.unifiedReviewItems(caseItem).find((candidate) => candidate.key === key);
+    if (!caseItem || !item) return;
+
+    if (choice === 'skip') {
+      if (item.span && item.span.status !== 'descartado') {
+        this.selectedSpan.set({ caseIndex: caseIdx, spanId: item.span.spanId });
+        this.discardSelectedSpan(caseIdx);
+      }
+      if (item.lexicalMention) {
+        this.updateLexicalAnnotation(caseIdx, item.lexicalMention.mentionId, 'decisionStatus', 'rejected');
+      }
+      this.snackBar.open('La marca se registró como no anotable.', 'OK', { duration: 3000 });
+      return;
+    }
+
+    if ((choice === 'lexical' || choice === 'both') && !this.lexicalLayerEnabled()) {
+      this.snackBar.open('Este lote no tiene activa la revisión de formas breves.', 'OK', { duration: 3500 });
+      return;
+    }
+
+    const span = this.ensureUnifiedSpan(caseIdx, item);
+    if (!span) return;
+
+    if (choice === 'clinical') {
+      // Reclassification is explicit: choosing the clinical-only category
+      // removes a previous lexical-only dimension instead of silently turning
+      // the mark into Ambos.
+      if (item.lexicalMention) this.removeUnifiedLexicalDimension(caseIdx, item);
+      this.unifiedDetailContext.set({
+        caseIdx,
+        key,
+        target: 'clinical',
+      });
+      const sequence = this.confirmSpanAsClinical(caseIdx, span.spanId);
+      this.selectedSpan.set(null);
+      if (sequence !== undefined) this.focusConcept(caseIdx, sequence);
+      this.snackBar.open(
+        'La marca quedó como término con información clínica.',
+        'OK',
+        { duration: 3200 }
+      );
+      return;
+    }
+
+    if (choice === 'lexical') {
+      // The lexical-only category likewise removes a clinical concept that was
+      // selected earlier. The source span remains and is reclassified locally.
+      if (item.concept) this.removeUnifiedClinicalDimension(caseIdx, item);
+      if (!item.lexicalMention) this.addHumanLexicalMentionAt(caseIdx, span.start, span.end);
+      this.unifiedDetailContext.set({ caseIdx, key, target: 'lexical' });
+      this.markSpanAsLexical(caseIdx, span.spanId);
+      const lexical = this.cases()[caseIdx]?.lexicalMentions?.find(
+        (mention) => mention.start === span.start && mention.end === span.end
+      );
+      if (lexical) this.focusLexicalMention(caseIdx, lexical.mentionId);
+      this.snackBar.open('La marca quedó como término sin información clínica.', 'OK', { duration: 3200 });
+      return;
+    }
+
+    // "Ambos" is the only branch that deliberately retains/adds both records.
+    if (!item.lexicalMention) this.addHumanLexicalMentionAt(caseIdx, span.start, span.end);
+    this.unifiedDetailContext.set({ caseIdx, key, target: 'both' });
+    const sequence = this.confirmSpanAsClinical(caseIdx, span.spanId);
+    this.selectedSpan.set(null);
+    if (sequence !== undefined) this.focusConcept(caseIdx, sequence);
+    this.snackBar.open('La misma marca quedó como Ambos.', 'OK', { duration: 3200 });
+  }
+
+  private removeUnifiedClinicalDimension(caseIdx: number, item: UnifiedReviewItem): void {
+    const sequence = item.concept?.sequence;
+    const spanId = item.concept?.spanId ?? item.span?.spanId;
+    this.mutateCase(caseIdx, (caseItem) => {
+      caseItem.concepts = caseItem.concepts.filter((concept) => {
+        if (sequence !== undefined && concept.sequence === sequence) return false;
+        return !(spanId && concept.spanId === spanId);
+      });
+    });
+  }
+
+  private removeUnifiedLexicalDimension(caseIdx: number, item: UnifiedReviewItem): void {
+    const mentionId = item.lexicalMention?.mentionId;
+    if (!mentionId) return;
+    this.mutateCase(caseIdx, (caseItem) => {
+      caseItem.lexicalMentions = (caseItem.lexicalMentions ?? []).filter(
+        (mention) => mention.mentionId !== mentionId
+      );
+    });
+  }
+
+  openUnifiedItemDetails(caseIdx: number, key: string): void {
+    const caseItem = this.cases()[caseIdx];
+    const item = caseItem && this.unifiedReviewItems(caseItem).find((candidate) => candidate.key === key);
+    if (!item) return;
+    if (item.concept) {
+      this.unifiedDetailContext.set({
+        caseIdx,
+        key,
+        target: item.lexicalMention ? 'both' : 'clinical',
+      });
+      const sequence = item.concept.sequence
+        ?? ((this.cases()[caseIdx]?.concepts.indexOf(item.concept) ?? -1) + 1);
+      if (sequence > 0) this.focusConcept(caseIdx, sequence);
+      return;
+    }
+    if (item.lexicalMention) {
+      this.unifiedDetailContext.set({ caseIdx, key, target: 'lexical' });
+      this.focusLexicalMention(caseIdx, item.lexicalMention.mentionId);
+      return;
+    }
+    this.openUnifiedReviewItem(caseIdx, item.key);
+  }
+
+  private ensureUnifiedSpan(caseIdx: number, item: UnifiedReviewItem): PremarkedSpan | null {
+    if (item.span) {
+      return this.cases()[caseIdx]?.spans.find((span) => span.spanId === item.span?.spanId) ?? null;
+    }
+    const spanId = this.createHumanSpan(caseIdx, item.start, item.end);
+    return spanId
+      ? this.cases()[caseIdx]?.spans.find((span) => span.spanId === spanId) ?? null
+      : null;
+  }
+
+  private confirmSpanAsClinical(caseIdx: number, spanId: string): number | undefined {
+    let sequence: number | undefined;
+    this.mutateCase(caseIdx, (caseItem) => {
+      const fixedSpan = caseItem.spans.find((item) => item.spanId === spanId);
+      if (!fixedSpan) return;
+      fixedSpan.status = 'confirmado';
+      fixedSpan.review = {
+        disposition: 'elegible',
+        reason: 'Clasificada como término con información clínica durante la revisión.',
+      };
+      fixedSpan.humanAudit = {
+        ...(fixedSpan.humanAudit ?? {}),
+        lastAction: 'accepted',
+        lastActionAt: new Date().toISOString(),
+        lastActionPlatform: this.currentPlatform,
+      };
+      const existing = caseItem.concepts.find((concept) => concept.spanId === fixedSpan.spanId);
+      if (existing) {
+        sequence = existing.sequence;
+        return;
+      }
+      sequence = this.nextConceptSequence(caseItem);
+      caseItem.concepts.push({
+        ...newConcept(),
+        sequence,
+        spanId: fixedSpan.spanId,
+        textoLiteral: fixedSpan.textoLiteral,
+        provenance: {
+          createdPlatform: this.currentPlatform,
+          lastEditedPlatform: this.currentPlatform,
+        },
+      });
+    });
+    this.updateCaseTelemetry(caseIdx, (item) => (item.spansAccepted += 1));
+    return sequence;
+  }
+
+  private markSpanAsLexical(caseIdx: number, spanId: string): void {
+    this.mutateCase(caseIdx, (caseItem) => {
+      const fixedSpan = caseItem.spans.find((item) => item.spanId === spanId);
+      if (!fixedSpan) return;
+      fixedSpan.status = 'confirmado';
+      fixedSpan.review = {
+        disposition: 'excluido',
+        reason: 'Clasificada como forma breve; no se abre un concepto SNOMED CT automáticamente.',
+      };
+      fixedSpan.humanAudit = {
+        ...(fixedSpan.humanAudit ?? {}),
+        lastAction: 'accepted',
+        lastActionAt: new Date().toISOString(),
+        lastActionPlatform: this.currentPlatform,
+      };
+    });
+    this.selectedSpan.set(null);
+    this.updateCaseTelemetry(caseIdx, (item) => (item.spansAccepted += 1));
+  }
+
+  private openUnifiedReviewItem(caseIdx: number, key: string): void {
+    this.setUnifiedActiveItem(caseIdx, key);
+    window.setTimeout(() => {
+      const element = document.getElementById(`case-unified-item-${caseIdx}-${key}`);
+      if (element instanceof HTMLDetailsElement) element.open = true;
+      element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (element instanceof HTMLElement) element.focus({ preventScroll: true });
+    }, 0);
+  }
+
+  private openPrototypeDetailDrawer(caseIdx: number): void {
+    if (!this.unifiedReviewPrototype()) return;
+    window.setTimeout(() => {
+      const drawer = document.getElementById(`case-unified-details-${caseIdx}`);
+      if (drawer instanceof HTMLDetailsElement) drawer.open = true;
+    }, 0);
+  }
+
+  private focusLexicalMention(caseIdx: number, mentionId: string): void {
+    this.openPrototypeDetailDrawer(caseIdx);
+    window.setTimeout(() => {
+      const element = document.getElementById(`case-lexical-mention-${caseIdx}-${mentionId}`);
+      if (element instanceof HTMLDetailsElement) element.open = true;
+      element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (element instanceof HTMLElement) element.focus({ preventScroll: true });
+    }, 0);
+  }
+
   private focusConcept(caseIdx: number, sequence: number): void {
     // The card is rendered after the signal update. Waiting one frame keeps
     // the scroll anchored to the card that was just created, including when
     // the action came from a selected mention rather than the section header.
+    this.openPrototypeDetailDrawer(caseIdx);
     window.setTimeout(() => {
       const element = document.getElementById(`case-concept-${caseIdx}-${sequence}`);
       element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1497,7 +2061,42 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
 
   lexicalReviewReady(caseItem: CaseAnnotation): boolean {
     if (!this.lexicalLayerEnabled()) return true;
+    // En el flujo unificado no hay un cierre léxico separado: al no quedar
+    // formas breves pendientes, la revisión se considera cerrada junto con
+    // la decisión de la nota.
+    if (this.unifiedReviewPrototype() && this.lexicalPendingCount(caseItem) === 0) return true;
     return caseItem.lexicalReview?.status === 'completed' && this.lexicalPendingCount(caseItem) === 0;
+  }
+
+  private closeUnifiedLexicalReviewIfReady(caseIdx: number): void {
+    if (!this.unifiedReviewPrototype() || !this.lexicalLayerEnabled()) return;
+    const caseItem = this.cases()[caseIdx];
+    if (
+      !caseItem ||
+      this.lexicalPendingCount(caseItem) > 0 ||
+      caseItem.lexicalReview?.status === 'completed'
+    ) {
+      return;
+    }
+    const completedAt = new Date().toISOString();
+    this.mutateCase(caseIdx, (target) => {
+      target.lexicalReview = {
+        ...(target.lexicalReview ??
+          newLexicalReview(
+            this.lexicalInventory()?.inventoryVersion ??
+              this.annotationProtocol().lexicalInventoryVersion ??
+              null
+          )),
+        status: 'completed',
+        exhaustiveReviewRequired: true,
+        annotatorId: this.annotatorId() || null,
+        completedAt,
+        inventoryVersion:
+          this.lexicalInventory()?.inventoryVersion ??
+          this.annotationProtocol().lexicalInventoryVersion ??
+          null,
+      };
+    });
   }
 
   completeLexicalReview(caseIdx: number): void {
@@ -1591,6 +2190,12 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   selectSpan(caseIdx: number, span: PremarkedSpan): void {
     if (span.status === 'descartado') return;
     this.selectedSpan.set({ caseIndex: caseIdx, spanId: span.spanId });
+    if (this.unifiedMarkingPhaseActive(caseIdx)) {
+      this.caseWorkflowSteps.update((current) => ({ ...current, [caseIdx]: 'marking' }));
+    }
+    if (this.unifiedReviewPrototype() && !this.unifiedMarkingPhaseActive(caseIdx)) {
+      this.openUnifiedReviewItem(caseIdx, `range-${span.start}-${span.end}`);
+    }
   }
 
   selectCase(caseIdx: number): void {
@@ -1616,7 +2221,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.scrollActiveCaseIntoView(Number(caseIdx));
   }
 
-  scrollCaseSection(caseIdx: number, section: 'source' | 'lexical' | 'concepts' | 'finalize'): void {
+  scrollCaseSection(caseIdx: number, section: 'source' | 'unified' | 'lexical' | 'concepts' | 'finalize'): void {
     const element = document.getElementById(`case-${section}-${caseIdx}`);
     element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -1672,7 +2277,8 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
         ? 'Revisada sin conceptos'
         : 'Revisada';
     }
-    return this.caseHasStarted(caseItem) ? 'Anotación guardada' : 'En revisión';
+    if (this.dirty() && this.caseHasStarted(caseItem)) return 'Cambios sin descargar';
+    return this.caseHasStarted(caseItem) ? 'Avance cargado' : 'En revisión';
   }
 
   lexicalCompletedCount(caseItem: CaseAnnotation): number {
@@ -1691,12 +2297,15 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   lexicalStepLabel(caseItem: CaseAnnotation): string {
     const pending = this.lexicalPendingCount(caseItem);
     if (pending > 0) {
-      return `Paso 1 · Decidí cada forma breve (${pending} pendiente${pending === 1 ? '' : 's'})`;
+      return `Mención breve · decidí cada aparición (${pending} pendiente${pending === 1 ? '' : 's'})`;
+    }
+    if (this.unifiedReviewPrototype()) {
+      return 'Mención breve · revisión lista';
     }
     if (caseItem.lexicalReview?.status !== 'completed') {
-      return 'Paso 2 · Confirmá la revisión exhaustiva de formas';
+      return 'Mención breve · confirmá la revisión';
     }
-    return 'Revisión de formas breves cerrada';
+    return 'Mención breve · revisión cerrada';
   }
 
   isCaseFinalized(caseItem: CaseAnnotation): boolean {
@@ -1706,6 +2315,8 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   finalizeCase(caseIdx: number, outcome: CaseReviewOutcome): void {
     const caseItem = this.cases()[caseIdx];
     if (!caseItem) return;
+    this.closeUnifiedLexicalReviewIfReady(caseIdx);
+    const validationCase = this.cases()[caseIdx] ?? caseItem;
     const codedConcepts = caseItem.concepts.filter((concept) => !!concept.sctid);
     const conceptHasContent = (concept: ConceptAnnotation) =>
       !!(concept.cat || concept.sctid || concept.term || concept.textoLiteral.trim());
@@ -1713,8 +2324,8 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       (span) => span.review?.disposition !== 'excluido' && span.status === 'pendiente'
     );
 
-    if (!this.lexicalReviewReady(caseItem)) {
-      const pending = this.lexicalPendingCount(caseItem);
+    if (!this.lexicalReviewReady(validationCase)) {
+      const pending = this.lexicalPendingCount(validationCase);
       this.snackBar.open(
         pending
           ? `Decidí qué hacer con las ${pending} formas breves pendientes y cerrá esa revisión.`
@@ -2007,6 +2618,13 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     });
   }
 
+  updateCaseSpecialty(caseIdx: number, value: string): void {
+    this.mutateCase(caseIdx, (c) => {
+      const specialty = typeof value === 'string' ? value.trim() : '';
+      c.specialty = specialty || null;
+    });
+  }
+
   bindingFor(cat: Category | ''): { ecl: string; title: string } {
     const found = CATEGORIES.find((c) => c.label === cat);
     return {
@@ -2094,6 +2712,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       cases: this.cases().map((c) => ({
         id: c.id,
         text: c.text,
+        ...(c.specialty?.trim() ? { specialty: c.specialty.trim() } : {}),
         textNorm: c.textNorm,
         spans: c.spans,
         // Drop fully-empty concept blocks on export

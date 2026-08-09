@@ -45,6 +45,7 @@
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "text": { "type": "string" },
+          "specialty": { "type": ["string", "null"] },
           "textNorm": { "type": "string" },
           "spans": {
             "type": "array",

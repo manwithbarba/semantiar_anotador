@@ -254,6 +254,10 @@ export function prepareAnnotationDocument(raw: unknown): PreparedAnnotationDocum
       ...rawCase,
       id: caseId,
       text: rawCase.text,
+      specialty:
+        typeof rawCase.specialty === 'string' && rawCase.specialty.trim()
+          ? rawCase.specialty.trim()
+          : null,
       textNorm,
       spans,
       lexicalMentions,
