@@ -78,6 +78,7 @@ describe('App', () => {
     await fixture.whenStable();
     const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
       .componentInstance as AnnotatorComponent;
+    annotator.unifiedReviewPrototype.set(false);
     annotator.compactMobile.set(true);
     annotator.annotationProtocol.set({ ...ASSISTED_ANNOTATION_PROTOCOL, lexicalLayerEnabled: true });
     annotator.cases.set([
@@ -100,11 +101,61 @@ describe('App', () => {
     expect(fixture.nativeElement.querySelector('.case-source #case-mention-add-0')).toBeTruthy();
   });
 
+  it('should expose the three unified annotation categories and preserve both dimensions', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    annotator.annotationProtocol.set({ ...ASSISTED_ANNOTATION_PROTOCOL, lexicalLayerEnabled: true });
+    annotator.cases.set([
+      {
+        id: 'UNIFIED-TRIANGLE-001',
+        text: 'BM',
+        textNorm: 'BM',
+        spans: [{
+          spanId: 'span-unified-001',
+          start: 0,
+          end: 2,
+          textoLiteral: 'BM',
+          origin: 'candidate',
+          confidence: 0.9,
+          status: 'pendiente',
+        }],
+        concepts: [],
+        lexicalMentions: [],
+        comentarios: '',
+      },
+    ]);
+    annotator.finishUnifiedMarking(0);
+    fixture.detectChanges();
+
+    const choiceText = fixture.nativeElement.querySelector('.unified-choice')?.textContent ?? '';
+    expect(choiceText).toContain('Término con información clínica');
+    expect(choiceText).toContain('Término sin información clínica');
+    expect(choiceText).toContain('Ambos');
+
+    const key = 'range-0-2';
+    annotator.classifyUnifiedItem(0, key, 'lexical');
+    expect(annotator.unifiedReviewItems(annotator.cases()[0])[0].kind).toBe('lexical');
+
+    annotator.classifyUnifiedItem(0, key, 'both');
+    const combined = annotator.unifiedReviewItems(annotator.cases()[0])[0];
+    expect(combined.kind).toBe('both');
+    expect(annotator.unifiedDetailTargetFor(0)).toBe('both');
+    expect(annotator.unifiedItemStatus(combined)).toContain('Ambos');
+
+    annotator.classifyUnifiedItem(0, key, 'clinical');
+    expect(annotator.unifiedReviewItems(annotator.cases()[0])[0].kind).toBe('clinical');
+    annotator.classifyUnifiedItem(0, key, 'lexical');
+    expect(annotator.unifiedReviewItems(annotator.cases()[0])[0].kind).toBe('lexical');
+  });
+
   it('should keep the free-form meaning input mounted while typing', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
       .componentInstance as AnnotatorComponent;
+    annotator.unifiedReviewPrototype.set(false);
     const mention = newHumanLexicalMention('lex-freeform-001', 0, 2, 'BM');
     mention.annotation.decisionStatus = 'resolved';
     annotator.annotationProtocol.set({ ...ASSISTED_ANNOTATION_PROTOCOL, lexicalLayerEnabled: true });
@@ -701,6 +752,7 @@ describe('App', () => {
     await fixture.whenStable();
     const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
       .componentInstance as AnnotatorComponent;
+    annotator.unifiedReviewPrototype.set(false);
     const mention = newHumanLexicalMention('lex-human-003', 0, 2, 'FC');
     mention.candidateSenseIds = ['sense:internal-only'];
     annotator.annotationProtocol.set({
@@ -743,7 +795,7 @@ describe('App', () => {
 
     const compiled = fixture.nativeElement as HTMLElement;
     const text = compiled.textContent ?? '';
-    expect(text).toContain('Revisión exhaustiva de información clínica');
+    expect(text).not.toContain('Revisión de información clínica');
     expect(text).not.toContain('Revisión exhaustiva de menciones clínicas');
     expect(compiled.querySelector('.case-guidance')).toBeNull();
     expect(text).toContain('¿Cómo está escrita?');
@@ -801,8 +853,8 @@ describe('App', () => {
     const compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.querySelector('.case-close-jump')).toBeFalsy();
     expect(compiled.querySelector('.case-id')).toBeFalsy();
-    expect(compiled.querySelector('.case-pager-copy small')?.textContent).toContain('Anotación guardada');
-    expect(compiled.textContent).toContain('Anotación guardada');
+    expect(compiled.querySelector('.case-pager-copy small')?.textContent).toContain('Avance cargado');
+    expect(compiled.textContent).toContain('Avance cargado');
     expect(compiled.querySelectorAll('.json-flow-download')).toHaveLength(0);
     expect(
       [...compiled.querySelectorAll('button')].filter((button) =>
@@ -816,6 +868,7 @@ describe('App', () => {
     await fixture.whenStable();
     const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
       .componentInstance as AnnotatorComponent;
+    annotator.unifiedReviewPrototype.set(false);
     const coded = newConcept(1);
     coded.cat = 'Hallazgo clínico';
     coded.sctid = '386661006';

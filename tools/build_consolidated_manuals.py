@@ -27,12 +27,12 @@ NAV = [
     ("5-como-completar-una-tarjeta-lexica", "Formas breves"),
     ("8-como-revisar-la-informacion-clinica", "Spans y conceptos"),
     ("11-cierre-exportacion-y-problemas-frecuentes", "Cierre y exportación"),
-    ("actualizacion-interfaz-20260728", "Cambios de interfaz"),
+    ("actualizacion-interfaz-20260728", "Flujo actual del anotador web"),
 ]
 
 RELATED_LINKS = {
     "como-usar-este-manual": [
-        ("1-1-lexico-y-clinico-dos-preguntas-diferentes", "Diferencia entre revisión léxica y clínica"),
+        ("1-1-lexico-clinica-y-contexto-tres-preguntas-relacionadas", "Léxico, clínica y contexto"),
         ("4-como-revisar-una-nota-de-principio-a-fin", "Recorrido completo de una nota"),
         ("12-guia-rapida-durante-la-anotacion", "Guía rápida"),
     ],
@@ -116,7 +116,7 @@ WORD_BOOKMARKS = {
     "12. Guía rápida durante la anotación": "xref_guia",
     "Anexo A. Equivalencias técnicas de la interfaz": "xref_anexo_a",
     "Anexo B. Códigos de pistas contextuales": "xref_anexo_b",
-    "Actualización de interfaz: revisión visible y spans superpuestos": "xref_actualizacion",
+    "Flujo actual del anotador web: selección, clasificación y cierre": "xref_actualizacion",
 }
 
 WORD_RELATED = {
@@ -135,16 +135,40 @@ WORD_RELATED = {
     "12. Guía rápida durante la anotación": [("Recorrido detallado", "xref_revision"), ("Control de cierre", "xref_cierre")],
     "Anexo A. Equivalencias técnicas de la interfaz": [("Uso de la tarjeta", "xref_tarjeta"), ("Interfaz actualizada", "xref_actualizacion")],
     "Anexo B. Códigos de pistas contextuales": [("Función, sección y pistas", "xref_contexto"), ("Guía rápida", "xref_guia")],
-    "Actualización de interfaz: revisión visible y spans superpuestos": [("Tarjeta léxica", "xref_tarjeta"), ("Revisión clínica", "xref_clinica"), ("Cierre", "xref_cierre")],
+    "Flujo actual del anotador web: selección, clasificación y cierre": [("Revisar una nota", "xref_revision"), ("Formas breves", "xref_tarjeta"), ("Información clínica", "xref_clinica"), ("Cierre", "xref_cierre")],
 }
 
 UPDATE_HTML = """
 <section class="manual-section" id="actualizacion-interfaz-20260728" aria-labelledby="actualizacion-titulo">
-  <h1 id="actualizacion-titulo">Actualización de interfaz: revisión visible y spans superpuestos</h1>
-  <p>Esta versión está dirigida a profesionales de salud que anotan notas clínicas. La aplicación conserva la nota a la vista mientras se completa la revisión: el texto clínico queda fijo en la columna izquierda y los controles avanzan en la columna derecha. Así puede verificar el literal y el contexto sin perder el lugar de trabajo.</p>
-  <p>Este documento explica el uso de la aplicación. Para el marco metodológico —construcción de reglas, reconocimiento de entidades, selección de spans, normalización, mapeo clínico y preanotación— consulte <a href="Fundamentos_metodologicos_para_anotadores_SemantIAr.docx">Fundamentos metodológicos para anotadores SemantIAr</a>.</p>
-  <p>Para reducir escritura repetitiva, “¿En qué parte de la nota aparece?” se elige en una lista y “¿Qué pistas usaste?” permite seleccionar varias opciones. Cuando la decisión es “Sentido resuelto”, “¿Qué significa aquí?” permite elegir el significado disponible o escribirlo si el inventario no ofrece una opción; ese valor es el que se incorpora a la anotación. El campo técnico <code>annotation.comment</code> se conserva solo para compatibilidad y trazabilidad de lotes anteriores y no se usa como pregunta de captura en la interfaz actual.</p>
-  <p>En cada desplegable, el campo cerrado muestra únicamente la etiqueta breve elegida. Al abrirlo, cada renglón muestra esa etiqueta y su explicación completa. Así se conserva la lectura de las opciones sin agrandar ni deformar los campos de la tarjeta.</p>
+  <h1 id="actualizacion-titulo">Flujo actual del anotador web: selección, clasificación y cierre</h1>
+  <p>Esta edición está dirigida a profesionales de salud que anotan notas clínicas en <strong>SemantIAr Anotador</strong>. La nota queda visible mientras se trabaja: el texto clínico permanece en la columna izquierda y el detalle secuencial se abre en la columna derecha. La interfaz actual presenta una decisión unificada para cada marca.</p>
+  <p>Este manual explica cómo ejecutar la tarea. Para el fundamento metodológico —reglas, reconocimiento de entidades, spans, normalización, mapeo clínico, preanotación y criterios de calidad— consulte <a href="Fundamentos_metodologicos_para_anotadores_SemantIAr.docx">Fundamentos metodológicos para anotadores SemantIAr, versión 1.2 (9 de agosto de 2026)</a>.</p>
+  <p class="related-links"><strong>Recorrido relacionado:</strong> <a href="#3-que-hara-como-anotador">responsabilidades del anotador</a> · <a href="#4-como-revisar-una-nota-de-principio-a-fin">revisión de una nota</a> · <a href="#8-como-revisar-la-informacion-clinica">spans y conceptos</a> · <a href="#11-cierre-exportacion-y-problemas-frecuentes">cierre y exportación</a></p>
+  <h2 id="flujo-tres-pasos">Recorrido en tres pasos</h2>
+  <ol>
+    <li><strong>Cargar JSON.</strong> Cargue el archivo asignado y elija la nota. Los manuales no contienen notas clínicas ni sirven para editar el JSON a mano.</li>
+    <li><strong>Paso 1 · lectura de la nota.</strong> Lea la nota clínica completa antes de marcar. Puede registrar la <em>especialidad sospechada de la nota</em> en el desplegable alfabético; es una pista general y no reemplaza la sección local de cada aparición.</li>
+    <li><strong>Paso 2 · marcación de pendientes.</strong> Revise los premarcados, ajuste sus límites y seleccione en el texto toda mención que falte. Después de elegir el tramo exacto, use <strong>“Marcar para revisar”</strong>. Las premarcaciones son candidatos, no respuestas; la lista de decisiones se abre recién al pulsar <strong>“Terminé la marcación · ver pendientes”</strong>.</li>
+    <li><strong>Paso 3 · decisión de menciones.</strong> La interfaz muestra una marca por vez. Complete su decisión y avance con <strong>“Siguiente”</strong> o con los controles inferiores de anterior/siguiente; no necesita volver al inicio de la nota.</li>
+  </ol>
+  <h2 id="clasificacion-unificada">Una clasificación para cada aparición</h2>
+  <p>En “¿Qué representa aquí?” elija una sola opción inicial. La misma marca puede conservar dos dimensiones cuando corresponda; no hay que marcar dos veces el mismo texto.</p>
+  <table><thead><tr><th>Etiqueta visible</th><th>Qué significa</th><th>Qué se completa</th></tr></thead><tbody>
+    <tr><td><strong>Término con información clínica</strong></td><td>La aparición expresa información clínica, aunque todavía no exista un concepto SNOMED CT defendible.</td><td>Jerarquía clínica, búsqueda de concepto, literal y contexto clínico. El estado puede quedar pendiente de codificación.</td></tr>
+    <tr><td><strong>Término sin información clínica</strong></td><td>La aparición tiene un significado local o una función léxica, pero no se registra como concepto clínico.</td><td>Tipo de forma, “¿Qué significa aquí?”, decisión, función, sección y pistas.</td></tr>
+    <tr><td><strong>Ambos</strong></td><td>La misma aparición tiene información clínica y también requiere una decisión de significado local.</td><td>Complete las dos dimensiones en la misma marca, de forma secuencial.</td></tr>
+    <tr><td><strong>No anotar</strong></td><td>La aparición no es anotable según el protocolo.</td><td>No se abren campos de codificación ni de forma breve.</td></tr>
+  </tbody></table>
+  <p>Si cambia de opción, la interfaz reconfigura la marca existente. <strong>Ambos</strong> conserva o agrega las dos dimensiones; pasar a una sola elimina únicamente la dimensión que ya no corresponde. No cree una segunda marca para compensarlo.</p>
+  <h2 id="detalle-secuencial">Detalle secuencial de la marca</h2>
+  <p>Al abrir una marca, el panel de detalle queda junto a la nota y termina con <strong>“Mención anterior”</strong>, <strong>“Volver a marcas”</strong> y <strong>“Siguiente mención”</strong>. Use “Volver a marcas” solo para regresar a la lista; la decisión normal continúa hacia abajo con el control siguiente.</p>
+  <p>Para una marca clínica, abra la codificación y complete categoría, búsqueda, concepto, texto literal y las cuatro dimensiones de contexto: polaridad, certeza, temporalidad y sujeto. Para una marca sin información clínica, complete la tarjeta léxica. En “¿Qué significa aquí?” el valor elegido o escrito es el que se incorpora a la anotación; no hay un campo adicional que duplique esa decisión.</p>
+  <p>Los campos cerrados usan listas desplegables. Al abrir una lista, cada opción muestra su renglón completo y la explicación; “¿Qué pistas usaste?” admite varias selecciones. El único texto libre previsto para la tarjeta es el significado cuando no existe una opción disponible y el comentario breve de trazabilidad si realmente agrega información.</p>
+  <h2 id="cierre-flujo-actual">Cierre y exportación</h2>
+  <p>Finalice la nota solo cuando no queden marcas pendientes y todas las dimensiones elegidas estén completas. La confirmación de cierre aparece al final de la nota. Descargue el JSON de avance para conservar o entregar el trabajo; para continuar, cargue la copia más reciente desde la interfaz y no la edite manualmente.</p>
+  <p class="related-links"><strong>Antes de cerrar:</strong> <a href="#11-1-antes-de-cerrar">lista de control</a> · <a href="#11-3-exportacion">exportación</a> · <a href="#11-4-si-algo-no-funciona">resolver problemas</a></p>
+  <h2 id="compatibilidad-movil">Compatibilidad móvil</h2>
+  <p>Los campos de escritura rápida para agregar una mención o una forma breve se mantienen como ayuda para celular. En la versión web de escritorio, seleccione el texto directamente en la nota y use “Marcar para revisar”; no duplique la misma aparición desde esos campos.</p>
   <figure class="manual-figure"><img src="captura_revision_formas_breves.png" alt="Captura de referencia de la revisión de formas breves, con la nota clínica fija a la izquierda y los campos a la derecha."><figcaption>Captura usada para revisar el diseño. En la versión corregida, las explicaciones largas se leen al abrir la lista y no quedan concatenadas en el valor seleccionado.</figcaption></figure>
   <h2 id="spans-superpuestos">Spans que se superponen</h2>
   <p>Dos menciones válidas pueden compartir parte del mismo texto. La aplicación ahora las conserva y las muestra con un resaltado rayado y un número. Seleccione cada marca para revisarla por separado. No cambie los límites solo para evitar una superposición; aplique la <a href="#8-como-revisar-la-informacion-clinica">regla de anclaje del span</a> y conserve cada mención clínicamente defendible. No cree superposiciones únicamente para representar niveles de granularidad de una misma mención.</p>
@@ -155,8 +179,8 @@ UPDATE_HTML = """
   <aside class="callout key" role="note"><h2>Regla práctica</h2><p>No incluya palabras intermedias que no pertenecen a la entidad solo para evitar una discontinuidad. Registrar el caso para revisión es preferible a alterar el literal o introducir ruido semántico.</p></aside>
   <h2 id="sentido-resuelto">Qué significa “Sentido resuelto”</h2>
   <p>Use “Sentido resuelto” únicamente después de elegir un significado disponible. Si la interfaz no ofrece un significado que pueda confirmar, use “Proponer sentido nuevo”, “Ambigua aun con contexto” o “No puedo determinarla”, según corresponda. Una decisión resuelta sin significado vuelve a <strong>Pendiente</strong> al cargar el archivo y no permite completar la revisión. Consulte <a href="#6-como-decidir-el-significado">Cómo decidir el significado</a> y la lista de <a href="#11-1-antes-de-cerrar">verificación antes del cierre</a>.</p>
-  <aside class="callout key" role="note"><h2>Regla práctica</h2><p>Primero confirme el texto y su contexto; después decida la forma breve y el concepto clínico. No fuerce una resolución para cerrar la nota.</p></aside>
-  <p><a href="#manual-top">Volver al inicio</a></p>
+  <aside class="callout key" role="note"><h2>Regla práctica</h2><p>Primero confirme el texto y su contexto; después clasifique la marca y complete las dimensiones que correspondan. No fuerce una resolución para cerrar la nota.</p></aside>
+  <p><a href="#manual-top">Volver al inicio</a> · <a href="#flujo-tres-pasos">Volver al recorrido en tres pasos</a> · <a href="#clasificacion-unificada">Volver a las etiquetas</a></p>
 </section>
 """
 
@@ -221,28 +245,72 @@ html{background:#e9edf2}body{box-sizing:border-box;max-width:920px;margin:0 auto
 def build_docx():
     document = Document(DOCX_SOURCE)
     document.add_page_break()
-    document.add_heading("Actualización de interfaz: revisión visible y spans superpuestos", level=1)
+    document.add_heading("Flujo actual del anotador web: selección, clasificación y cierre", level=1)
     document.add_paragraph(
-        "Esta versión está dirigida a profesionales de salud que anotan notas clínicas. "
-        "Mientras completa los campos de revisión, la nota clínica permanece visible en una columna fija; "
-        "los controles se desarrollan hacia abajo en la columna de revisión."
+        "Esta edición está dirigida a profesionales de salud que anotan notas clínicas en SemantIAr Anotador. "
+        "La nota queda visible mientras se trabaja: el texto clínico permanece en la columna izquierda y el "
+        "detalle secuencial se abre en la columna derecha. La interfaz actual presenta una decisión unificada "
+        "para cada marca."
     )
     document.add_paragraph(
-        "Este documento explica el uso de la aplicación. Para el marco metodológico sobre construcción de reglas, "
-        "reconocimiento de entidades, selección de spans, normalización, mapeo clínico y preanotación, consulte "
-        "Fundamentos metodológicos para anotadores SemantIAr."
+        "Este documento explica cómo ejecutar la tarea. Para el fundamento metodológico sobre reglas, reconocimiento "
+        "de entidades, spans, normalización, mapeo clínico, preanotación y criterios de calidad, consulte "
+        "Fundamentos metodológicos para anotadores SemantIAr, versión 1.2 (9 de agosto de 2026)."
     )
     document.add_paragraph(
-        "Para reducir escritura repetitiva, la sección local de la nota se elige en una lista y las pistas "
-        "contextuales admiten selección múltiple. Cuando la decisión es “Sentido resuelto”, el campo "
-        "“¿Qué significa aquí?” permite elegir o escribir el significado que se incorporará a la anotación. "
-        "El campo técnico de comentario solo se conserva por compatibilidad con lotes anteriores; no es una "
-        "pregunta de captura de la interfaz actual."
+        "Recorrido en tres pasos: 1) cargue el JSON y elija la nota; 2) lea la nota completa, revise los premarcados "
+        "y seleccione las menciones faltantes con “Marcar para revisar”; 3) después de “Terminé la marcación · ver "
+        "pendientes”, decida cada marca de forma secuencial. La especialidad sospechada de la nota se elige en un "
+        "desplegable alfabético y funciona como pista general; la sección de cada aparición sigue siendo local."
     )
     document.add_paragraph(
-        "En cada desplegable, el campo cerrado muestra únicamente la etiqueta breve elegida. Al abrirlo, cada "
-        "renglón presenta la etiqueta y su explicación completa. Las descripciones ya no se concatenan con el "
-        "valor seleccionado ni agrandan la tarjeta."
+        "En “¿Qué representa aquí?” elija una sola opción inicial: “Término con información clínica”, “Término sin "
+        "información clínica”, “Ambos” o “No anotar”. “Ambos” conserva las dos dimensiones en la misma marca y no "
+        "requiere volver a seleccionarla. Cambiar de opción reconfigura la marca existente; no cree un duplicado."
+    )
+    document.add_heading("Detalle secuencial de la marca", level=2)
+    document.add_paragraph(
+        "Al abrir una marca, el panel queda junto a la nota y termina con “Mención anterior”, “Volver a marcas” y "
+        "“Siguiente mención”. Para una marca clínica complete jerarquía, búsqueda de concepto, literal y polaridad, "
+        "certeza, temporalidad y sujeto. Para una marca sin información clínica complete tipo de forma, “¿Qué "
+        "significa aquí?”, decisión, función, sección y pistas. En “¿Qué significa aquí?” el valor elegido o escrito "
+        "es el que se incorpora a la anotación; no hay un campo adicional que duplique esa decisión."
+    )
+    document.add_paragraph(
+        "Los campos cerrados usan listas desplegables. Al abrir una lista, cada opción muestra su renglón completo y "
+        "la explicación; “¿Qué pistas usaste?” admite varias selecciones. El único texto libre previsto para la tarjeta "
+        "es el significado cuando no existe una opción disponible y el comentario breve de trazabilidad cuando agrega "
+        "información."
+    )
+    document.add_heading("Clasificación unificada", level=2)
+    table = document.add_table(rows=1, cols=3)
+    table.style = "Table Grid"
+    hdr = table.rows[0].cells
+    hdr[0].text = "Etiqueta visible"
+    hdr[1].text = "Qué significa"
+    hdr[2].text = "Qué se completa"
+    rows = [
+        ("Término con información clínica", "La aparición expresa información clínica, aunque todavía no exista un concepto SNOMED CT defendible.", "Jerarquía, búsqueda, literal y contexto clínico; puede quedar pendiente de codificación."),
+        ("Término sin información clínica", "Tiene significado local o función léxica, pero no se registra como concepto clínico.", "Tipo, significado, decisión, función, sección y pistas."),
+        ("Ambos", "La misma aparición tiene información clínica y también requiere significado local.", "Complete las dos dimensiones en la misma marca."),
+        ("No anotar", "La aparición no es anotable según el protocolo.", "No se abren campos de codificación ni de forma breve."),
+    ]
+    for label, meaning, fields in rows:
+        cells = table.add_row().cells
+        cells[0].text, cells[1].text, cells[2].text = label, meaning, fields
+    linked = document.add_paragraph()
+    linked.add_run("Vínculos de esta sección: ").bold = True
+    for index, (label, anchor) in enumerate(
+        [("revisión de una nota", "xref_revision"), ("formas breves", "xref_tarjeta"), ("información clínica", "xref_clinica"), ("cierre", "xref_cierre")]
+    ):
+        if index:
+            linked.add_run(" · ")
+        add_internal_hyperlink(linked, label, anchor)
+    document.add_heading("Cierre y exportación", level=2)
+    document.add_paragraph(
+        "Finalice la nota solo cuando no queden marcas pendientes y todas las dimensiones estén completas. La "
+        "confirmación aparece al final de la nota. Descargue el JSON de avance para conservar "
+        "o entregar el trabajo; para continuar, cargue la copia más reciente desde la interfaz y no la edite manualmente."
     )
     screenshot = document.add_picture(str(SCREENSHOT), width=Inches(6.1))
     screenshot._inline.docPr.set(
@@ -251,8 +319,8 @@ def build_docx():
     )
     screenshot._inline.docPr.set("title", "Revisión de formas breves")
     document.add_paragraph(
-        "Captura usada para revisar el diseño. En la versión corregida, las explicaciones largas se leen al abrir "
-        "la lista y no quedan concatenadas en el valor seleccionado."
+        "Captura de referencia del diseño de desplegables. En la versión corregida, las explicaciones largas se leen "
+        "al abrir la lista y no quedan concatenadas en el valor seleccionado."
     )
     document.add_heading("Spans que se superponen", level=2)
     document.add_paragraph(

@@ -16,6 +16,9 @@
   font-size: 18px;
   font-weight: 500;
 }
+.toolbar-manual-link {
+  margin-left: 2px;
+}
 
 .spacer {
   flex: 1 1 auto;
@@ -96,12 +99,20 @@
   align-items: flex-start;
   gap: 9px;
 }
-.json-flow-status mat-icon {
-  flex: 0 0 auto;
-  color: var(--done-color);
+.case-source-step {
+  display: grid;
+  gap: 5px;
+  margin: 0 0 10px;
 }
-.json-flow-status.unsaved mat-icon {
-  color: #a46600;
+.case-source-step strong {
+  color: #203346;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.case-specialty-field {
+  display: block;
+  width: 100%;
+  margin: 0 0 8px;
 }
 .json-flow-status strong,
 .json-flow-status span {
@@ -361,6 +372,26 @@
   border-radius: 50%;
   padding: 14px;
   box-sizing: content-box;
+}
+.home-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  text-align: left;
+}
+.home-brand-image {
+  display: block;
+  width: 184px;
+  height: 112px;
+  border: 1px solid #e0e7f0;
+  border-radius: 12px;
+  background: #fff;
+  object-fit: cover;
+  object-position: center;
+}
+.home-brand h1 {
+  margin: 0 0 6px;
 }
 .home-hero h1 {
   font-size: 22px;
@@ -1581,6 +1612,7 @@
   }
   .loaded-toolbar .app-title,
   .loaded-toolbar .load-btn,
+  .loaded-toolbar .toolbar-manual-link,
   .loaded-toolbar .pending-btn,
   .loaded-toolbar .stats-btn,
   .loaded-toolbar .clear-btn,
@@ -1630,6 +1662,15 @@
   }
   .settings-btn {
     order: 2;
+  }
+  .home-brand {
+    flex-direction: column;
+    gap: 12px;
+    text-align: center;
+  }
+  .home-brand-image {
+    width: min(100%, 240px);
+    height: 136px;
   }
   .content {
     width: min(100% - 12px, 1640px);
