@@ -1108,6 +1108,8 @@ export interface ConceptAnnotation {
   cert: Certainty;
   temp: Temporality;
   suj: Subject;
+  /** Sección de la nota clínica donde se ubica el concepto. */
+  section?: string | null;
   /** Fixed source span when the concept was produced from premarking. */
   spanId?: string;
   provenance?: {
@@ -1514,6 +1516,7 @@ export function newConcept(sequence?: number): ConceptAnnotation {
     cert: 'Confirmado',
     temp: 'Actual',
     suj: 'Paciente',
+    section: null,
   };
 }
 

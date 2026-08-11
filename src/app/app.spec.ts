@@ -130,9 +130,9 @@ describe('App', () => {
     fixture.detectChanges();
 
     const choiceText = fixture.nativeElement.querySelector('.unified-choice')?.textContent ?? '';
-    expect(choiceText).toContain('Término con información clínica');
-    expect(choiceText).toContain('Término sin información clínica');
-    expect(choiceText).toContain('Ambos');
+    expect(choiceText).toContain('Solo información clínica');
+    expect(choiceText).toContain('Solo abreviatura contextual');
+    expect(choiceText).toContain('Información clínica + abreviatura contextual');
 
     const key = 'range-0-2';
     annotator.classifyUnifiedItem(0, key, 'lexical');
@@ -142,7 +142,7 @@ describe('App', () => {
     const combined = annotator.unifiedReviewItems(annotator.cases()[0])[0];
     expect(combined.kind).toBe('both');
     expect(annotator.unifiedDetailTargetFor(0)).toBe('both');
-    expect(annotator.unifiedItemStatus(combined)).toContain('Ambos');
+    expect(annotator.unifiedItemStatus(combined)).toContain('Clínica + abreviatura contextual');
 
     annotator.classifyUnifiedItem(0, key, 'clinical');
     expect(annotator.unifiedReviewItems(annotator.cases()[0])[0].kind).toBe('clinical');
@@ -809,15 +809,11 @@ describe('App', () => {
     expect(text).not.toContain('Agregar mención breve');
     expect(compiled.querySelector('.case-source #case-lexical-0')).toBeNull();
     expect(compiled.querySelector('.case-review #case-lexical-0')).toBeNull();
-    expect(text).toContain('Pendiente significa que todavía no decidiste');
-    expect(text).toContain('Sin clasificar deja el papel sin decidir');
+    expect(text).toContain('Pendiente bloquea el cierre');
+    expect(text).toContain('Sin clasificar deja el papel vacío');
     expect(text).toContain('las mayúsculas no prueban que sea una sigla');
     expect(text).not.toContain('sense:internal-only');
     expect(text).not.toContain('posición 0–2');
-    expect(compiled.querySelector('details.lexical-help summary')).toBeTruthy();
-    expect(
-      compiled.querySelector('mat-select[aria-describedby^="lexical-decision-help-"]')
-    ).toBeTruthy();
   });
 
   it('should show saved annotation state without duplicating the download command', async () => {

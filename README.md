@@ -27,7 +27,7 @@ la revisión.
    [GitHub Releases](https://github.com/manwithbarba/semantiar_anotador/releases).
 2. Elegí **Cargar JSON** y seleccioná el archivo que te asignó el equipo de
    investigación.
-3. Revisá cada nota clínica, completá las formas breves y los conceptos que
+3. Revisá cada nota clínica, completá los significados locales y los conceptos que
    correspondan, y marcá la nota como revisada cuando termines.
 4. Usá **Guardar avance** antes de cerrar. El archivo descargado permite
    continuar más adelante o entregarlo al equipo coordinador.
@@ -54,15 +54,18 @@ El detalle paso a paso, con imágenes y ejemplos, está en el
    resolver las candidatas. Seleccionar cada mención clínica relevante, ajustar
    los límites cuando corresponda y usar **Marcar para revisar**. Los spans
    superpuestos se pueden seleccionar de manera independiente. También se
-   pueden incorporar menciones omitidas y formas breves sin abandonar la nota.
+   pueden incorporar menciones omitidas y expresiones con significado local sin abandonar la nota.
 4. **Paso 3 · Decisión de menciones:** revisar una cola secuencial de marcas,
-   con navegación **Anterior / Siguiente**. Cada aparición se clasifica como:
-   **Término con información clínica**, **Término sin información clínica**,
-   **Ambos** o **No anotar**. La misma marca puede conservar las dos dimensiones
-   cuando el contexto lo justifica.
+   con navegación **Anterior / Siguiente**. Cada aparición se clasifica por
+   capas de anotación: **Solo información clínica**, **Solo significado local**
+   o **Información clínica + significado local**. La opción **Excluir: no
+   corresponde al protocolo** es distinta del significado local: se reserva para
+   ruido, falsos positivos o texto que no debe conservarse. La combinación de
+   capas no afirma que un término sea clínico y no clínico a la vez; indica que
+   la misma aparición conserva dos registros independientes.
 5. **Detalle de la marca:** para una marca clínica se completa jerarquía,
-   concepto SNOMED CT, literal y contexto; para una forma breve se resuelve su
-   significado, tipo, función, ubicación y pistas. El detalle se abre junto a
+   concepto SNOMED CT, literal y contexto; para un significado local se resuelve
+   la expresión, su sentido, tipo, función, ubicación y pistas. El detalle se abre junto a
    la marca activa y permite volver a la cola sin perder la posición.
 6. **Cerrar la nota** con **Revisada con conceptos** o **Sin conceptos
    anotables**. El contador superior disminuye únicamente después del cierre
@@ -184,9 +187,9 @@ anotables**. Una modificación posterior la devuelve automáticamente a pendient
 Los archivos previos que ya contienen un SCTID se migran como revisados al
 volver a cargarlos.
 
-En los lotes con capa léxica, cada forma breve tiene dos pasos visibles: decidir
-la aparición individual (el contador `X/Y formas decididas`) y luego confirmar
-**Revisión de formas**. Hasta completar ambos pasos, el cierre de la nota queda
+En los lotes con capa léxica, cada expresión con significado local tiene dos pasos visibles:
+decidir la aparición individual (el contador `X/Y significados locales decididos`) y luego confirmar
+**Revisión de significados locales**. Hasta completar ambos pasos, el cierre de la nota queda
 bloqueado y la nota sigue figurando como pendiente.
 
 La salida incorpora `_meta.telemetry` (`SEMANTIAR-TELEMETRY-1.1`). La comparación
@@ -217,12 +220,12 @@ agregadas por término y jerarquía para análisis posterior.
 ### Capa léxica v2
 
 Los lotes con capa léxica habilitada permiten revisar cada aparición de una
-abreviatura o forma breve, abstenerse sin adivinar y cerrar la revisión de modo
+abreviatura, sigla o acrónimo y resolver su significado local, abstenerse sin adivinar y cerrar la revisión de modo
 explícito. Los códigos, reglas de completitud, normalización de pistas, schema y
 compatibilidad de recarga están definidos en
 [`docs/CONTRATO_CAPA_LEXICA_V2.md`](docs/CONTRATO_CAPA_LEXICA_V2.md).
 
-En la interfaz actual, los campos de la forma breve se eligen mediante listas
+En la interfaz actual, los campos del significado local se eligen mediante listas
 desplegables: **Cómo está escrita**, **Qué significa aquí**, **Qué papel cumple
 en esta parte de la nota**, **En qué parte de la nota aparece** y **Qué pistas
 usaste**. El único espacio abierto queda reservado para observaciones

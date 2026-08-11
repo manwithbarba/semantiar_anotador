@@ -1,15 +1,23 @@
-# Contrato técnico de la capa léxica v2
+# Contrato técnico de la capa léxica (Abreviaturas contextuales v2)
 
 Este documento define el contrato ejecutable compartido por el modelo
 TypeScript, el formulario Angular, la importación/exportación y el JSON Schema.
-No reemplaza el manual del anotador.
+No reemplaza el manual de anotación.
+
+## Nomenclatura unificada de interfaz
+
+La interfaz presenta esta capa bajo la denominación **Abreviatura contextual / Forma breve**. En el flujo de **Revisión Unificada en 3 Pasos** (`1. Nota (Lectura y especialidad)` → `2. Marcación (Agregar o anular)` → `3. Decisiones (Clínico, Abreviatura o Ambos)`), las menciones pueden ser clasificadas como:
+- **Solo información clínica** (Codificación SNOMED CT).
+- **Solo abreviatura contextual** (Expansión literal y decisión contextual sin SNOMED CT).
+- **Información clínica + abreviatura contextual** (Ambas capas integradas en la misma marca).
+- **Sin valor clínico ni abreviatura (Anular)** (Registro explícito de rechazo / anulación).
 
 ## Códigos estables
 
 | Campo | Código → etiqueta visible |
 |---|---|
 | `annotation.formType` | `abbreviation` → Abreviatura; `acronym` → Acrónimo pronunciable; `initialism` → Sigla / inicialismo; `alphanumeric` → Forma alfanumérica; `symbolic_abbreviation` → Abreviatura simbólica; `other` → Otra forma léxica |
-| `annotation.decisionStatus` | `pending` → Pendiente; `resolved` → Sentido resuelto; `ambiguous` → Ambigua aun con contexto; `unknown` → No puedo determinarla; `new_sense_proposed` → Proponer sentido nuevo; `form_error` → Forma errónea o corrupta; `nonclinical` → Uso no clínico/estructural; `rejected` → No es abreviatura ni acrónimo |
+| `annotation.decisionStatus` | `pending` → Pendiente; `resolved` → Sentido resuelto; `ambiguous` → Ambigua aun con contexto; `unknown` → No puedo determinarla; `new_sense_proposed` → Proponer sentido nuevo; `form_error` → Forma errónea o corrupta; `nonclinical` → Uso no clínico/estructural; `rejected` → No es abreviatura ni acrónimo (Anulada) |
 | `annotation.function` | `null` → Sin clasificar; `header` → Encabezado; `entity` → Entidad clínica; `value` → Valor; `result` → Resultado; `modifier` → Modificador; `structural` → Marca estructural; `other` → Otra función |
 
 `null` y `other` no son intercambiables: `null` conserva la ausencia de decisión

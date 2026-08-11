@@ -157,21 +157,21 @@
           <mat-icon>chevron_right</mat-icon>
         </button>
       </div>
-      <nav class="case-workflow-steps" aria-label="Pasos de revisión de la celda">
+      <nav class="case-workflow-steps" aria-label="Pasos de revisión de la nota">
         <button type="button"
                 [class.active]="caseWorkflowStep(activeCaseIndex()) === 'cell'"
                 (click)="setCaseWorkflowStep(activeCaseIndex(), 'cell')">
           <span>1</span>
-          <strong>Celda</strong>
-          <small>Abrir nota clínica</small>
+          <strong>Nota</strong>
+          <small>Lectura y especialidad</small>
         </button>
         <span class="case-workflow-arrow" aria-hidden="true">→</span>
         <button type="button"
                 [class.active]="caseWorkflowStep(activeCaseIndex()) === 'marking'"
                 (click)="setCaseWorkflowStep(activeCaseIndex(), 'marking')">
           <span>2</span>
-          <strong>Marcación de pendientes</strong>
-          <small>Revisar y agregar menciones</small>
+          <strong>Marcación</strong>
+          <small>Agregar o anular menciones</small>
         </button>
         <span class="case-workflow-arrow" aria-hidden="true">→</span>
         <button type="button"
@@ -179,8 +179,17 @@
                 [class.locked]="unifiedMarkingPhaseActive(activeCaseIndex())"
                 (click)="setCaseWorkflowStep(activeCaseIndex(), 'decisions')">
           <span>3</span>
-          <strong>Decisión de menciones</strong>
-          <small>Tipo, SNOMED, forma breve y contexto</small>
+          <strong>Decisiones</strong>
+          <small>Clínico (SNOMED), Abreviatura o Ambos</small>
+        </button>
+        <span class="case-workflow-arrow" aria-hidden="true">→</span>
+        <button type="button"
+                [class.active]="caseWorkflowStep(activeCaseIndex()) === 'finalize'"
+                [class.locked]="unifiedMarkingPhaseActive(activeCaseIndex())"
+                (click)="setCaseWorkflowStep(activeCaseIndex(), 'finalize')">
+          <span>4</span>
+          <strong>Finalizar</strong>
+          <small>Resultado y cierre de nota</small>
         </button>
       </nav>
     </section>
@@ -250,22 +259,17 @@
           </mat-select>
           <mat-hint>Elegí la especialidad médica de la que sospechás que deriva la nota.</mat-hint>
         </mat-form-field>
-        <p class="selection-help" id="selection-help-{{ ci }}">
-          <mat-icon aria-hidden="true">gesture</mat-icon>
-          @if (unifiedMarkingPhaseActive(ci)) {
-            Lectura completa: seleccioná cada mención clínica que falte y elegí
-            <strong>“Marcar para revisar”</strong>.
-          } @else if (unifiedReviewPrototype()) {
+        @if (caseWorkflowStep(ci) === 'marking') {
+          <p class="selection-help" id="selection-help-{{ ci }}">
+            <mat-icon aria-hidden="true">gesture</mat-icon>
             Seleccioná el texto exacto y elegí <strong>“Marcar para revisar”</strong>.
-          } @else {
-            Seleccioná el texto exacto y elegí <strong>“Marcar para revisar”</strong>.
-          }
-        </p>
-          @if (!unifiedMarkingPhaseActive(ci) && caseItem.spans.length > 1) {
+          </p>
+          @if (caseItem.spans.length > 1) {
             <p class="overlap-help">
               Si un resaltado tiene un número, hay varias menciones superpuestas: elegí cada una para revisarla.
             </p>
           }
+        }
 
           @if (compactMobile()) {
             <section
@@ -513,85 +517,119 @@
                       <div class="unified-choice-actions">
                         <button mat-flat-button color="primary" type="button"
                                 (click)="classifyUnifiedItem(ci, item.key, 'clinical')">
-                        <mat-icon>clinical_notes</mat-icon> Término con información clínica
+                        <mat-icon>clinical_notes</mat-icon> Solo información clínica
                         </button>
                         @if (lexicalLayerEnabled()) {
                           <button mat-stroked-button color="accent" type="button"
                                   (click)="classifyUnifiedItem(ci, item.key, 'lexical')">
-                            <mat-icon>short_text</mat-icon> Término sin información clínica
+                            <mat-icon>short_text</mat-icon> Solo abreviatura contextual
                           </button>
                           <button mat-stroked-button type="button"
                                   (click)="classifyUnifiedItem(ci, item.key, 'both')">
-                            <mat-icon>call_split</mat-icon> Ambos
+                            <mat-icon>layers</mat-icon> Información clínica + abreviatura contextual
                           </button>
                         }
-                        <button mat-stroked-button color="warn" type="button"
+                        <button mat-stroked-button color="warn" class="unified-exclude-choice" type="button"
                                 (click)="classifyUnifiedItem(ci, item.key, 'skip')">
-                          <mat-icon>close</mat-icon> No anotar
+                          <mat-icon>close</mat-icon> Sin valor clínico ni abreviatura (Anular)
                         </button>
                       </div>
-                      <small>Podés resolver las dos dimensiones en esta misma marca: término con información clínica y término sin información clínica, sin volver a marcar la aparición.</small>
+                      <small>Podés resolver las dos dimensiones en esta misma marca: información clínica y abreviatura contextual, sin volver a marcar la aparición.</small>
                     </div>
                   } @else if (item.kind === 'clinical') {
                     <div class="unified-item-copy">
-                      <p>Esta aparición quedó como término con información clínica. Completá jerarquía, concepto SNOMED CT y contexto.</p>
+                      <p>Esta aparición quedó registrada con información clínica. Completá jerarquía, concepto SNOMED CT y contexto.</p>
                       <div class="unified-item-actions">
                         <button mat-flat-button color="primary" type="button"
                                 (click)="openUnifiedItemDetails(ci, item.key)">
-                          Término con información clínica
+                          <mat-icon>clinical_notes</mat-icon> Solo información clínica
                         </button>
                         @if (lexicalLayerEnabled()) {
-                          <button mat-stroked-button type="button"
+                          <button mat-stroked-button color="accent" type="button"
                                   (click)="classifyUnifiedItem(ci, item.key, 'lexical')">
-                            Término sin información clínica
+                            <mat-icon>short_text</mat-icon> Solo abreviatura contextual
                           </button>
                           <button mat-stroked-button type="button"
                                   (click)="classifyUnifiedItem(ci, item.key, 'both')">
-                            Ambos
+                            <mat-icon>layers</mat-icon> Información clínica + abreviatura contextual
                           </button>
                         }
+                        <button mat-stroked-button color="warn" class="unified-exclude-choice" type="button"
+                                (click)="classifyUnifiedItem(ci, item.key, 'skip')">
+                          <mat-icon>close</mat-icon> Sin valor clínico ni abreviatura (Anular)
+                        </button>
                       </div>
                     </div>
                   } @else if (item.kind === 'lexical') {
                     <div class="unified-item-copy">
-                      <p>Esta aparición quedó como término sin información clínica para esta anotación. Resolvelo en contexto; todavía no se asoció un concepto SNOMED CT.</p>
+                      <p>Esta aparición quedó registrada como abreviatura contextual. Resolvela en contexto.</p>
                       <div class="unified-item-actions">
-                        <button mat-flat-button color="primary" type="button"
-                                (click)="openUnifiedItemDetails(ci, item.key)">
-                          Término sin información clínica
-                        </button>
                         @if (lexicalLayerEnabled()) {
-                          <button mat-stroked-button type="button"
+                          <button mat-stroked-button color="primary" type="button"
                                   (click)="classifyUnifiedItem(ci, item.key, 'clinical')">
-                            Término con información clínica
+                            <mat-icon>clinical_notes</mat-icon> Solo información clínica
+                          </button>
+                          <button mat-flat-button color="accent" type="button"
+                                  (click)="openUnifiedItemDetails(ci, item.key)">
+                            <mat-icon>short_text</mat-icon> Solo abreviatura contextual
                           </button>
                           <button mat-stroked-button type="button"
                                   (click)="classifyUnifiedItem(ci, item.key, 'both')">
-                            Ambos
+                            <mat-icon>layers</mat-icon> Información clínica + abreviatura contextual
                           </button>
                         }
+                        <button mat-stroked-button color="warn" class="unified-exclude-choice" type="button"
+                                (click)="classifyUnifiedItem(ci, item.key, 'skip')">
+                          <mat-icon>close</mat-icon> Sin valor clínico ni abreviatura (Anular)
+                        </button>
                       </div>
                     </div>
                   } @else if (item.kind === 'both') {
                     <div class="unified-item-copy">
-                      <p>La misma aparición requiere codificación clínica y una decisión de significado local.</p>
+                      <p>Esta aparición requiere información clínica y abreviatura contextual.</p>
                       <div class="unified-item-actions">
+                        <button mat-stroked-button color="primary" type="button"
+                                (click)="classifyUnifiedItem(ci, item.key, 'clinical')">
+                          <mat-icon>clinical_notes</mat-icon> Solo información clínica
+                        </button>
+                        <button mat-stroked-button color="accent" type="button"
+                                (click)="classifyUnifiedItem(ci, item.key, 'lexical')">
+                          <mat-icon>short_text</mat-icon> Solo abreviatura contextual
+                        </button>
                         <button mat-flat-button color="primary" type="button"
                                 (click)="openUnifiedItemDetails(ci, item.key)">
-                          Ambos
+                          <mat-icon>layers</mat-icon> Información clínica + abreviatura contextual
                         </button>
-                        <button mat-stroked-button type="button"
-                                (click)="classifyUnifiedItem(ci, item.key, 'clinical')">
-                          Término con información clínica
-                        </button>
-                        <button mat-stroked-button type="button"
-                                (click)="classifyUnifiedItem(ci, item.key, 'lexical')">
-                          Término sin información clínica
+                        <button mat-stroked-button color="warn" class="unified-exclude-choice" type="button"
+                                (click)="classifyUnifiedItem(ci, item.key, 'skip')">
+                          <mat-icon>close</mat-icon> Sin valor clínico ni abreviatura (Anular)
                         </button>
                       </div>
                     </div>
                 } @else {
-                  <p class="unified-skipped-copy">La aparición quedó registrada como no anotable.</p>
+                  <div class="unified-item-copy">
+                    <p class="unified-skipped-copy">Esta aparición fue anulada (sin valor clínico ni abreviatura).</p>
+                    <div class="unified-item-actions">
+                      <button mat-stroked-button color="primary" type="button"
+                              (click)="classifyUnifiedItem(ci, item.key, 'clinical')">
+                        <mat-icon>clinical_notes</mat-icon> Solo información clínica
+                      </button>
+                      @if (lexicalLayerEnabled()) {
+                        <button mat-stroked-button color="accent" type="button"
+                                (click)="classifyUnifiedItem(ci, item.key, 'lexical')">
+                          <mat-icon>short_text</mat-icon> Solo abreviatura contextual
+                        </button>
+                        <button mat-stroked-button type="button"
+                                (click)="classifyUnifiedItem(ci, item.key, 'both')">
+                          <mat-icon>layers</mat-icon> Información clínica + abreviatura contextual
+                        </button>
+                      }
+                      <button mat-flat-button color="warn" class="unified-exclude-choice" type="button"
+                              (click)="classifyUnifiedItem(ci, item.key, 'skip')">
+                        <mat-icon>close</mat-icon> Sin valor clínico ni abreviatura (Anular)
+                      </button>
+                    </div>
+                  </div>
                 }
                 </details>
                 }
@@ -600,6 +638,12 @@
                   Seleccioná una expresión de la nota y usá <strong>“Marcar para revisar”</strong>.
                 </div>
               }
+            </div>
+
+            <div class="unified-review-footer">
+              <button mat-flat-button color="primary" type="button" (click)="setCaseWorkflowStep(ci, 'finalize')">
+                <mat-icon>task_alt</mat-icon> Pasar al Paso 4 · Finalizar y cerrar nota
+              </button>
             </div>
           </section>
         }
@@ -673,46 +717,7 @@
             </div>
             }
 
-            <details class="lexical-help">
-              <summary>
-                <mat-icon aria-hidden="true">help_outline</mat-icon>
-                Guía rápida para decidir
-              </summary>
-              <div class="lexical-help-content">
-                <div>
-                  <strong>¿Cómo está escrita?</strong>
-                  <p>
-                    Elegí por la forma visible: palabra acortada, letras leídas juntas o por
-                    separado, letras con números, o símbolos. Una palabra en mayúsculas no es
-                    necesariamente una sigla.
-                  </p>
-                </div>
-                <div>
-                  <strong>¿Cómo se decide el significado?</strong>
-                  <p>
-                    <b>Pendiente</b> significa que todavía no decidiste y bloquea el cierre.
-                    <b>Ambigua aun con contexto</b> y <b>No puedo determinarla</b> son cierres
-                    válidos cuando la nota no permite resolver sin adivinar.
-                  </p>
-                </div>
-                <div>
-                  <strong>¿Qué papel cumple en esta parte de la nota?</strong>
-                  <p>
-                    <b>Sin clasificar</b> deja el papel sin decidir. <b>Otra función</b> indica
-                    que sí lo identificaste, pero no encaja en la lista. Elegir Entidad clínica
-                    no crea automáticamente una anotación SNOMED CT.
-                  </p>
-                </div>
-                <div>
-                  <strong>Ubicación y pistas</strong>
-                  <p>
-                    La sección es la parte local de esta nota, no la especialidad del paciente.
-                    Las pistas se guardan como una lista; su orden no expresa importancia ni
-                    probabilidad.
-                  </p>
-                </div>
-              </div>
-            </details>
+
 
             @if (!(caseItem.lexicalMentions?.length)) {
               <div class="lexical-empty">
@@ -1077,18 +1082,7 @@
               </button>
             </div>
             }
-        @if (unifiedDetailCanAddClinical(ci)) {
-              <div class="unified-same-mark-actions">
-                <div>
-                  <strong>Ambos</strong>
-                  <span>Podés agregar la dimensión de información clínica a esta misma aparición, sin volver a marcarla.</span>
-                </div>
-                <button mat-stroked-button color="primary" type="button" (click)="addClinicalToUnifiedDetail(ci)">
-                  <mat-icon>add_task</mat-icon>
-                  Agregar término con información clínica
-                </button>
-              </div>
-            }
+
           </section>
         }
 
@@ -1245,52 +1239,55 @@
           </details>
         }
 
-        <div class="case-finalization" [attr.id]="'case-finalize-' + ci" [class.finalized]="isCaseFinalized(caseItem)">
-          @if (isCaseFinalized(caseItem)) {
-            <div class="case-finalization-copy">
-              <mat-icon>verified</mat-icon>
-              <div>
-                <strong>Nota revisada</strong>
-                <span>
-                  {{ caseItem.review?.outcome === 'no-eligible-concepts'
-                    ? 'Sin conceptos clínicos anotables.'
-                    : 'Con conceptos SNOMED CT codificados.' }}
-                  Si modificás la anotación, volverá automáticamente a pendiente.
-                </span>
+        @if (caseWorkflowStep(ci) === 'finalize' || !unifiedReviewPrototype()) {
+          <div class="case-finalization" [attr.id]="'case-finalize-' + ci" [class.finalized]="isCaseFinalized(caseItem)">
+            <span class="unified-kicker">Paso 4 · Resultado y cierre de la nota</span>
+            @if (isCaseFinalized(caseItem)) {
+              <div class="case-finalization-copy">
+                <mat-icon>verified</mat-icon>
+                <div>
+                  <strong>Nota revisada</strong>
+                  <span>
+                    {{ caseItem.review?.outcome === 'no-eligible-concepts'
+                      ? 'Sin conceptos clínicos anotables.'
+                      : 'Con conceptos SNOMED CT codificados.' }}
+                    Si modificás la anotación, volverá automáticamente a pendiente.
+                  </span>
+                </div>
               </div>
-            </div>
-          } @else {
-            <div class="case-finalization-copy">
-              <mat-icon>fact_check</mat-icon>
-              <div>
-                <strong>Finalizar revisión de esta nota</strong>
-                <span>
-                  Confirmá uno de los dos resultados después de revisar todo el texto
-                  @if (lexicalLayerEnabled()) { y completar la revisión de formas breves }.
-                </span>
+            } @else {
+              <div class="case-finalization-copy">
+                <mat-icon>fact_check</mat-icon>
+                <div>
+                  <strong>Finalizar revisión de esta nota</strong>
+                  <span>
+                    Confirmá uno de los dos resultados después de revisar todo el texto
+                    @if (lexicalLayerEnabled()) { y completar la revisión de formas breves }.
+                  </span>
+                </div>
               </div>
-            </div>
-            <div class="case-finalization-actions">
-              <button mat-flat-button color="primary"
-                      [disabled]="!hasAnnotatedConcept(caseItem) || !lexicalReviewReady(caseItem)"
-                      (click)="finalizeCase(ci, 'coded')">
-                <mat-icon>check_circle</mat-icon> Revisada con conceptos
-              </button>
-              <button mat-stroked-button
-                      [disabled]="hasAnnotatedConcept(caseItem) || !lexicalReviewReady(caseItem)"
-                      (click)="finalizeCase(ci, 'no-eligible-concepts')">
-                <mat-icon>do_not_disturb_on</mat-icon> Sin conceptos anotables
-              </button>
-            </div>
-          }
-        </div>
+              <div class="case-finalization-actions">
+                <button mat-flat-button color="primary"
+                        [disabled]="!hasAnnotatedConcept(caseItem) || !lexicalReviewReady(caseItem)"
+                        (click)="finalizeCase(ci, 'coded')">
+                  <mat-icon>check_circle</mat-icon> Revisada con conceptos
+                </button>
+                <button mat-stroked-button
+                        [disabled]="hasAnnotatedConcept(caseItem) || !lexicalReviewReady(caseItem)"
+                        (click)="finalizeCase(ci, 'no-eligible-concepts')">
+                  <mat-icon>do_not_disturb_on</mat-icon> Sin conceptos anotables
+                </button>
+              </div>
+            }
+          </div>
 
-        <mat-form-field appearance="outline" class="comentarios" subscriptSizing="dynamic">
-          <mat-label>Comentarios</mat-label>
-          <textarea matInput rows="2" [ngModel]="caseItem.comentarios"
-                    (ngModelChange)="updateComentarios(ci, $event)"
-                    placeholder="Dudas o notas sobre este caso"></textarea>
-        </mat-form-field>
+          <mat-form-field appearance="outline" class="comentarios" subscriptSizing="dynamic">
+            <mat-label>Comentarios</mat-label>
+            <textarea matInput rows="2" [ngModel]="caseItem.comentarios"
+                      (ngModelChange)="updateComentarios(ci, $event)"
+                      placeholder="Dudas o notas sobre este caso"></textarea>
+          </mat-form-field>
+        }
           </div>
           }
         </div>

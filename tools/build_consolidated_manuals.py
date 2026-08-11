@@ -27,7 +27,7 @@ NAV = [
     ("5-como-completar-una-tarjeta-lexica", "Formas breves"),
     ("8-como-revisar-la-informacion-clinica", "Spans y conceptos"),
     ("11-cierre-exportacion-y-problemas-frecuentes", "Cierre y exportación"),
-    ("actualizacion-interfaz-20260728", "Flujo actual del anotador web"),
+    ("actualizacion-interfaz-20260728", "Detalles de interfaz"),
 ]
 
 RELATED_LINKS = {
@@ -59,7 +59,7 @@ RELATED_LINKS = {
     ],
     "6-como-decidir-el-significado": [
         ("6-1-opciones-de-decision", "Opciones de decisión"),
-        ("sentido-resuelto", "Cuándo usar Sentido resuelto"),
+        ("interfaz-sentido", "Cuándo usar Sentido resuelto"),
         ("11-1-antes-de-cerrar", "Validación antes de cerrar"),
     ],
     "7-funcion-seccion-pistas-y-comentario": [
@@ -70,8 +70,7 @@ RELATED_LINKS = {
     "8-como-revisar-la-informacion-clinica": [
         ("8-1-que-es-una-seleccion-textual-o-span", "Qué es un span"),
         ("8-4-elegir-categoria-y-concepto", "Categoría y concepto"),
-        ("spans-superpuestos", "Spans superpuestos"),
-        ("spans-discontinuos", "Política de spans discontinuos"),
+        ("interfaz-spans", "Spans superpuestos y discontinuos"),
     ],
     "9-ejemplos-concretos": [
         ("5-como-completar-una-tarjeta-lexica", "Aplicar los ejemplos a la tarjeta"),
@@ -87,7 +86,7 @@ RELATED_LINKS = {
         ("11-4-si-algo-no-funciona", "Resolver problemas"),
     ],
     "12-guia-rapida-durante-la-anotacion": [
-        ("4-2-orden-recomendado", "Orden detallado"),
+        ("4-2-controles-durante-la-revision", "Controles durante la revisión"),
         ("11-1-antes-de-cerrar", "Verificación final"),
     ],
     "anexo-a-equivalencias-tecnicas-de-la-interfaz": [
@@ -116,7 +115,7 @@ WORD_BOOKMARKS = {
     "12. Guía rápida durante la anotación": "xref_guia",
     "Anexo A. Equivalencias técnicas de la interfaz": "xref_anexo_a",
     "Anexo B. Códigos de pistas contextuales": "xref_anexo_b",
-    "Flujo actual del anotador web: selección, clasificación y cierre": "xref_actualizacion",
+    "Detalles de interfaz y política de spans": "xref_actualizacion",
 }
 
 WORD_RELATED = {
@@ -135,7 +134,7 @@ WORD_RELATED = {
     "12. Guía rápida durante la anotación": [("Recorrido detallado", "xref_revision"), ("Control de cierre", "xref_cierre")],
     "Anexo A. Equivalencias técnicas de la interfaz": [("Uso de la tarjeta", "xref_tarjeta"), ("Interfaz actualizada", "xref_actualizacion")],
     "Anexo B. Códigos de pistas contextuales": [("Función, sección y pistas", "xref_contexto"), ("Guía rápida", "xref_guia")],
-    "Flujo actual del anotador web: selección, clasificación y cierre": [("Revisar una nota", "xref_revision"), ("Formas breves", "xref_tarjeta"), ("Información clínica", "xref_clinica"), ("Cierre", "xref_cierre")],
+    "Detalles de interfaz y política de spans": [("Revisar una nota", "xref_revision"), ("Formas breves", "xref_tarjeta"), ("Información clínica", "xref_clinica")],
 }
 
 UPDATE_HTML = """
@@ -152,14 +151,14 @@ UPDATE_HTML = """
     <li><strong>Paso 3 · decisión de menciones.</strong> La interfaz muestra una marca por vez. Complete su decisión y avance con <strong>“Siguiente”</strong> o con los controles inferiores de anterior/siguiente; no necesita volver al inicio de la nota.</li>
   </ol>
   <h2 id="clasificacion-unificada">Una clasificación para cada aparición</h2>
-  <p>En “¿Qué representa aquí?” elija una sola opción inicial. La misma marca puede conservar dos dimensiones cuando corresponda; no hay que marcar dos veces el mismo texto.</p>
+  <p>En “¿Qué corresponde registrar aquí?” elija las capas que correspondan a la misma aparición. “Información clínica + forma breve” conserva dos registros independientes; no afirma que el término sea clínico y no clínico a la vez.</p>
   <table><thead><tr><th>Etiqueta visible</th><th>Qué significa</th><th>Qué se completa</th></tr></thead><tbody>
-    <tr><td><strong>Término con información clínica</strong></td><td>La aparición expresa información clínica, aunque todavía no exista un concepto SNOMED CT defendible.</td><td>Jerarquía clínica, búsqueda de concepto, literal y contexto clínico. El estado puede quedar pendiente de codificación.</td></tr>
-    <tr><td><strong>Término sin información clínica</strong></td><td>La aparición tiene un significado local o una función léxica, pero no se registra como concepto clínico.</td><td>Tipo de forma, “¿Qué significa aquí?”, decisión, función, sección y pistas.</td></tr>
-    <tr><td><strong>Ambos</strong></td><td>La misma aparición tiene información clínica y también requiere una decisión de significado local.</td><td>Complete las dos dimensiones en la misma marca, de forma secuencial.</td></tr>
-    <tr><td><strong>No anotar</strong></td><td>La aparición no es anotable según el protocolo.</td><td>No se abren campos de codificación ni de forma breve.</td></tr>
+    <tr><td><strong>Solo información clínica</strong></td><td>La aparición expresa información clínica, aunque todavía no exista un concepto SNOMED CT defendible.</td><td>Jerarquía clínica, búsqueda de concepto, literal y contexto clínico. El estado puede quedar pendiente de codificación.</td></tr>
+    <tr><td><strong>Solo capa léxica / forma breve</strong></td><td>La aparición requiere registrar su forma o significado local, pero no se asocia a un concepto SNOMED CT.</td><td>Tipo de forma, “¿Qué significa aquí?”, decisión, función, sección y pistas.</td></tr>
+    <tr><td><strong>Información clínica + forma breve</strong></td><td>La misma aparición conserva las dos capas independientes.</td><td>Complete las dos dimensiones en la misma marca, de forma secuencial.</td></tr>
+    <tr><td><strong>Excluir: no corresponde al protocolo</strong></td><td>La aparición es ruido, un falso positivo o texto que no debe conservarse.</td><td>No se abren campos de codificación ni de forma breve.</td></tr>
   </tbody></table>
-  <p>Si cambia de opción, la interfaz reconfigura la marca existente. <strong>Ambos</strong> conserva o agrega las dos dimensiones; pasar a una sola elimina únicamente la dimensión que ya no corresponde. No cree una segunda marca para compensarlo.</p>
+  <p>Si cambia de opción, la interfaz reconfigura la marca existente. La combinación de capas conserva o agrega ambos registros; pasar a una sola elimina únicamente la capa que ya no corresponde. No cree una segunda marca para compensarlo.</p>
   <h2 id="detalle-secuencial">Detalle secuencial de la marca</h2>
   <p>Al abrir una marca, el panel de detalle queda junto a la nota y termina con <strong>“Mención anterior”</strong>, <strong>“Volver a marcas”</strong> y <strong>“Siguiente mención”</strong>. Use “Volver a marcas” solo para regresar a la lista; la decisión normal continúa hacia abajo con el control siguiente.</p>
   <p>Para una marca clínica, abra la codificación y complete categoría, búsqueda, concepto, texto literal y las cuatro dimensiones de contexto: polaridad, certeza, temporalidad y sujeto. Para una marca sin información clínica, complete la tarjeta léxica. En “¿Qué significa aquí?” el valor elegido o escrito es el que se incorpora a la anotación; no hay un campo adicional que duplique esa decisión.</p>
@@ -181,6 +180,33 @@ UPDATE_HTML = """
   <p>Use “Sentido resuelto” únicamente después de elegir un significado disponible. Si la interfaz no ofrece un significado que pueda confirmar, use “Proponer sentido nuevo”, “Ambigua aun con contexto” o “No puedo determinarla”, según corresponda. Una decisión resuelta sin significado vuelve a <strong>Pendiente</strong> al cargar el archivo y no permite completar la revisión. Consulte <a href="#6-como-decidir-el-significado">Cómo decidir el significado</a> y la lista de <a href="#11-1-antes-de-cerrar">verificación antes del cierre</a>.</p>
   <aside class="callout key" role="note"><h2>Regla práctica</h2><p>Primero confirme el texto y su contexto; después clasifique la marca y complete las dimensiones que correspondan. No fuerce una resolución para cerrar la nota.</p></aside>
   <p><a href="#manual-top">Volver al inicio</a> · <a href="#flujo-tres-pasos">Volver al recorrido en tres pasos</a> · <a href="#clasificacion-unificada">Volver a las etiquetas</a></p>
+</section>
+"""
+
+# The workflow itself is documented once in section 3.1.  Keep this appendix
+# limited to interface-specific details so the HTML and DOCX do not repeat the
+# same instructions in several places.
+UPDATE_HTML = """
+<section class="manual-section" id="actualizacion-interfaz-20260728" aria-labelledby="actualizacion-titulo">
+  <h1 id="actualizacion-titulo">Detalles de interfaz y política de spans</h1>
+  <p>Use este apartado como referencia de los controles que verá en <strong>SemantIAr Anotador</strong>. El recorrido operativo está explicado una sola vez en <a href="#3-1-orden-basico-de-trabajo">3.1 Orden básico de trabajo</a>; aquí se aclaran las etiquetas, los campos y las reglas de selección.</p>
+  <p class="related-links"><strong>También puede consultar:</strong> <a href="#4-como-revisar-una-nota-de-principio-a-fin">revisión de una nota</a> · <a href="#5-como-completar-una-tarjeta-lexica">tarjeta léxica</a> · <a href="#8-como-revisar-la-informacion-clinica">información clínica</a> · <a href="#11-cierre-exportacion-y-problemas-frecuentes">cierre y exportación</a></p>
+  <h2 id="interfaz-etiquetas">Etiquetas para una misma aparición</h2>
+  <p>En <strong>“¿Qué corresponde registrar aquí?”</strong> elija las capas que correspondan a la misma aparición. <strong>Información clínica + forma breve</strong> no significa que el término sea clínico y no clínico a la vez: conserva dos registros independientes sobre el mismo tramo.</p>
+  <table><thead><tr><th>Etiqueta</th><th>Uso práctico</th></tr></thead><tbody>
+    <tr><td><strong>Solo información clínica</strong></td><td>La aparición expresa información clínica. Complete la codificación y el contexto; el concepto SNOMED CT puede quedar pendiente si no hay asociación defendible.</td></tr>
+    <tr><td><strong>Solo capa léxica / forma breve</strong></td><td>La aparición requiere registrar su forma o significado local, pero no se asocia a un concepto SNOMED CT.</td></tr>
+    <tr><td><strong>Información clínica + forma breve</strong></td><td>La misma aparición conserva las dos capas independientes. Complete la codificación y la tarjeta dentro de la misma marca.</td></tr>
+    <tr><td><strong>Excluir: no corresponde al protocolo</strong></td><td>La aparición es ruido, un falso positivo o texto que no debe conservarse. No complete campos adicionales.</td></tr>
+  </tbody></table>
+  <h2 id="interfaz-campos">Campos y navegación</h2>
+  <p>La nota permanece visible mientras se completa el detalle. Los campos cerrados son desplegables: abra la lista para leer cada opción completa. “¿Qué significa aquí?” registra el sentido de esa aparición; “¿Qué pistas usaste?” permite varias selecciones; el comentario libre se usa solo para observaciones que agreguen trazabilidad. La especialidad elegida al leer la nota es una pista general y no reemplaza la sección local de cada aparición.</p>
+  <p>En una marca de información clínica se completan jerarquía, búsqueda de concepto, texto literal y polaridad, certeza, temporalidad y sujeto. En una marca de capa léxica se completan tipo de forma, significado, decisión, función, sección y pistas. Cuando una marca conserva ambas capas, se completan las dos sin crear un duplicado.</p>
+  <h2 id="interfaz-spans">Spans superpuestos y discontinuos</h2>
+  <p>Conserve spans superpuestos solo cuando representan menciones distintas y defendibles; revise cada aparición por separado. No cree superposiciones para mostrar niveles de detalle de una misma mención. La aplicación usa spans continuos como modalidad predeterminada: si una expresión parece discontinua, divídala solo cuando cada parte tenga sentido propio; de lo contrario, registre el caso para adjudicación según el protocolo.</p>
+  <h2 id="interfaz-sentido">Sentido resuelto</h2>
+  <p>Seleccione <strong>Sentido resuelto</strong> únicamente después de elegir un significado disponible. Si no puede confirmarlo, use <strong>Proponer sentido nuevo</strong>, <strong>Ambigua aun con contexto</strong> o <strong>No puedo determinarla</strong>. No fuerce una resolución para cerrar la nota.</p>
+  <p><a href="#manual-top">Volver al inicio</a> · <a href="#3-1-orden-basico-de-trabajo">Volver al flujo de trabajo</a> · <a href="#8-como-revisar-la-informacion-clinica">Volver a información clínica</a></p>
 </section>
 """
 
@@ -244,6 +270,76 @@ html{background:#e9edf2}body{box-sizing:border-box;max-width:920px;margin:0 auto
 
 def build_docx():
     document = Document(DOCX_SOURCE)
+    # The workflow is already explained in section 3.1 of the base manual.
+    # Append only interface-specific guidance here to avoid repeating the
+    # complete procedure in a second section.
+    document.add_page_break()
+    document.add_heading("Detalles de interfaz y política de spans", level=1)
+    document.add_paragraph(
+        "Use este apartado como referencia de los controles que verá en SemantIAr Anotador. "
+        "El recorrido operativo está explicado en 3.1 Orden básico de trabajo; aquí se aclaran "
+        "las etiquetas, los campos y las reglas de selección."
+    )
+    document.add_paragraph(
+        "En “¿Qué corresponde registrar aquí?” elija las capas que correspondan. “Información clínica + forma breve” "
+        "conserva dos registros independientes sobre el mismo tramo; no afirma que el término sea clínico y no clínico a la vez."
+    )
+    table = document.add_table(rows=1, cols=2)
+    table.style = "Table Grid"
+    hdr = table.rows[0].cells
+    hdr[0].text = "Etiqueta"
+    hdr[1].text = "Uso práctico"
+    rows = [
+        ("Solo información clínica", "La nota expresa información clínica. Complete la codificación y el contexto; el concepto SNOMED CT puede quedar pendiente si no hay asociación defendible."),
+        ("Solo capa léxica / forma breve", "La aparición requiere registrar su forma o significado local, pero no se asocia a un concepto SNOMED CT."),
+        ("Información clínica + forma breve", "La misma aparición conserva las dos capas independientes. Complete la codificación y la tarjeta dentro de la misma marca."),
+        ("Excluir: no corresponde al protocolo", "La aparición es ruido, un falso positivo o texto que no debe conservarse. No complete campos adicionales."),
+    ]
+    for label, meaning in rows:
+        cells = table.add_row().cells
+        cells[0].text, cells[1].text = label, meaning
+    document.add_heading("Campos y navegación", level=2)
+    document.add_paragraph(
+        "La nota permanece visible mientras se completa el detalle. Los campos cerrados son desplegables: "
+        "abra la lista para leer cada opción completa. “¿Qué significa aquí?” registra el sentido de esa aparición; "
+        "“¿Qué pistas usaste?” permite varias selecciones; el comentario libre se usa solo para observaciones que "
+        "agreguen trazabilidad. La especialidad elegida al leer la nota es una pista general y no reemplaza la "
+        "sección local de cada aparición."
+    )
+    document.add_paragraph(
+        "En una marca de información clínica se completan jerarquía, búsqueda de concepto, texto literal y polaridad, certeza, "
+        "temporalidad y sujeto. En una marca de capa léxica se completan tipo de forma, significado, decisión, función, "
+        "sección y pistas. Cuando una marca conserva ambas capas, se completan las dos sin crear un duplicado."
+    )
+    document.add_heading("Spans superpuestos y discontinuos", level=2)
+    document.add_paragraph(
+        "Conserve spans superpuestos solo cuando representan menciones distintas y defendibles; revise cada aparición "
+        "por separado. No cree superposiciones para mostrar niveles de detalle de una misma mención. La aplicación usa "
+        "spans continuos como modalidad predeterminada: si una expresión parece discontinua, divídala solo cuando cada "
+        "parte tenga sentido propio; de lo contrario, registre el caso para adjudicación según el protocolo."
+    )
+    document.add_heading("Sentido resuelto", level=2)
+    document.add_paragraph(
+        "Seleccione “Sentido resuelto” únicamente después de elegir un significado disponible. Si no puede confirmarlo, "
+        "use “Proponer sentido nuevo”, “Ambigua aun con contexto” o “No puedo determinarla”. No fuerce una resolución "
+        "para cerrar la nota."
+    )
+    linked = document.add_paragraph()
+    linked.add_run("Vínculos de esta sección: ").bold = True
+    for index, (label, anchor) in enumerate(
+        [("revisión de una nota", "xref_revision"), ("formas breves", "xref_tarjeta"), ("información clínica", "xref_clinica")]
+    ):
+        if index:
+            linked.add_run(" · ")
+        add_internal_hyperlink(linked, label, anchor)
+    normalize_legacy_lexical_prompts(document)
+    mark_docx_table_headers(document)
+    add_word_navigation(document)
+    document.save(DOCX_TARGET)
+    return
+
+    # Legacy appendix retained below for reference while old generated files
+    # are being replaced; the return above keeps it out of the published manual.
     document.add_page_break()
     document.add_heading("Flujo actual del anotador web: selección, clasificación y cierre", level=1)
     document.add_paragraph(
@@ -264,9 +360,10 @@ def build_docx():
         "desplegable alfabético y funciona como pista general; la sección de cada aparición sigue siendo local."
     )
     document.add_paragraph(
-        "En “¿Qué representa aquí?” elija una sola opción inicial: “Término con información clínica”, “Término sin "
-        "información clínica”, “Ambos” o “No anotar”. “Ambos” conserva las dos dimensiones en la misma marca y no "
-        "requiere volver a seleccionarla. Cambiar de opción reconfigura la marca existente; no cree un duplicado."
+        "En “¿Qué corresponde registrar aquí?” elija las capas que correspondan: “Solo información clínica”, “Solo capa léxica / "
+        "forma breve”, “Información clínica + forma breve” o “Excluir: no corresponde al protocolo”. La combinación "
+        "conserva dos registros independientes en la misma marca; cambiar de opción reconfigura la marca existente y "
+        "no requiere crear un duplicado."
     )
     document.add_heading("Detalle secuencial de la marca", level=2)
     document.add_paragraph(
@@ -290,10 +387,10 @@ def build_docx():
     hdr[1].text = "Qué significa"
     hdr[2].text = "Qué se completa"
     rows = [
-        ("Término con información clínica", "La aparición expresa información clínica, aunque todavía no exista un concepto SNOMED CT defendible.", "Jerarquía, búsqueda, literal y contexto clínico; puede quedar pendiente de codificación."),
-        ("Término sin información clínica", "Tiene significado local o función léxica, pero no se registra como concepto clínico.", "Tipo, significado, decisión, función, sección y pistas."),
-        ("Ambos", "La misma aparición tiene información clínica y también requiere significado local.", "Complete las dos dimensiones en la misma marca."),
-        ("No anotar", "La aparición no es anotable según el protocolo.", "No se abren campos de codificación ni de forma breve."),
+        ("Solo información clínica", "La aparición expresa información clínica, aunque todavía no exista un concepto SNOMED CT defendible.", "Jerarquía, búsqueda, literal y contexto clínico; puede quedar pendiente de codificación."),
+        ("Solo capa léxica / forma breve", "Tiene significado local o función léxica, pero no se registra como concepto SNOMED CT.", "Tipo, significado, decisión, función, sección y pistas."),
+        ("Información clínica + forma breve", "La misma aparición conserva dos registros independientes.", "Complete las dos dimensiones en la misma marca."),
+        ("Excluir: no corresponde al protocolo", "La aparición no es anotable según el protocolo.", "No se abren campos de codificación ni de forma breve."),
     ]
     for label, meaning, fields in rows:
         cells = table.add_row().cells
