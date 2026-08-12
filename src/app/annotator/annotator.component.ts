@@ -98,7 +98,7 @@ import {
 type UnifiedReviewItemKind = 'pending' | 'clinical' | 'lexical' | 'both' | 'skipped';
 type UnifiedReviewChoice = 'clinical' | 'lexical' | 'both' | 'skip';
 type UnifiedDetailTarget = 'clinical' | 'lexical' | 'both';
-type CaseWorkflowStep = 'cell' | 'marking' | 'decisions';
+type CaseWorkflowStep = 'cell' | 'marking' | 'decisions' | 'finalize';
 
 /**
  * Presentation-only grouping for the local unified-review prototype.
@@ -1068,14 +1068,14 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   setCaseWorkflowStep(caseIdx: number, step: CaseWorkflowStep): void {
     const caseItem = this.cases()[caseIdx];
     if (!caseItem) return;
-    if (step === 'decisions' && this.unifiedMarkingPhaseActive(caseIdx)) {
-      this.snackBar.open('Primero completá la marcación de pendientes en la nota.', 'OK', {
+    if ((step === 'decisions' || step === 'finalize') && this.unifiedMarkingPhaseActive(caseIdx)) {
+      this.snackBar.open('Primero completá la marcación de menciones en la nota.', 'OK', {
         duration: 3500,
       });
       return;
     }
     this.caseWorkflowSteps.update((current) => ({ ...current, [caseIdx]: step }));
-    if (step !== 'decisions') {
+    if (step === 'cell' || step === 'marking') {
       this.unifiedMarkingPhase.update((current) => ({ ...current, [caseIdx]: true }));
       this.unifiedDetailContext.set(null);
       this.selectedSpan.set(null);
@@ -1083,10 +1083,16 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       this.scrollCaseSection(caseIdx, 'source');
       return;
     }
-    const items = this.unifiedReviewItems(caseItem);
-    const first = items.find((item) => this.unifiedItemRequiresAction(item)) ?? items[0];
-    if (first) this.setUnifiedActiveItem(caseIdx, first.key);
-    this.scrollCaseSection(caseIdx, 'unified');
+    if (step === 'decisions') {
+      const items = this.unifiedReviewItems(caseItem);
+      const first = items.find((item) => this.unifiedItemRequiresAction(item)) ?? items[0];
+      if (first) this.setUnifiedActiveItem(caseIdx, first.key);
+      this.scrollCaseSection(caseIdx, 'unified');
+      return;
+    }
+    if (step === 'finalize') {
+      this.scrollCaseSection(caseIdx, 'finalize');
+    }
   }
 
   unifiedMarkingAddedCount(caseItem: CaseAnnotation): number {
@@ -1185,9 +1191,9 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
 
   unifiedDetailLabelFor(caseIdx: number): string {
     const target = this.unifiedDetailTargetFor(caseIdx);
-    if (target === 'both') return 'Ambos · una misma marca';
-    if (target === 'clinical') return 'Término con información clínica';
-    return 'Término sin información clínica';
+    if (target === 'both') return 'Información clínica + abreviatura contextual';
+    if (target === 'clinical') return 'Solo información clínica';
+    return 'Solo abreviatura contextual';
   }
 
   unifiedDetailMatchesMention(caseIdx: number, mention: LexicalMention): boolean {
@@ -1293,16 +1299,22 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
 
     return [...grouped.values()]
       .map((item): UnifiedReviewItem => {
+        const activeLexicalMention =
+          !!item.lexicalMention && item.lexicalMention.annotation.decisionStatus !== 'rejected';
+        const excludedSpan =
+          item.span?.status === 'descartado' || item.span?.review?.disposition === 'excluido';
         const kind: UnifiedReviewItemKind =
-          item.span?.status === 'descartado' && !item.lexicalMention && !item.concept
+          excludedSpan && !item.concept && !activeLexicalMention
             ? 'skipped'
-            : item.concept && item.lexicalMention
+            : item.concept && activeLexicalMention
               ? 'both'
               : item.concept
                 ? 'clinical'
-                : item.lexicalMention
+                : activeLexicalMention
                   ? 'lexical'
-                  : 'pending';
+                  : item.span
+                    ? 'pending'
+                    : 'skipped';
         return { ...item, kind };
       })
       .sort((left, right) => left.start - right.start || left.end - right.end || left.key.localeCompare(right.key));
@@ -1323,25 +1335,52 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   unifiedItemStatus(item: UnifiedReviewItem): string {
     if (item.kind === 'pending') {
       return item.span?.origin === 'human'
-        ? 'Nueva marca · elegí qué representa'
-        : 'Candidata · elegí qué representa';
+        ? 'Nueva marca · decidí qué registrar'
+        : 'Candidata · decidí qué registrar';
     }
-    if (item.kind === 'skipped') return 'No anotar';
+    if (item.kind === 'skipped') return 'Anulada / Sin valor clínico ni abreviatura';
     if (item.kind === 'both') {
-      const clinicalStatus = this.unifiedConceptComplete(item) ? 'con información clínica: codificado' : 'con información clínica: pendiente';
+      const clinicalStatus = this.unifiedConceptComplete(item) ? 'clínica: codificada' : 'clínica: pendiente';
       const lexicalStatus = this.unifiedLexicalComplete(item)
-        ? 'sin información clínica: decidido'
-        : 'sin información clínica: pendiente';
-      return `Ambos · ${clinicalStatus} · ${lexicalStatus}`;
+        ? 'abreviatura: decidida'
+        : 'abreviatura: pendiente';
+      return `Clínica + abreviatura contextual · ${clinicalStatus} · ${lexicalStatus}`;
     }
     if (item.kind === 'clinical') {
       return this.unifiedConceptComplete(item)
-        ? 'Término con información clínica · codificado'
-        : 'Término con información clínica · pendiente de codificación';
+        ? 'Solo información clínica · codificada'
+        : 'Solo información clínica · pendiente de codificación';
     }
     return this.unifiedLexicalComplete(item)
-      ? 'Término sin información clínica · significado decidido'
-      : 'Término sin información clínica · significado pendiente';
+      ? 'Solo abreviatura contextual · decidida'
+      : 'Solo abreviatura contextual · pendiente';
+  }
+
+  unifiedClinicalDescription(item: UnifiedReviewItem): string {
+    return this.unifiedConceptComplete(item)
+      ? 'Esta aparición ya tiene información clínica codificada. Podés abrir el detalle para revisarla o modificarla.'
+      : 'Esta aparición quedó como información clínica. Completá jerarquía, concepto SNOMED CT y contexto.';
+  }
+
+  unifiedLexicalDescription(item: UnifiedReviewItem): string {
+    return this.unifiedLexicalComplete(item)
+      ? 'El significado contextual de esta abreviatura ya está decidido. Podés abrir el detalle para revisarlo o modificarlo.'
+      : 'Esta aparición quedó como abreviatura contextual / forma breve. Completá la expresión, su sentido contextual, función, sección y pistas.';
+  }
+
+  unifiedBothDescription(item: UnifiedReviewItem): string {
+    const clinicalComplete = this.unifiedConceptComplete(item);
+    const lexicalComplete = this.unifiedLexicalComplete(item);
+    if (clinicalComplete && lexicalComplete) {
+      return 'La información clínica y la abreviatura contextual de esta aparición ya están completas. Podés abrir ambas capas para revisarlas o modificarlas.';
+    }
+    if (clinicalComplete) {
+      return 'La información clínica ya está codificada; falta completar la abreviatura contextual de esta misma aparición.';
+    }
+    if (lexicalComplete) {
+      return 'El significado contextual ya está decidido; falta completar la codificación clínica de esta misma aparición.';
+    }
+    return 'La misma aparición requiere codificación clínica y abreviatura contextual.';
   }
 
   markDraftForUnifiedReview(caseIdx: number): void {
@@ -2715,8 +2754,8 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
         ...(c.specialty?.trim() ? { specialty: c.specialty.trim() } : {}),
         textNorm: c.textNorm,
         spans: c.spans,
-        // Drop fully-empty concept blocks on export
-        concepts: c.concepts.filter((x) => x.sctid || x.textoLiteral || x.cat),
+        // Drop incomplete concept blocks on export (requires category AND (code OR literal text))
+        concepts: c.concepts.filter((x) => !!x.cat && (!!x.sctid || !!x.textoLiteral)),
         comentarios: c.comentarios,
         review: c.review,
         lexicalMentions: (c.lexicalMentions ?? []).map((mention) => ({
