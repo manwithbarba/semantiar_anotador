@@ -1,0 +1,81 @@
+{
+  "configVersion": 1,
+  "timestamp": 1786494184456,
+  "index": "./index.html",
+  "assetGroups": [
+    {
+      "name": "app-shell",
+      "installMode": "prefetch",
+      "updateMode": "prefetch",
+      "cacheQueryOptions": {
+        "ignoreVary": true
+      },
+      "urls": [
+        "./chunk-4VVKMBY4.js",
+        "./chunk-CIHM7STN.js",
+        "./chunk-IFGU66OU.js",
+        "./chunk-NP3NJO5S.js",
+        "./chunk-R7L3NEQI.js",
+        "./chunk-WNQ4N7RJ.js",
+        "./chunk-XUSJ7O7M.js",
+        "./favicon.ico",
+        "./index.html",
+        "./main-A5MW4H5P.js",
+        "./manifest.webmanifest",
+        "./styles-H57F2PC3.css"
+      ],
+      "patterns": []
+    },
+    {
+      "name": "app-assets",
+      "installMode": "lazy",
+      "updateMode": "prefetch",
+      "cacheQueryOptions": {
+        "ignoreVary": true
+      },
+      "urls": [
+        "./assets/SemantIAr.jpg",
+        "./icons/semantiar-icon.svg",
+        "./manuales/Manual_de_uso_SemantIAr_App.pdf"
+      ],
+      "patterns": []
+    }
+  ],
+  "dataGroups": [],
+  "hashTable": {
+    "./assets/SemantIAr.jpg": "7f5a07f609df0f97611f994e9a31caca1385c026",
+    "./chunk-4VVKMBY4.js": "0492bc3d922ed4c5dc2eae5baa83af6e465b53d2",
+    "./chunk-CIHM7STN.js": "6794d405ff097125b50f1e1e2344fd3b3c2e07ef",
+    "./chunk-IFGU66OU.js": "99b79b2d59bdef9eaf68be6e1bfbce786994fc54",
+    "./chunk-NP3NJO5S.js": "a02ac4aec459e07538bb1f69f0215acaa519defc",
+    "./chunk-R7L3NEQI.js": "7e581195ceec537366ad222a5edda64b140fd1f9",
+    "./chunk-WNQ4N7RJ.js": "5e574d589942a2f93556581733b95b7c4a1b3913",
+    "./chunk-XUSJ7O7M.js": "8c34346fdcfaaf898acd417b72afcd029109670f",
+    "./favicon.ico": "9c39f434fe1261f68c5e3eefdf734630d99c5670",
+    "./icons/semantiar-icon.svg": "df1a2db8d694a8ea1dcd89aea23f3efe26ba52f5",
+    "./index.html": "8c96e5b11de84b68823ae31b269e9ddaf408b910",
+    "./main-A5MW4H5P.js": "943e1785d488b11c83f7783944e5cefd16705f7f",
+    "./manifest.webmanifest": "5012693a00d795611ce3c4061ba7f6efbe9a4e16",
+    "./manuales/Manual_de_uso_SemantIAr_App.pdf": "6f2f13867c225efc6074d29fb9c6317e61d0fe9e",
+    "./styles-H57F2PC3.css": "5e1bc2eff84fdda0ec5d4f014154aba6d23881a0"
+  },
+  "navigationUrls": [
+    {
+      "positive": true,
+      "regex": "^\\/.*$"
+    },
+    {
+      "positive": false,
+      "regex": "^\\/(?:.+\\/)?[^/]*\\.[^/]*$"
+    },
+    {
+      "positive": false,
+      "regex": "^\\/(?:.+\\/)?[^/]*__[^/]*$"
+    },
+    {
+      "positive": false,
+      "regex": "^\\/(?:.+\\/)?[^/]*__[^/]*\\/.*$"
+    }
+  ],
+  "navigationRequestStrategy": "performance"
+}
