@@ -257,19 +257,7 @@
               <mat-option [value]="specialty">{{ specialty }}</mat-option>
             }
           </mat-select>
-          <mat-hint>Elegí la especialidad médica de la que sospechás que deriva la nota.</mat-hint>
         </mat-form-field>
-        @if (caseWorkflowStep(ci) === 'marking') {
-          <p class="selection-help" id="selection-help-{{ ci }}">
-            <mat-icon aria-hidden="true">gesture</mat-icon>
-            Seleccioná el texto exacto y elegí <strong>“Marcar para revisar”</strong>.
-          </p>
-          @if (caseItem.spans.length > 1) {
-            <p class="overlap-help">
-              Si un resaltado tiene un número, hay varias menciones superpuestas: elegí cada una para revisarla.
-            </p>
-          }
-        }
 
           @if (compactMobile()) {
             <section
@@ -1257,13 +1245,10 @@
               </div>
             } @else {
               <div class="case-finalization-copy">
-                <mat-icon>fact_check</mat-icon>
+                <mat-icon>task_alt</mat-icon>
                 <div>
-                  <strong>Finalizar revisión de esta nota</strong>
-                  <span>
-                    Confirmá uno de los dos resultados después de revisar todo el texto
-                    @if (lexicalLayerEnabled()) { y completar la revisión de formas breves }.
-                  </span>
+                  <strong>Paso 4 · Resultado y cierre de nota</strong>
+                  <span>Confirmá el resultado final de la revisión y descargá el JSON de anotación.</span>
                 </div>
               </div>
               <div class="case-finalization-actions">

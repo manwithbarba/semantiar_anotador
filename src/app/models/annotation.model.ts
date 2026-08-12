@@ -1415,6 +1415,7 @@ export const ASSISTED_ANNOTATION_PROTOCOL: AnnotationProtocol = {
   exhaustiveReviewRequired: true,
   coreBlindIncluded: false,
   preannotationsPresent: true,
+  lexicalLayerEnabled: true,
 };
 
 export const CORE_BLIND_PROTOCOL: AnnotationProtocol = {
