@@ -1561,6 +1561,7 @@ export const MEDICAL_SPECIALTIES: string[] = [
   'Dermatología',
   'Endocrinología',
   'Enfermedades infecciosas',
+  'Enfermería',
   'Gastroenterología',
   'Genética médica',
   'Geriatría',
@@ -1585,7 +1586,9 @@ export const MEDICAL_SPECIALTIES: string[] = [
   'Psiquiatría',
   'Radiología y diagnóstico por imágenes',
   'Reumatología',
+  'Salud mental',
   'Toxicología',
+  'Trabajo social',
   'Traumatología y ortopedia',
   'Urología',
 ].sort((left, right) => left.localeCompare(right, 'es-AR', { sensitivity: 'base' }));

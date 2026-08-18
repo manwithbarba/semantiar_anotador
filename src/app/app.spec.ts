@@ -14,6 +14,7 @@ import {
   normalizeLexicalMentions,
   normalizePremarkedSpans,
   NONCODED_SEMANTICS_COMMENT,
+  MEDICAL_SPECIALTIES,
 } from './models/annotation.model';
 import { prepareAnnotationDocument } from './models/annotation-interop';
 
@@ -143,6 +144,12 @@ describe('App', () => {
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.querySelector('app-annotator')).toBeTruthy();
+  });
+
+  it('should offer clinical and interdisciplinary note specialties', () => {
+    expect(MEDICAL_SPECIALTIES).toEqual(
+      expect.arrayContaining(['Enfermería', 'Salud mental', 'Trabajo social'])
+    );
   });
 
   it('should provide an embedded app manual with one PDF download action', async () => {
