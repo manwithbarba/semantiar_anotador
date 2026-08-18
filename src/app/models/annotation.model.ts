@@ -1119,6 +1119,109 @@ export interface ConceptAnnotation {
   };
 }
 
+/** True when the annotator has started a concept block, even if it is not complete. */
+export function conceptHasContent(concept: ConceptAnnotation): boolean {
+  return !!(
+    concept.cat ||
+    concept.sctid ||
+    concept.term ||
+    concept.textoLiteral.trim() ||
+    concept.spanId
+  );
+}
+
+/** A concept is exportable and eligible for closure only when these fields agree. */
+export function conceptIsComplete(concept: ConceptAnnotation): boolean {
+  return !!concept.cat && !!concept.sctid && !!concept.term.trim() && !!concept.textoLiteral.trim();
+}
+
+/** Candidates that still require an explicit clinical/non-clinical decision. */
+export function actionablePendingSpans(spans: readonly PremarkedSpan[]): PremarkedSpan[] {
+  return spans.filter(
+    (span) => span.status === 'pendiente' && span.review?.disposition !== 'excluido'
+  );
+}
+
+export interface ConceptSpanReconciliation {
+  concepts: ConceptAnnotation[];
+  spans: PremarkedSpan[];
+  linkedCount: number;
+  ambiguousCount: number;
+  unmatchedCount: number;
+}
+
+/**
+ * Reconnects persisted concept blocks to their source candidates when the
+ * relationship is unambiguous. This is intentionally conservative: duplicate
+ * literals are not guessed, and the annotator must decide those candidates.
+ */
+export function reconcileConceptSpanLinks(
+  concepts: readonly ConceptAnnotation[],
+  spans: readonly PremarkedSpan[]
+): ConceptSpanReconciliation {
+  const normalizedConcepts = concepts.map((concept) => ({ ...concept }));
+  const normalizedSpans = spans.map((span) => ({
+    ...span,
+    review: span.review ? { ...span.review } : undefined,
+    humanAudit: span.humanAudit ? { ...span.humanAudit } : undefined,
+  }));
+  const linkedSpanIds = new Set<string>();
+  let linkedCount = 0;
+  let ambiguousCount = 0;
+  let unmatchedCount = 0;
+
+  for (const concept of normalizedConcepts) {
+    let sourceSpan = concept.spanId
+      ? normalizedSpans.find((span) => span.spanId === concept.spanId)
+      : undefined;
+
+    if (!sourceSpan && concept.spanId) {
+      concept.spanId = undefined;
+    }
+
+    if (!sourceSpan && concept.textoLiteral.trim()) {
+      const literal = concept.textoLiteral.trim();
+      const candidates = normalizedSpans.filter(
+        (span) =>
+          span.review?.disposition !== 'excluido' &&
+          !linkedSpanIds.has(span.spanId) &&
+          span.textoLiteral.trim() === literal
+      );
+      if (candidates.length === 1) {
+        sourceSpan = candidates[0];
+        concept.spanId = sourceSpan.spanId;
+      } else if (candidates.length > 1) {
+        ambiguousCount += 1;
+      }
+    }
+
+    if (!sourceSpan) {
+      if (conceptIsComplete(concept)) unmatchedCount += 1;
+      continue;
+    }
+
+    linkedSpanIds.add(sourceSpan.spanId);
+    linkedCount += 1;
+    if (conceptIsComplete(concept)) {
+      // A persisted complete concept is the explicit human decision for its
+      // source span. Repair stale candidate status during rehydration.
+      sourceSpan.status = 'confirmado';
+      sourceSpan.review = {
+        disposition: 'elegible',
+        reason: sourceSpan.review?.reason ?? 'Vinculada al concepto codificado.',
+      };
+    }
+  }
+
+  return {
+    concepts: normalizedConcepts,
+    spans: normalizedSpans,
+    linkedCount,
+    ambiguousCount,
+    unmatchedCount,
+  };
+}
+
 export type CaseReviewOutcome = 'coded' | 'no-eligible-concepts';
 
 export interface CaseReview {

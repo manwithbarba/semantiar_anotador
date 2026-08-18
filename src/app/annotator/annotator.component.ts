@@ -48,6 +48,9 @@ import {
   TelemetryClickTarget,
   TelemetryDeletionType,
   Category,
+  actionablePendingSpans,
+  conceptHasContent,
+  conceptIsComplete,
   lexicalMentionComplete,
   LexicalAnnotation,
   LexicalDecisionStatus,
@@ -70,6 +73,7 @@ import {
   normalizeLexicalReview,
   buildTextSegments,
   normalizePremarkedSpans,
+  reconcileConceptSpanLinks,
   PremarkedSpan,
   TextSegment,
   CATEGORIES,
@@ -760,10 +764,22 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       );
     }
 
+    // A legacy JSON without a protocol has no lexical contract to enforce.
+    // Do not silently turn an old, coded-only note into an assisted lexical
+    // review. If lexical records are actually present, retain that layer.
+    const hasExplicitProtocol = !!doc._annotationProtocol;
+    const hasLexicalRecords = doc.cases.some(
+      (item) =>
+        (item.lexicalMentions?.length ?? 0) > 0 ||
+        !!item.lexicalReview ||
+        !!doc._lexicalInventory
+    );
     const resolvedProtocol =
       doc._annotationProtocol?.mode === 'core-blind'
         ? { ...CORE_BLIND_PROTOCOL, ...doc._annotationProtocol }
-        : { ...ASSISTED_ANNOTATION_PROTOCOL, ...doc._annotationProtocol };
+        : hasExplicitProtocol || hasLexicalRecords
+          ? { ...ASSISTED_ANNOTATION_PROTOCOL, ...doc._annotationProtocol }
+          : { ...ASSISTED_ANNOTATION_PROTOCOL, lexicalLayerEnabled: false };
     this.annotationProtocol.set(resolvedProtocol);
     this.lexicalInventory.set(doc._lexicalInventory);
     const lexicalLayerEnabled = resolvedProtocol.lexicalLayerEnabled === true;
@@ -784,7 +800,18 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
             return { ...newConcept(sequence), ...concept, sequence };
           })
         : [];
-      const hasCodedConcept = concepts.some((concept) => !!concept.sctid);
+      const reconciled = reconcileConceptSpanLinks(concepts, normalizedSpans.spans);
+      if (reconciled.linkedCount > 0 && !hasExplicitProtocol) {
+        migrationWarnings.push(
+          `${reconciled.linkedCount} concepto(s) se vincularon con su candidato de texto al cargar.`
+        );
+      }
+      if (reconciled.ambiguousCount > 0) {
+        migrationWarnings.push(
+          `${reconciled.ambiguousCount} concepto(s) conservan más de una coincidencia posible; deben revisarse.`
+        );
+      }
+      const hasCodedConcept = reconciled.concepts.some(conceptIsComplete);
       const lexicalReview = lexicalLayerEnabled
         ? normalizeLexicalReview(
             c.lexicalReview,
@@ -798,21 +825,34 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
               doc._lexicalInventory?.inventoryVersion ?? null
             )
           : undefined;
-      const review =
-        c.review?.status === 'finalized' &&
-        (!lexicalLayerEnabled || lexicalReview?.status === 'completed')
-          ? { ...c.review }
-          : hasCodedConcept && !lexicalLayerEnabled
-            ? { status: 'finalized' as const, outcome: 'coded' as const }
-            : { status: 'pending' as const };
+      const completeConcepts = reconciled.concepts.every(
+        (concept) => !conceptHasContent(concept) || conceptIsComplete(concept)
+      );
+      const spansReady = actionablePendingSpans(reconciled.spans).length === 0;
+      const lexicalReady =
+        !lexicalLayerEnabled ||
+        (!!lexicalReview &&
+          lexicalReview.status === 'completed' &&
+          normalizedLexicalMentions.mentions.every(lexicalMentionComplete));
+      const persistedReviewIsValid =
+        c.review?.status === 'finalized' && completeConcepts && spansReady && lexicalReady;
+      const canAutoFinalizeLegacy =
+        !c.review && hasCodedConcept && completeConcepts && spansReady && !lexicalLayerEnabled;
+      const review = persistedReviewIsValid || canAutoFinalizeLegacy
+        ? {
+            ...(c.review ?? {}),
+            status: 'finalized' as const,
+            outcome: c.review?.outcome ?? ('coded' as const),
+          }
+        : { status: 'pending' as const };
 
       return {
         id: String(c.id ?? ''),
         text,
         specialty: typeof c.specialty === 'string' && c.specialty.trim() ? c.specialty.trim() : null,
         textNorm,
-        spans: normalizedSpans.spans,
-        concepts,
+        spans: reconciled.spans,
+        concepts: reconciled.concepts,
         comentarios: String(c.comentarios ?? ''),
         review,
         lexicalMentions: normalizedLexicalMentions.mentions,
@@ -2273,7 +2313,53 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   }
 
   hasAnnotatedConcept(caseItem: CaseAnnotation): boolean {
-    return caseItem.concepts.some((concept) => !!concept.sctid);
+    return caseItem.concepts.some(conceptIsComplete);
+  }
+
+  casePendingSpanCount(caseItem: CaseAnnotation): number {
+    return actionablePendingSpans(caseItem.spans).length;
+  }
+
+  caseIncompleteConceptCount(caseItem: CaseAnnotation): number {
+    return caseItem.concepts.filter(
+      (concept) => conceptHasContent(concept) && !conceptIsComplete(concept)
+    ).length;
+  }
+
+  casePendingSpanLabels(caseItem: CaseAnnotation): string[] {
+    return actionablePendingSpans(caseItem.spans).map((span) => span.textoLiteral);
+  }
+
+  /** Human-readable blockers shared by the close buttons and the case card. */
+  caseClosureBlockers(caseItem: CaseAnnotation): string[] {
+    const blockers: string[] = [];
+    const pendingSpans = this.casePendingSpanCount(caseItem);
+    const incompleteConcepts = this.caseIncompleteConceptCount(caseItem);
+    const lexicalPending = this.lexicalPendingCount(caseItem);
+    if (pendingSpans) {
+      blockers.push(
+        `${pendingSpans} candidato${pendingSpans === 1 ? '' : 's'} sin decidir: aceptalo como concepto o descartalo.`
+      );
+    }
+    if (incompleteConcepts) {
+      blockers.push(
+        `${incompleteConcepts} concepto${incompleteConcepts === 1 ? '' : 's'} iniciado${incompleteConcepts === 1 ? '' : 's'} sin completar.`
+      );
+    }
+    if (!this.lexicalReviewReady(caseItem)) {
+      blockers.push(
+        lexicalPending
+          ? `${lexicalPending} forma${lexicalPending === 1 ? '' : 's'} breve${lexicalPending === 1 ? '' : 's'} sin decidir.`
+          : 'La revisión de formas breves todavía no está confirmada.'
+      );
+    }
+    return blockers;
+  }
+
+  caseCanFinalize(caseItem: CaseAnnotation, outcome: CaseReviewOutcome): boolean {
+    if (this.caseClosureBlockers(caseItem).length > 0) return false;
+    if (outcome === 'coded') return this.hasAnnotatedConcept(caseItem);
+    return !caseItem.concepts.some(conceptHasContent);
   }
 
   caseEligibleSpanCount(caseItem: CaseAnnotation): number {
@@ -2356,55 +2442,20 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     if (!caseItem) return;
     this.closeUnifiedLexicalReviewIfReady(caseIdx);
     const validationCase = this.cases()[caseIdx] ?? caseItem;
-    const codedConcepts = caseItem.concepts.filter((concept) => !!concept.sctid);
-    const conceptHasContent = (concept: ConceptAnnotation) =>
-      !!(concept.cat || concept.sctid || concept.term || concept.textoLiteral.trim());
-    const pendingSpans = caseItem.spans.filter(
-      (span) => span.review?.disposition !== 'excluido' && span.status === 'pendiente'
-    );
-
-    if (!this.lexicalReviewReady(validationCase)) {
-      const pending = this.lexicalPendingCount(validationCase);
-      this.snackBar.open(
-        pending
-          ? `Decidí qué hacer con las ${pending} formas breves pendientes y cerrá esa revisión.`
-          : 'Marcá como completa la revisión de formas breves antes de finalizar la nota.',
-        'OK',
-        { duration: 5500 }
-      );
-      return;
-    }
-
-    if (pendingSpans.length) {
-      this.snackBar.open(
-        `Revisá los ${pendingSpans.length} candidatos pendientes antes de finalizar la nota.`,
-        'OK',
-        { duration: 5000 }
-      );
+    const blockers = this.caseClosureBlockers(validationCase);
+    if (blockers.length) {
+      this.snackBar.open(blockers.join(' '), 'OK', { duration: 6500 });
       return;
     }
 
     if (outcome === 'coded') {
-      if (!codedConcepts.length) {
+      if (!this.hasAnnotatedConcept(validationCase)) {
         this.snackBar.open('Agregá y codificá al menos un concepto antes de finalizar.', 'OK', {
           duration: 4500,
         });
         return;
       }
-      const incompleteConcept = caseItem.concepts.some(
-        (concept) =>
-          conceptHasContent(concept) &&
-          (!concept.cat || !concept.sctid || !concept.textoLiteral.trim())
-      );
-      if (incompleteConcept) {
-        this.snackBar.open(
-          'Completá categoría, concepto SNOMED CT y texto literal en todos los bloques iniciados.',
-          'OK',
-          { duration: 5500 }
-        );
-        return;
-      }
-    } else if (caseItem.concepts.some(conceptHasContent)) {
+    } else if (validationCase.concepts.some(conceptHasContent)) {
       this.snackBar.open(
         'Esta nota tiene conceptos iniciados. Completalos o quitálos antes de marcarla sin conceptos anotables.',
         'OK',
@@ -2754,8 +2805,9 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
         ...(c.specialty?.trim() ? { specialty: c.specialty.trim() } : {}),
         textNorm: c.textNorm,
         spans: c.spans,
-        // Drop incomplete concept blocks on export (requires category AND (code OR literal text))
-        concepts: c.concepts.filter((x) => !!x.cat && (!!x.sctid || !!x.textoLiteral)),
+        // Preserve every started block. An unfinished concept is progress that
+        // must survive download/reload; closure, not export, enforces completeness.
+        concepts: c.concepts.map((concept) => ({ ...concept })),
         comentarios: c.comentarios,
         review: c.review,
         lexicalMentions: (c.lexicalMentions ?? []).map((mention) => ({
