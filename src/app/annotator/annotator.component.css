@@ -848,6 +848,7 @@
 }
 .case-finalization {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -870,6 +871,24 @@
   display: block;
   color: #5d687d;
   font-size: 12px;
+}
+.case-closure-blockers {
+  flex: 1 1 100%;
+  padding: 9px 11px;
+  border: 1px solid #f0c36d;
+  border-radius: 8px;
+  background: #fff8e8;
+  color: #684d16;
+  font-size: 12px;
+}
+.case-closure-blockers ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.case-closure-candidates {
+  display: block;
+  margin-top: 5px;
+  color: #7b5c1c;
 }
 .case-finalization-actions {
   flex: 0 0 auto;

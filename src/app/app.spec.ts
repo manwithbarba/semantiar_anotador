@@ -17,6 +17,114 @@ import {
 } from './models/annotation.model';
 import { prepareAnnotationDocument } from './models/annotation-interop';
 
+/** Sanitized structural fixture distilled from A034; it contains no clinical text. */
+function makeA034ContractFixture(): Record<string, unknown> {
+  const shape = [
+    [11, 5, 8, 9, false],
+    [2, 1, 1, 2, true],
+    [9, 7, 3, 8, false],
+    [2, 0, 1, 0, false],
+    [3, 0, 4, 0, false],
+    [1, 0, 0, 0, false],
+    [1, 0, 4, 0, false],
+    [1, 0, 0, 0, false],
+    [2, 0, 2, 0, false],
+    [3, 0, 0, 0, false],
+  ] as const;
+
+  const cases = shape.map(([spanCount, conceptCount, lexicalCount, confirmedCount, finalized], caseIndex) => {
+    const spanTokens = Array.from({ length: spanCount }, (_, index) => `S${caseIndex + 1}_${index + 1}`);
+    const lexicalTokens = Array.from({ length: lexicalCount }, (_, index) => `L${caseIndex + 1}_${index + 1}`);
+    const tokens = [...spanTokens, ...lexicalTokens];
+    const text = tokens.join(' ');
+    const offsets: Array<{ start: number; end: number; value: string }> = [];
+    let cursor = 0;
+    for (const token of tokens) {
+      offsets.push({ start: cursor, end: cursor + token.length, value: token });
+      cursor += token.length + 1;
+    }
+    const spans = spanTokens.map((token, index) => ({
+      spanId: `a034-span-${caseIndex + 1}-${index + 1}`,
+      start: offsets[index].start,
+      end: offsets[index].end,
+      textoLiteral: token,
+      origin: 'candidate',
+      confidence: 1,
+      status: index < confirmedCount ? 'confirmado' : 'pendiente',
+      review: {
+        disposition: 'elegible',
+        reason: 'Fixture estructural sin texto clínico.',
+      },
+    }));
+    const concepts = spans.slice(0, conceptCount).map((span, index) => ({
+      sequence: index + 1,
+      cat: 'Hallazgo clínico',
+      sctid: String(100000 + caseIndex * 100 + index),
+      term: `Concepto sintético ${caseIndex + 1}-${index + 1}`,
+      textoLiteral: span.textoLiteral,
+      pol: 'Activo',
+      cert: 'Confirmado',
+      temp: 'Actual',
+      suj: 'Paciente',
+      spanId: span.spanId,
+    }));
+    const lexicalMentions = lexicalTokens.map((token, index) => {
+      const mention = newHumanLexicalMention(
+        `a034-lex-${caseIndex + 1}-${index + 1}`,
+        offsets[spanCount + index].start,
+        offsets[spanCount + index].end,
+        token
+      );
+      if (caseIndex < 3) mention.annotation.decisionStatus = 'unknown';
+      return mention;
+    });
+
+    return {
+      id: `A034-SYNTH-${String(caseIndex + 1).padStart(2, '0')}`,
+      text,
+      textNorm: text,
+      spans,
+      concepts,
+      comentarios: '',
+      review: finalized
+        ? { status: 'finalized', outcome: 'coded' }
+        : { status: 'pending' },
+      lexicalMentions,
+      lexicalReview: caseIndex < 3
+        ? {
+            status: 'completed',
+            exhaustiveReviewRequired: true,
+            annotatorId: 'A034',
+            completedAt: '2026-08-17T12:00:00.000Z',
+            inventoryVersion: 'fixture',
+          }
+        : newLexicalReview('fixture'),
+    };
+  });
+
+  return {
+    schemaVersion: '1.0.0',
+    textProfile: { normalization: 'NFC', lineEndings: 'LF', offsetUnit: 'utf16-code-unit' },
+    terminology: {
+      server: 'https://example.invalid/fhir',
+      editionUri: 'http://snomed.info/sct',
+      version: null,
+      displayLanguage: 'es',
+      capturedAt: '2026-08-17T12:00:00.000Z',
+    },
+    producer: { app: 'SemantIAr', build: 'fixture', platform: 'web' },
+    project: 'A034 structural fixture',
+    batch: 'fixture',
+    annotatorId: 'A034',
+    cases,
+    _annotationProtocol: {
+      mode: 'assisted-span-review',
+      exhaustiveReviewRequired: true,
+      lexicalLayerEnabled: true,
+    },
+  };
+}
+
 describe('App', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -584,6 +692,94 @@ describe('App', () => {
     });
     expect(annotator.reviewedCount()).toBe(1);
     expect(annotator.sessionMeta()?.telemetry?.collectionMode).toBe('local-export-only');
+  });
+
+  it('should restore the sanitized A034 shape and keep closure blockers explicit', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+
+    const prepared = prepareAnnotationDocument(makeA034ContractFixture());
+    (annotator as any).ingestDocument(prepared.document, 'A034-structural-fixture.json');
+
+    expect(annotator.cases()).toHaveLength(10);
+    expect(annotator.cases().reduce((total, item) => total + item.spans.length, 0)).toBe(35);
+    expect(annotator.cases().reduce((total, item) => total + item.concepts.length, 0)).toBe(13);
+    expect(annotator.cases().reduce((total, item) => total + (item.lexicalMentions?.length ?? 0), 0)).toBe(23);
+
+    const first = annotator.cases()[0];
+    const second = annotator.cases()[1];
+    const third = annotator.cases()[2];
+    expect(first.review?.status).toBe('pending');
+    expect(annotator.casePendingSpanCount(first)).toBe(2);
+    expect(first.concepts.every((concept) => concept.spanId && concept.term)).toBe(true);
+    expect(second.review?.status).toBe('finalized');
+    expect(third.review?.status).toBe('pending');
+    expect(annotator.casePendingSpanCount(third)).toBe(1);
+    expect(annotator.caseClosureBlockers(first)[0]).toContain('2 candidatos');
+
+    for (const span of [...first.spans.filter((candidate) => candidate.status === 'pendiente')]) {
+      annotator.selectedSpan.set({ caseIndex: 0, spanId: span.spanId });
+      annotator.discardSelectedSpan(0);
+    }
+    expect(annotator.casePendingSpanCount(annotator.cases()[0])).toBe(0);
+    annotator.finalizeCase(0, 'coded');
+    expect(annotator.cases()[0].review?.status).toBe('finalized');
+  });
+
+  it('should preserve an incomplete concept block across download and reload', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    annotator.cases.set([
+      {
+        id: 'PERSIST-001',
+        text: 'marca',
+        textNorm: 'marca',
+        spans: [],
+        concepts: [{ ...newConcept(1), cat: 'Hallazgo clínico', textoLiteral: 'marca' }],
+        comentarios: '',
+        review: { status: 'pending' },
+      },
+    ]);
+
+    let capturedBlob: Blob | undefined;
+    const createObjectUrl = vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => {
+      capturedBlob = blob as Blob;
+      return 'blob:persistence-test';
+    });
+    const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+
+    await annotator.download();
+    const outputText = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(capturedBlob!);
+    });
+    const output = JSON.parse(outputText);
+    expect(output.cases[0].concepts).toHaveLength(1);
+    expect(output.cases[0].concepts[0]).toMatchObject({
+      cat: 'Hallazgo clínico',
+      textoLiteral: 'marca',
+      sctid: '',
+    });
+    const reloaded = prepareAnnotationDocument(output);
+    expect(reloaded.document).toBeTruthy();
+    (annotator as any).ingestDocument(reloaded.document, 'PERSIST-001.json');
+    expect(annotator.cases()[0].concepts[0]).toMatchObject({
+      cat: 'Hallazgo clínico',
+      textoLiteral: 'marca',
+      sctid: '',
+    });
+    expect(annotator.cases()[0].review?.status).toBe('pending');
+
+    click.mockRestore();
+    revokeObjectUrl.mockRestore();
+    createObjectUrl.mockRestore();
   });
 
   it('should reopen an inconsistent completed v2 lexical review on reload', async () => {

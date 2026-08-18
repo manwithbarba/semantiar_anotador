@@ -1136,7 +1136,7 @@
                 <div class="f-search">
                   <app-autocomplete-binding
                     [binding]="bindingFor(concept.cat)"
-                    [term]="concept.term"
+                    [term]="concept.sctid ? { code: concept.sctid, display: concept.term } : concept.term"
                     [terminologyServer]="terminologyServer()"
                     [editionUri]="editionUri()"
                     [readonly]="!concept.cat"
@@ -1251,14 +1251,29 @@
                   <span>Confirmá el resultado final de la revisión y descargá el JSON de anotación.</span>
                 </div>
               </div>
+              @if (caseClosureBlockers(caseItem).length) {
+                <div class="case-closure-blockers" role="status" aria-live="polite">
+                  <strong>Antes de cerrar</strong>
+                  <ul>
+                    @for (blocker of caseClosureBlockers(caseItem); track blocker) {
+                      <li>{{ blocker }}</li>
+                    }
+                  </ul>
+                  @if (casePendingSpanLabels(caseItem).length) {
+                    <span class="case-closure-candidates">
+                      Pendientes: {{ casePendingSpanLabels(caseItem).join(' · ') }}
+                    </span>
+                  }
+                </div>
+              }
               <div class="case-finalization-actions">
                 <button mat-flat-button color="primary"
-                        [disabled]="!hasAnnotatedConcept(caseItem) || !lexicalReviewReady(caseItem)"
+                        [disabled]="!caseCanFinalize(caseItem, 'coded')"
                         (click)="finalizeCase(ci, 'coded')">
                   <mat-icon>check_circle</mat-icon> Revisada con conceptos
                 </button>
                 <button mat-stroked-button
-                        [disabled]="hasAnnotatedConcept(caseItem) || !lexicalReviewReady(caseItem)"
+                        [disabled]="!caseCanFinalize(caseItem, 'no-eligible-concepts')"
                         (click)="finalizeCase(ci, 'no-eligible-concepts')">
                   <mat-icon>do_not_disturb_on</mat-icon> Sin conceptos anotables
                 </button>
