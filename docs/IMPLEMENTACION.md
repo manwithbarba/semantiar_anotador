@@ -376,7 +376,95 @@ GET https://implementation-demo.snomedtools.org/fhir/CodeSystem/$lookup
 
 ---
 
-## 10. Capa léxica v2 por aparición
+## 10. Comparación exploratoria de la calibración inicial
+
+### 10.1 Alcance y referencia utilizada
+
+La primera calibración reunió 38 entregas sobre los mismos diez casos. Sus
+resultados se compararon con un **conjunto de referencia provisional generado
+automáticamente**. Esa referencia sirvió para ordenar la devolución formativa y
+detectar patrones de error; no constituye consenso clínico, conjunto de
+referencia humano adjudicado ni certificación del desempeño de las personas
+anotadoras.
+
+Por esa razón, las cifras de esta sección son **descriptivas y exploratorias**.
+Tampoco representan concordancia entre anotadores: cada entrega se comparó por
+separado con la referencia provisional.
+
+### 10.2 Normalización, similitud y emparejamiento de menciones
+
+Antes de comparar los textos seleccionados, la rutina histórica normalizó cada
+literal mediante descomposición Unicode NFKD, eliminación de diacríticos,
+conversión a minúsculas, compactación de espacios y recorte de puntuación en los
+extremos.
+
+Sean `a` y `b` dos *spans* normalizados. La similitud textual `S(a,b)` se definió
+de la siguiente manera:
+
+- `1` cuando ambos textos eran idénticos;
+- `max(0,60; longitud_menor / longitud_mayor)` cuando uno contenía al otro;
+- `0,75 × O + 0,25 × R` en los demás casos, donde `O` es el coeficiente de
+  solapamiento entre los conjuntos de palabras y `R` es la razón de similitud
+  secuencial.
+
+Sólo se consideraron candidatos con `S(a,b) ≥ 0,55`. El emparejamiento fue
+uno-a-uno y voraz: se recorrieron los candidatos desde la mayor similitud y un
+*span* ya emparejado no podía reutilizarse.
+
+La implementación histórica empleó la coincidencia exacta de SCTID como
+criterio secundario cuando dos candidatos tenían la misma similitud textual.
+Esto puede modificar qué menciones quedan emparejadas y, por tanto, introduce
+una dependencia entre la alineación de límites y la evaluación del concepto.
+Se conserva aquí para reproducir las cifras históricas, pero refuerza su
+carácter exploratorio. En una evaluación confirmatoria, el criterio de
+emparejamiento deberá fijarse antes del análisis y depender exclusivamente del
+*span*; la comparación de SCTID deberá realizarse después de congelar los pares.
+
+### 10.3 Indicadores informados
+
+La comparación histórica informó:
+
+- **F1 de *span* flexible**: acepta los pares que superan el umbral de similitud;
+- **F1 de *span* estricto**: exige igualdad del literal normalizado;
+- **F1 de concepto flexible**: evalúa el SCTID en los pares admitidos por el
+  emparejamiento flexible;
+- **crédito jerárquico**: asigna crédito parcial a conceptos cercanos en la
+  jerarquía de SNOMED CT;
+- **F1 de concepto estricto**: exige coincidencia estricta de límites y SCTID;
+- **precisión y exhaustividad (*recall*)** del concepto flexible;
+- **kappa frente a la referencia provisional**: presencia o ausencia de cada
+  etiqueta exacta en un universo de 1.087 etiquetas, calculada para cada
+  persona anotadora y luego resumida.
+
+Para el crédito jerárquico se buscó un ancestro común y se sumó la distancia de
+ambos conceptos hasta él. La distancia se dividió por diez y se limitó a uno;
+el crédito fue `1 − distancia`. Si no existía un ancestro común recuperable, el
+crédito era cero.
+
+Los resultados agregados fueron: F1 de *span* flexible 0,642; F1 de *span*
+estricto 0,359; F1 de concepto flexible 0,347; crédito jerárquico 0,483; F1 de
+concepto estricto 0,225; precisión 0,406; exhaustividad 0,314; mediana individual
+del F1 de concepto flexible 0,361; y kappa medio frente a la referencia
+provisional 0,177.
+
+### 10.4 Interpretación de los errores
+
+Las banderas de error no son categorías mutuamente excluyentes. Una misma
+mención puede contribuir, por ejemplo, a un límite impreciso y a un SCTID
+incorrecto; además, la relación jerárquica inadecuada es un subconjunto de las
+discordancias de SCTID. Por eso, los 3.977 registros de la tabla del capítulo
+son marcas de error y no casos únicos. Sus porcentajes expresan la participación
+de cada marca sobre ese total y no deben sumarse ni interpretarse como tasa de
+personas o de notas afectadas.
+
+La evaluación confirmatoria requerirá un conjunto de referencia humano
+adjudicado, reglas de emparejamiento congeladas y una muestra independiente.
+Sólo entonces corresponderá estimar concordancia entre anotadores y desempeño
+frente a una referencia de evaluación.
+
+---
+
+## 11. Capa léxica v2 por aparición
 
 La capa léxica se ejecuta en paralelo con la anotación clínica SNOMED CT, pero
 conserva una unidad de decisión diferente: **cada aparición textual** de una
@@ -433,7 +521,7 @@ las tres releases para evitar divergencias.
 
 ---
 
-## 11. Limitaciones y trabajo futuro
+## 12. Limitaciones y trabajo futuro
 
 - **Idioma dependiente de la edición**: mientras la edición argentina no esté
   disponible en el servidor, la búsqueda opera sobre la edición Internacional en
