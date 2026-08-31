@@ -1245,6 +1245,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   }
 
   textMarkKindLabel(kind: TextMarkKind): string {
+    if (kind === 'pending') return 'Sugerencia pendiente de clasificar';
     if (kind === 'clinical') return 'Información clínica';
     if (kind === 'lexical') return 'Forma breve';
     return 'Información clínica y forma breve';

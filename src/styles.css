@@ -30,6 +30,16 @@ app-annotator .mark-both {
   --mark-background: #fef3c7;
   --mark-border: #b45309;
 }
+/* Automatic pre-marks stay neutral until the annotator assigns a dimension. */
+app-annotator .mark-pending,
+app-annotator .premarked-span:not(.mark-clinical):not(.mark-lexical):not(.mark-both) {
+  --mark-background: #e8edf3;
+  --mark-border: #64748b;
+}
+app-annotator .premarked-span.mark-pending {
+  border-bottom-style: dashed;
+  font-weight: 600;
+}
 app-annotator .premarked-span {
   border: 0;
   border-bottom: 3px solid var(--mark-border);

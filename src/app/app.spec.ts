@@ -692,11 +692,13 @@ describe('App', () => {
         spans: [
           {
             spanId: 'clinical', start: 0, end: 5, textoLiteral: 'dolor',
-            origin: 'human', confidence: 1, status: 'pendiente',
+            origin: 'human', confidence: 1, status: 'confirmado',
+            review: { disposition: 'elegible', reason: 'Mención confirmada para la prueba visual.' },
           },
           {
             spanId: 'both', start: 9, end: 12, textoLiteral: 'IAM',
-            origin: 'human', confidence: 1, status: 'pendiente',
+            origin: 'human', confidence: 1, status: 'confirmado',
+            review: { disposition: 'elegible', reason: 'Mención confirmada para la prueba visual.' },
           },
         ],
         concepts: [],

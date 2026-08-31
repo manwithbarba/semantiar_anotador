@@ -287,6 +287,7 @@
                     class="premarked-span"
                     role="button"
                     tabindex="0"
+                    [class.mark-pending]="mark.kind === 'pending'"
                     [class.mark-clinical]="mark.kind === 'clinical'"
                     [class.mark-lexical]="mark.kind === 'lexical'"
                     [class.mark-both]="mark.kind === 'both'"
@@ -324,6 +325,7 @@
         </p>
         @if (!unifiedReviewPrototype() || premarkedVisibleFor(ci)) {
           <div class="annotation-mark-legend" aria-label="Leyenda de marcas en la nota">
+            <span><i class="mark-swatch mark-pending" aria-hidden="true">?</i> Sugerencia pendiente</span>
             <span><i class="mark-swatch mark-clinical" aria-hidden="true">C</i> Información clínica</span>
             <span><i class="mark-swatch mark-lexical" aria-hidden="true">F</i> Forma breve</span>
             <span><i class="mark-swatch mark-both" aria-hidden="true">A</i> Ambas dimensiones</span>

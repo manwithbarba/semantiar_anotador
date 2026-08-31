@@ -145,8 +145,14 @@ export interface PremarkedSpan {
   humanAudit?: SpanHumanAudit;
 }
 
-/** Visual dimension represented by one exact source range. */
-export type TextMarkKind = 'clinical' | 'lexical' | 'both';
+/**
+ * Visual state represented by one exact source range.
+ *
+ * `pending` is deliberately a fourth, temporary display state: it is the
+ * neutral colour used for an automatic pre-mark until the annotator chooses
+ * clinical information, a brief form, both dimensions, or excludes it.
+ */
+export type TextMarkKind = 'pending' | 'clinical' | 'lexical' | 'both';
 
 /**
  * Presentation-only grouping for records that share the same exact offsets.
@@ -222,7 +228,7 @@ export function normalizePremarkedSpans(
   return { spans, invalidCount };
 }
 
-/** Groups clinical and lexical records by exact range for display only. */
+/** Groups pending, clinical and lexical records by exact range for display only. */
 export function buildTextMarks(
   textNorm: string,
   spans: readonly PremarkedSpan[],
@@ -254,12 +260,17 @@ export function buildTextMarks(
     .map(([key, groupedRange]): TextMark | null => {
       const selectableSpans = groupedRange.spans.filter((span) => span.status !== 'descartado');
       const activeClinical = selectableSpans.some(
-        (span) => span.review?.disposition !== 'excluido'
+        (span) =>
+          span.status === 'confirmado' && span.review?.disposition !== 'excluido'
+      );
+      const pendingClinical = selectableSpans.some(
+        (span) =>
+          span.status === 'pendiente' && span.review?.disposition !== 'excluido'
       );
       const activeLexical = groupedRange.lexicalMentions.filter(
         (mention) => mention.annotation.decisionStatus !== 'rejected'
       );
-      if (!activeClinical && activeLexical.length === 0) return null;
+      if (!activeClinical && activeLexical.length === 0 && !pendingClinical) return null;
       return {
         key,
         start: groupedRange.start,
@@ -269,7 +280,9 @@ export function buildTextMarks(
           ? 'both'
           : activeClinical
             ? 'clinical'
-            : 'lexical',
+            : activeLexical.length
+              ? 'lexical'
+              : 'pending',
         spans: selectableSpans,
         lexicalMentions: activeLexical,
       };

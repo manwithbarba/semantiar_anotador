@@ -48,7 +48,7 @@ describe('premarked span helpers', () => {
             start: 0,
             end: 13,
             surface: 'FX DE RODILLA',
-            kind: 'clinical',
+            kind: 'pending',
             spans: [result.spans[0]],
             lexicalMentions: [],
           },
@@ -56,6 +56,32 @@ describe('premarked span helpers', () => {
       },
       { kind: 'text', value: ' con dolor' },
     ]);
+  });
+
+  it('keeps automatic premarks neutral until the annotator confirms a dimension', () => {
+    const text = 'dolor';
+    const pending = normalizePremarkedSpans(
+      [{
+        spanId: 'candidate',
+        start: 0,
+        end: text.length,
+        textoLiteral: text,
+        origin: 'candidate',
+        confidence: 1,
+        status: 'pendiente',
+      }],
+      text,
+    );
+    expect(buildTextMarks(text, pending.spans)[0]?.kind).toBe('pending');
+
+    const confirmed = normalizePremarkedSpans(
+      [{
+        ...pending.spans[0],
+        status: 'confirmado',
+      }],
+      text,
+    );
+    expect(buildTextMarks(text, confirmed.spans)[0]?.kind).toBe('clinical');
   });
 
   it('reports malformed spans while preserving valid overlapping spans', () => {
@@ -158,7 +184,7 @@ describe('premarked span helpers', () => {
         textoLiteral: 'dolor',
         origin: 'human' as const,
         confidence: 1,
-        status: 'pendiente' as const,
+        status: 'confirmado' as const,
       },
       {
         spanId: 'both',
@@ -167,7 +193,7 @@ describe('premarked span helpers', () => {
         textoLiteral: 'IAM',
         origin: 'human' as const,
         confidence: 1,
-        status: 'pendiente' as const,
+        status: 'confirmado' as const,
       },
     ];
     const lexicalOnly = newHumanLexicalMention('lexical', 6, 8, 'FC');
