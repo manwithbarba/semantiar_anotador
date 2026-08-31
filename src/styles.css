@@ -17,6 +17,100 @@ body {
   box-sizing: border-box;
 }
 
+/* Text-mark palette is global to keep the large annotator component below its CSS budget. */
+app-annotator .mark-clinical {
+  --mark-background: #cffaf0;
+  --mark-border: #0f766e;
+}
+app-annotator .mark-lexical {
+  --mark-background: #ede9fe;
+  --mark-border: #6d28d9;
+}
+app-annotator .mark-both {
+  --mark-background: #fef3c7;
+  --mark-border: #b45309;
+}
+app-annotator .premarked-span {
+  border: 0;
+  border-bottom: 3px solid var(--mark-border);
+  border-radius: 4px;
+  background: var(--mark-background);
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0 2px;
+  user-select: text;
+}
+app-annotator .premarked-span-group.overlapping {
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  border-bottom: 2px dotted #475569;
+}
+app-annotator .premarked-span.overlap-marker {
+  display: inline-grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  margin-left: 2px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--mark-border);
+  color: #fff;
+  padding: 0 3px;
+  vertical-align: super;
+  user-select: none;
+}
+app-annotator .overlap-choice {
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+}
+app-annotator .overlap-choice::before {
+  content: attr(data-choice);
+}
+app-annotator .overlap-help {
+  margin: -8px 0 12px;
+  color: #625873;
+  font-size: 11px;
+  line-height: 1.35;
+}
+app-annotator .premarked-span:hover,
+app-annotator .premarked-span:focus-visible,
+app-annotator .premarked-span.selected {
+  filter: brightness(0.94);
+  outline: 2px solid var(--mark-border);
+  outline-offset: 2px;
+}
+app-annotator .premarked-span.overlap-marker:hover,
+app-annotator .premarked-span.overlap-marker:focus-visible,
+app-annotator .premarked-span.overlap-marker.selected {
+  filter: brightness(0.75);
+}
+app-annotator .annotation-mark-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 7px 2px 14px;
+  color: #4b5563;
+}
+app-annotator .annotation-mark-legend > span {
+  display: inline-grid;
+  grid-auto-flow: column;
+  gap: 5px;
+}
+app-annotator .mark-swatch {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--mark-border);
+  border-radius: 5px;
+  background: var(--mark-background);
+  color: var(--mark-border);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+}
+
 /* Local prototype: a unified queue that sits above the existing detailed forms. */
 .unified-review {
   margin: 14px 0;
@@ -171,6 +265,68 @@ body {
 .unified-review-item[open] > summary { margin-bottom: 10px; border-bottom: 1px solid #e1edf4; padding-bottom: 9px; }
 .unified-review-item strong, .unified-review-item summary span { display: block; }
 .unified-review-item strong { color: #203346; font-size: 15px; }
+.unified-clinical-attributes {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.75fr) minmax(300px, 1.25fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 11px;
+  border: 1px solid #c8ddec;
+  border-radius: 9px;
+  background: #f7fbff;
+  padding: 10px 11px;
+}
+.unified-clinical-attributes-copy,
+.unified-clinical-attributes-values {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 8px;
+}
+.unified-clinical-attributes-copy {
+  display: grid;
+  gap: 3px;
+}
+.unified-clinical-attributes-copy > span:last-child {
+  color: #63798a;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.unified-clinical-attributes-review {
+  color: #2b7b84 !important;
+  font-size: 10px !important;
+  font-weight: 800;
+}
+.unified-clinical-attributes-review.pending {
+  color: #a2681a !important;
+}
+.unified-clinical-attributes-title {
+  color: #1e4f70;
+  font-size: 12px;
+  font-weight: 800;
+}
+.unified-clinical-attributes-values span {
+  border: 1px solid #d7e5ef;
+  border-radius: 999px;
+  background: #fff;
+  color: #315a73;
+  font-size: 11px;
+  line-height: 1.25;
+  padding: 4px 7px;
+  white-space: nowrap;
+}
+.unified-clinical-attributes-values strong {
+  display: inline;
+  margin-right: 4px;
+  color: #1e4f70;
+  font-size: 10px;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+.unified-clinical-attributes button {
+  min-height: 34px;
+  white-space: nowrap;
+}
 .unified-choice p { margin: 0 0 9px; color: #1e4f70; font-size: 14px; font-weight: 800; }
 .unified-choice-actions, .unified-item-actions { flex-wrap: wrap; justify-content: flex-start; }
 .unified-choice-actions button, .unified-item-actions button { min-height: 38px; }
@@ -193,9 +349,54 @@ body {
 .unified-detail-content { padding: 0 13px 13px; }
 .unified-empty { border: 1px dashed #a9c9df; border-radius: 8px; color: #506b7d; padding: 11px 12px; font-size: 13px; }
 
+/* Local trial of additional clinical context fields. */
+.context-review-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  color: #315e59;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.context-review-toggle input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: #2b7b84;
+}
+.context-review-toggle > span {
+  color: inherit !important;
+  font-size: inherit !important;
+}
+.context-extra-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+  border-top: 1px dashed #d5e0e9;
+  padding-top: 10px;
+}
+.context-extra-row:empty {
+  display: none;
+}
+.f-extra {
+  min-width: 0;
+}
+.f-extra mat-hint,
+.f-section mat-hint {
+  color: #63798a;
+}
+
 @media (max-width: 650px) {
   .unified-review-head, .unified-review-progress, .unified-marking-stage-body { align-items: stretch; flex-direction: column; }
   .unified-detail-mode-banner { align-items: stretch; flex-direction: column; }
+  .unified-clinical-attributes { grid-template-columns: 1fr; }
+  .unified-clinical-attributes button { justify-self: start; }
+  .context-review-toggle { margin-left: 0; }
+  .context-extra-row { grid-template-columns: 1fr; }
   .case-workflow-steps { align-items: stretch; flex-direction: column; }
   .case-workflow-arrow { display: none; }
   .unified-detail-navigation, .unified-same-mark-actions { align-items: stretch; flex-direction: column; }

@@ -33,7 +33,11 @@ import {
   AutocompleteBindingComponent,
   AutocompleteTelemetryEvent,
 } from '../bindings/autocomplete-binding/autocomplete-binding.component';
-import { TerminologyService } from '../services/terminology.service';
+import {
+  TerminologyConceptHierarchy,
+  TerminologyHierarchyConcept,
+  TerminologyService,
+} from '../services/terminology.service';
 import {
   AnnotationDocument,
   ASSISTED_ANNOTATION_PROTOCOL,
@@ -48,6 +52,8 @@ import {
   TelemetryClickTarget,
   TelemetryDeletionType,
   Category,
+  CLINICAL_SECTIONS,
+  CLINICAL_STATUSES,
   actionablePendingSpans,
   conceptHasContent,
   conceptIsComplete,
@@ -66,6 +72,7 @@ import {
   LexicalMention,
   LexicalSenseOption,
   newHumanLexicalMention,
+  newLexicalAnnotation,
   newLexicalReview,
   normalizeEvidenceCodes,
   normalizeLexicalAnnotation,
@@ -75,6 +82,8 @@ import {
   normalizePremarkedSpans,
   reconcileConceptSpanLinks,
   PremarkedSpan,
+  TextMark,
+  TextMarkKind,
   TextSegment,
   CATEGORIES,
   CERTAINTIES,
@@ -86,10 +95,12 @@ import {
   isValidTextSpan,
   newConcept,
   POLARITIES,
+  PROCEDURE_STATUSES,
   SEMANTIAR_SCHEMA_VERSION,
   SEMANTIAR_TEXT_PROFILE,
   SessionEntry,
   SUBJECTS,
+  SEVERITIES,
   TELEMETRY_APP_BUILD,
   TELEMETRY_IDLE_THRESHOLD_MS,
   TEMPORALITIES,
@@ -103,6 +114,11 @@ type UnifiedReviewItemKind = 'pending' | 'clinical' | 'lexical' | 'both' | 'skip
 type UnifiedReviewChoice = 'clinical' | 'lexical' | 'both' | 'skip';
 type UnifiedDetailTarget = 'clinical' | 'lexical' | 'both';
 type CaseWorkflowStep = 'cell' | 'marking' | 'decisions' | 'finalize';
+type HierarchyLoadStatus = 'idle' | 'loading' | 'ready' | 'error';
+
+interface ConceptHierarchyViewState extends TerminologyConceptHierarchy {
+  status: HierarchyLoadStatus;
+}
 
 /**
  * Presentation-only grouping for the local unified-review prototype.
@@ -166,6 +182,10 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   readonly certainties = CERTAINTIES;
   readonly temporalities = TEMPORALITIES;
   readonly subjects = SUBJECTS;
+  readonly clinicalSections = CLINICAL_SECTIONS;
+  readonly clinicalStatuses = CLINICAL_STATUSES;
+  readonly procedureStatuses = PROCEDURE_STATUSES;
+  readonly severities = SEVERITIES;
   readonly lexicalDecisions = LEXICAL_DECISIONS;
   readonly lexicalFormTypes = LEXICAL_FORM_TYPES;
   readonly lexicalFunctions = LEXICAL_FUNCTIONS;
@@ -200,6 +220,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   activeCaseIndex = signal<number>(0);
   caseSearch = signal<string>('');
   selectedSpan = signal<{ caseIndex: number; spanId: string } | null>(null);
+  selectedTextMark = signal<{ caseIndex: number; key: string } | null>(null);
   humanSpanDraft = signal<{ caseIndex: number; start: number; end: number; textoLiteral: string } | null>(
     null
   );
@@ -223,6 +244,11 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     key: string;
     target: UnifiedDetailTarget;
   } | null>(null);
+  /**
+   * Read-only terminology context keyed by case/concept position. It is kept
+   * out of the annotation model so hierarchy refreshes never alter exports.
+   */
+  private conceptHierarchy = signal<Record<string, ConceptHierarchyViewState>>({});
 
   /** Session metadata (upload/download audit trail). */
   sessionMeta = signal<AnnotationMeta | null>(null);
@@ -609,6 +635,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       this.terminologyService.setEditionUri(info.editionUri);
       this.terminologyService.setDisplayLanguage(info.displayLanguage);
       this.editionLabel.set(info.label);
+      this.conceptHierarchy.set({});
       // No notice on success (Argentina present). Only warn on the English fallback.
       if (!info.isArgentina) {
         this.snackBar.open(
@@ -797,7 +824,14 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       const concepts = Array.isArray(c.concepts)
         ? c.concepts.map((concept, index) => {
             const sequence = typeof concept.sequence === 'number' ? concept.sequence : index + 1;
-            return { ...newConcept(sequence), ...concept, sequence };
+            // Existing JSON files predate the explicit context confirmation.
+            // Treat their already persisted four attributes as reviewed, while
+            // keeping newly created concepts pending until the annotator checks
+            // the confirmation control.
+            const contextReviewed = Object.prototype.hasOwnProperty.call(concept, 'contextReviewed')
+              ? concept.contextReviewed !== false
+              : true;
+            return { ...newConcept(sequence), ...concept, contextReviewed, sequence };
           })
         : [];
       const reconciled = reconcileConceptSpanLinks(concepts, normalizedSpans.spans);
@@ -865,6 +899,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.activeCaseIndex.set(0);
     this.caseSearch.set('');
     this.selectedSpan.set(null);
+    this.selectedTextMark.set(null);
     this.humanSpanDraft.set(null);
     this.lexicalQuickEntry.set({});
     this.mentionQuickEntry.set({});
@@ -872,6 +907,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.unifiedMarkingPhase.set(Object.fromEntries(cases.map((_, index) => [index, true])));
     this.caseWorkflowSteps.set(Object.fromEntries(cases.map((_, index) => [index, 'cell' as CaseWorkflowStep])));
     this.unifiedDetailContext.set(null);
+    this.conceptHierarchy.set({});
 
     // --- Session metadata: preserve existing or initialise ---
     const now = new Date().toISOString();
@@ -969,6 +1005,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.trace.set(undefined);
     this.lexicalInventory.set(undefined);
     this.selectedSpan.set(null);
+    this.selectedTextMark.set(null);
     this.humanSpanDraft.set(null);
     this.lexicalQuickEntry.set({});
     this.mentionQuickEntry.set({});
@@ -976,6 +1013,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.unifiedMarkingPhase.set({});
     this.caseWorkflowSteps.set({});
     this.unifiedDetailContext.set(null);
+    this.conceptHierarchy.set({});
     this.activeCaseIndex.set(0);
     this.caseSearch.set('');
     this.sessionMeta.set(null);
@@ -1048,7 +1086,45 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   }
 
   textSegments(caseItem: CaseAnnotation): TextSegment[] {
-    return buildTextSegments(caseItem.textNorm, caseItem.spans);
+    return buildTextSegments(caseItem.textNorm, caseItem.spans, caseItem.lexicalMentions ?? []);
+  }
+
+  textMarkKindLabel(kind: TextMarkKind): string {
+    if (kind === 'clinical') return 'Información clínica';
+    if (kind === 'lexical') return 'Forma breve';
+    return 'Información clínica y forma breve';
+  }
+
+  textMarkSelected(caseIdx: number, key: string): boolean {
+    const selected = this.selectedTextMark();
+    return selected?.caseIndex === caseIdx && selected.key === key;
+  }
+
+  selectedTextMarkFor(caseIdx: number): TextMark | null {
+    const selected = this.selectedTextMark();
+    const caseItem = this.cases()[caseIdx];
+    if (!selected || selected.caseIndex !== caseIdx || !caseItem) return null;
+    for (const segment of this.textSegments(caseItem)) {
+      if (segment.kind === 'span') {
+        const mark = segment.marks.find((candidate) => candidate.key === selected.key);
+        if (mark) return mark;
+      }
+    }
+    return null;
+  }
+
+  selectTextMark(caseIdx: number, mark: TextMark): void {
+    this.selectedTextMark.set({ caseIndex: caseIdx, key: mark.key });
+    const sourceSpan = mark.spans.find((span) => span.status !== 'descartado');
+    this.selectedSpan.set(
+      sourceSpan ? { caseIndex: caseIdx, spanId: sourceSpan.spanId } : null
+    );
+    if (this.unifiedMarkingPhaseActive(caseIdx)) {
+      this.caseWorkflowSteps.update((current) => ({ ...current, [caseIdx]: 'marking' }));
+    }
+    if (this.unifiedReviewPrototype() && !this.unifiedMarkingPhaseActive(caseIdx)) {
+      this.openUnifiedReviewItem(caseIdx, mark.key);
+    }
   }
 
   /** Source offset for a rendered segment, used by manual span selection. */
@@ -1084,7 +1160,9 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   conceptMetaLabel(concept: ConceptAnnotation): string {
     const category = concept.cat?.trim();
     if (concept.sctid?.trim()) {
-      return `${category || 'Concepto clínico'} · Codificado`;
+      return `${category || 'Concepto clínico'} · Codificado${
+        concept.contextReviewed === false ? ' · contexto pendiente' : ''
+      }`;
     }
     if (concept.textoLiteral?.trim() || concept.term?.trim()) {
       return `${category || 'Mención clínica'} · Pendiente de codificación`;
@@ -1119,6 +1197,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       this.unifiedMarkingPhase.update((current) => ({ ...current, [caseIdx]: true }));
       this.unifiedDetailContext.set(null);
       this.selectedSpan.set(null);
+      this.selectedTextMark.set(null);
       this.humanSpanDraft.set(null);
       this.scrollCaseSection(caseIdx, 'source');
       return;
@@ -1163,6 +1242,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.caseWorkflowSteps.update((current) => ({ ...current, [caseIdx]: 'marking' }));
     this.unifiedDetailContext.set(null);
     this.selectedSpan.set(null);
+    this.selectedTextMark.set(null);
     this.humanSpanDraft.set(null);
   }
 
@@ -1283,6 +1363,11 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
 
   private unifiedConceptComplete(item: UnifiedReviewItem): boolean {
     const concept = item.concept;
+    return this.unifiedConceptCodingComplete(item) && concept?.contextReviewed !== false;
+  }
+
+  private unifiedConceptCodingComplete(item: UnifiedReviewItem): boolean {
+    const concept = item.concept;
     return !!concept?.cat && !!concept.sctid && !!concept.textoLiteral?.trim();
   }
 
@@ -1387,9 +1472,12 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       return `Clínica + abreviatura contextual · ${clinicalStatus} · ${lexicalStatus}`;
     }
     if (item.kind === 'clinical') {
-      return this.unifiedConceptComplete(item)
-        ? 'Solo información clínica · codificada'
-        : 'Solo información clínica · pendiente de codificación';
+      if (!this.unifiedConceptCodingComplete(item)) {
+        return 'Solo información clínica · pendiente de codificación';
+      }
+      return item.concept?.contextReviewed === false
+        ? 'Solo información clínica · codificada · contexto pendiente'
+        : 'Solo información clínica · codificada';
     }
     return this.unifiedLexicalComplete(item)
       ? 'Solo abreviatura contextual · decidida'
@@ -1397,9 +1485,12 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   }
 
   unifiedClinicalDescription(item: UnifiedReviewItem): string {
-    return this.unifiedConceptComplete(item)
-      ? 'Esta aparición ya tiene información clínica codificada. Podés abrir el detalle para revisarla o modificarla.'
-      : 'Esta aparición quedó como información clínica. Completá jerarquía, concepto SNOMED CT y contexto.';
+    if (!this.unifiedConceptCodingComplete(item)) {
+      return 'Esta aparición quedó como información clínica. Completá jerarquía, concepto SNOMED CT y contexto.';
+    }
+    return item.concept?.contextReviewed === false
+      ? 'La codificación está completa. Confirmá explícitamente los cuatro atributos de contexto antes de cerrar la nota.'
+      : 'Esta aparición ya tiene información clínica codificada. Podés abrir el detalle para revisarla o modificarla.';
   }
 
   unifiedLexicalDescription(item: UnifiedReviewItem): string {
@@ -1410,6 +1501,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
 
   unifiedBothDescription(item: UnifiedReviewItem): string {
     const clinicalComplete = this.unifiedConceptComplete(item);
+    const clinicalCoded = this.unifiedConceptCodingComplete(item);
     const lexicalComplete = this.unifiedLexicalComplete(item);
     if (clinicalComplete && lexicalComplete) {
       return 'La información clínica y la abreviatura contextual de esta aparición ya están completas. Podés abrir ambas capas para revisarlas o modificarlas.';
@@ -1418,7 +1510,12 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       return 'La información clínica ya está codificada; falta completar la abreviatura contextual de esta misma aparición.';
     }
     if (lexicalComplete) {
-      return 'El significado contextual ya está decidido; falta completar la codificación clínica de esta misma aparición.';
+      return clinicalCoded
+        ? 'El significado contextual ya está decidido; falta confirmar los cuatro atributos de contexto clínico.'
+        : 'El significado contextual ya está decidido; falta completar la codificación clínica de esta misma aparición.';
+    }
+    if (clinicalCoded) {
+      return 'La codificación clínica está completa; falta confirmar los cuatro atributos de contexto clínico y completar la abreviatura contextual.';
     }
     return 'La misma aparición requiere codificación clínica y abreviatura contextual.';
   }
@@ -1430,6 +1527,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     if (!spanId) return;
     this.humanSpanDraft.set(null);
     this.selectedSpan.set(null);
+    this.selectedTextMark.set(null);
     window.getSelection()?.removeAllRanges();
     if (this.unifiedMarkingPhaseActive(caseIdx)) {
       this.caseWorkflowSteps.update((current) => ({ ...current, [caseIdx]: 'marking' }));
@@ -1480,6 +1578,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       });
       const sequence = this.confirmSpanAsClinical(caseIdx, span.spanId);
       this.selectedSpan.set(null);
+      this.selectedTextMark.set(null);
       if (sequence !== undefined) this.focusConcept(caseIdx, sequence);
       this.snackBar.open(
         'La marca quedó como término con información clínica.',
@@ -1509,6 +1608,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.unifiedDetailContext.set({ caseIdx, key, target: 'both' });
     const sequence = this.confirmSpanAsClinical(caseIdx, span.spanId);
     this.selectedSpan.set(null);
+    this.selectedTextMark.set(null);
     if (sequence !== undefined) this.focusConcept(caseIdx, sequence);
     this.snackBar.open('La misma marca quedó como Ambos.', 'OK', { duration: 3200 });
   }
@@ -1621,6 +1721,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       };
     });
     this.selectedSpan.set(null);
+    this.selectedTextMark.set(null);
     this.updateCaseTelemetry(caseIdx, (item) => (item.spansAccepted += 1));
   }
 
@@ -1840,6 +1941,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       targetCase.spans.sort((left, right) => left.start - right.start || left.end - right.end);
     });
     this.selectedSpan.set({ caseIndex: caseIdx, spanId });
+    this.selectedTextMark.set({ caseIndex: caseIdx, key: `range-${start}-${end}` });
     this.updateCaseTelemetry(caseIdx, (item) => (item.manualSpansAdded += 1));
     return spanId;
   }
@@ -2066,6 +2168,15 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     return this.lexicalSections.find((option) => option.value === value)?.label ?? `Valor existente: ${value}`;
   }
 
+  clinicalSectionLabel(value: string | null): string {
+    if (!value) return 'Sin especificar';
+    return this.clinicalSections.find((option) => option.value === value)?.label ?? `Valor existente: ${value}`;
+  }
+
+  isKnownClinicalSection(section: string | null): boolean {
+    return !!section && this.clinicalSections.some((option) => option.value === section);
+  }
+
   lexicalEvidenceSummary(values: readonly string[]): string {
     if (!values.length) return 'Sin pistas seleccionadas';
     const labels = values.map(
@@ -2224,40 +2335,101 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
 
   adjustSelectedSpanBounds(caseIdx: number): void {
     const draft = this.humanSpanDraft();
-    const selected = this.selectedSpanFor(caseIdx);
+    const selected = this.selectedTextMarkFor(caseIdx);
     const caseItem = this.cases()[caseIdx];
     if (!draft || draft.caseIndex !== caseIdx || !selected || !caseItem) return;
 
+    if (draft.start === selected.start && draft.end === selected.end) {
+      this.snackBar.open('La selección ya tiene esos límites.', 'OK', { duration: 2800 });
+      return;
+    }
+
+    const selectedSpanIds = new Set(selected.spans.map((span) => span.spanId));
+    const selectedMentionIds = new Set(
+      selected.lexicalMentions.map((mention) => mention.mentionId)
+    );
+    const collidesWithAnotherRange =
+      caseItem.spans.some(
+        (span) =>
+          !selectedSpanIds.has(span.spanId) &&
+          span.status !== 'descartado' &&
+          span.review?.disposition !== 'excluido' &&
+          span.start === draft.start &&
+          span.end === draft.end
+      ) ||
+      (caseItem.lexicalMentions ?? []).some(
+        (mention) =>
+          !selectedMentionIds.has(mention.mentionId) &&
+          mention.annotation.decisionStatus !== 'rejected' &&
+          mention.start === draft.start &&
+          mention.end === draft.end
+      );
+    if (collidesWithAnotherRange) {
+      this.snackBar.open(
+        'Ya existe otra marca con esos límites. Podés superponerla parcialmente, pero no duplicarla.',
+        'OK',
+        { duration: 4500 }
+      );
+      return;
+    }
+
     const changedAt = new Date().toISOString();
     this.mutateCase(caseIdx, (targetCase) => {
-      const targetSpan = targetCase.spans.find((span) => span.spanId === selected.spanId);
-      if (!targetSpan) return;
-      const existingAudit = targetSpan.humanAudit ?? {};
-      targetSpan.humanAudit = {
-        ...existingAudit,
-        originalStart: existingAudit.originalStart ?? targetSpan.start,
-        originalEnd: existingAudit.originalEnd ?? targetSpan.end,
-        originalTextoLiteral: existingAudit.originalTextoLiteral ?? targetSpan.textoLiteral,
-        boundaryAdjusted: true,
-        lastAction: 'boundary_adjusted',
-        lastActionAt: changedAt,
-        lastActionPlatform: this.currentPlatform,
-      };
-      targetSpan.start = draft.start;
-      targetSpan.end = draft.end;
-      targetSpan.textoLiteral = draft.textoLiteral;
-      targetSpan.status = 'pendiente';
+      for (const targetSpan of targetCase.spans.filter((span) => selectedSpanIds.has(span.spanId))) {
+        const existingAudit = targetSpan.humanAudit ?? {};
+        targetSpan.humanAudit = {
+          ...existingAudit,
+          originalStart: existingAudit.originalStart ?? targetSpan.start,
+          originalEnd: existingAudit.originalEnd ?? targetSpan.end,
+          originalTextoLiteral: existingAudit.originalTextoLiteral ?? targetSpan.textoLiteral,
+          boundaryAdjusted: true,
+          lastAction: 'boundary_adjusted',
+          lastActionAt: changedAt,
+          lastActionPlatform: this.currentPlatform,
+        };
+        targetSpan.start = draft.start;
+        targetSpan.end = draft.end;
+        targetSpan.textoLiteral = draft.textoLiteral;
+        targetSpan.status = 'pendiente';
+      }
       targetCase.concepts
-        .filter((concept) => concept.spanId === targetSpan.spanId)
+        .filter((concept) => !!concept.spanId && selectedSpanIds.has(concept.spanId))
         .forEach((concept) => (concept.textoLiteral = draft.textoLiteral));
+
+      const adjustedLexicalMentions = (targetCase.lexicalMentions ?? []).filter((mention) =>
+        selectedMentionIds.has(mention.mentionId)
+      );
+      for (const mention of adjustedLexicalMentions) {
+        mention.start = draft.start;
+        mention.end = draft.end;
+        mention.surface = draft.textoLiteral;
+        mention.normalizedKey = draft.textoLiteral.trim().toLocaleUpperCase('es-AR');
+        mention.candidateSenseIds = [];
+        mention.annotation = newLexicalAnnotation(draft.textoLiteral);
+      }
+      if (adjustedLexicalMentions.length) this.reopenLexicalReview(targetCase);
+
       targetCase.spans.sort((left, right) => left.start - right.start || left.end - right.end);
+      targetCase.lexicalMentions?.sort(
+        (left, right) => left.start - right.start || left.end - right.end
+      );
     });
     this.humanSpanDraft.set(null);
     window.getSelection()?.removeAllRanges();
-    this.updateCaseTelemetry(caseIdx, (item) => (item.spanBoundaryAdjustments += 1));
-    this.snackBar.open('Límites actualizados. Confirmá la mención para continuar.', 'OK', {
-      duration: 3500,
+    this.selectedTextMark.set({
+      caseIndex: caseIdx,
+      key: `range-${draft.start}-${draft.end}`,
     });
+    this.updateCaseTelemetry(caseIdx, (item) => (item.spanBoundaryAdjustments += 1));
+    this.snackBar.open(
+      selected.kind === 'both'
+        ? 'Límites actualizados en ambas dimensiones. Revisá de nuevo la forma breve y confirmá la mención clínica.'
+        : selected.kind === 'lexical'
+          ? 'Límites de la forma breve actualizados. Revisá nuevamente su significado contextual.'
+          : 'Límites actualizados. Confirmá la mención para continuar.',
+      'OK',
+      { duration: 4500 }
+    );
   }
 
   selectedSpanFor(caseIdx: number): PremarkedSpan | null {
@@ -2269,6 +2441,10 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   selectSpan(caseIdx: number, span: PremarkedSpan): void {
     if (span.status === 'descartado') return;
     this.selectedSpan.set({ caseIndex: caseIdx, spanId: span.spanId });
+    this.selectedTextMark.set({
+      caseIndex: caseIdx,
+      key: `range-${span.start}-${span.end}`,
+    });
     if (this.unifiedMarkingPhaseActive(caseIdx)) {
       this.caseWorkflowSteps.update((current) => ({ ...current, [caseIdx]: 'marking' }));
     }
@@ -2281,6 +2457,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     if (caseIdx < 0 || caseIdx >= this.cases().length) return;
     this.activateCase(caseIdx);
     this.selectedSpan.set(null);
+    this.selectedTextMark.set(null);
     this.humanSpanDraft.set(null);
   }
 
@@ -2519,6 +2696,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       });
     });
     this.selectedSpan.set(null);
+    this.selectedTextMark.set(null);
     this.humanSpanDraft.set(null);
     this.updateCaseTelemetry(caseIdx, (item) => (item.spansAccepted += 1));
     if (createdSequence !== undefined) this.focusConcept(caseIdx, createdSequence);
@@ -2541,11 +2719,13 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       caseItem.concepts = caseItem.concepts.filter((concept) => concept.spanId !== fixedSpan.spanId);
     });
     this.selectedSpan.set(null);
+    this.selectedTextMark.set(null);
     this.updateCaseTelemetry(caseIdx, (item) => (item.spansDiscarded += 1));
     this.recordDeletion(caseIdx, 'span');
   }
 
   removeConcept(caseIdx: number, conceptIdx: number): void {
+    this.clearConceptHierarchy(caseIdx, conceptIdx);
     this.mutateCase(caseIdx, (c) => {
       c.concepts.splice(conceptIdx, 1);
     });
@@ -2580,6 +2760,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
 
   onCategoryChange(caseIdx: number, conceptIdx: number, cat: Category): void {
     const previousCategory = this.cases()[caseIdx]?.concepts[conceptIdx]?.cat;
+    this.clearConceptHierarchy(caseIdx, conceptIdx);
     this.mutateCase(caseIdx, (c) => {
       const concept = c.concepts[conceptIdx];
       concept.cat = cat;
@@ -2591,6 +2772,14 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       // Changing hierarchy invalidates a previously chosen code
       concept.sctid = '';
       concept.term = '';
+      // Experimental attributes are category-specific. Do not leave a
+      // clinical or procedure status attached after reclassifying the same
+      // mention to another SNOMED hierarchy.
+      if (cat !== 'Hallazgo clínico') {
+        concept.clinicalStatus = null;
+        concept.severity = null;
+      }
+      if (cat !== 'Procedimiento') concept.procedureStatus = null;
     });
     if (previousCategory && previousCategory !== cat) {
       this.updateCaseTelemetry(caseIdx, (item) => (item.categoryChanges += 1));
@@ -2603,6 +2792,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     selection: { code?: string; display?: string }
   ): void {
     const previousCode = this.cases()[caseIdx]?.concepts[conceptIdx]?.sctid ?? '';
+    this.clearConceptHierarchy(caseIdx, conceptIdx);
     this.mutateCase(caseIdx, (c) => {
       const concept = c.concepts[conceptIdx];
       concept.sctid = selection?.code ?? '';
@@ -2616,6 +2806,97 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     if (previousCode && selection?.code && previousCode !== selection.code) {
       this.updateCaseTelemetry(caseIdx, (item) => (item.conceptsReplaced += 1));
     }
+  }
+
+  /** Stable local key for hierarchy metadata; the sequence survives deletions. */
+  private conceptHierarchyKey(caseIdx: number, conceptIdx: number): string {
+    const concept = this.cases()[caseIdx]?.concepts[conceptIdx];
+    return `${caseIdx}:${concept?.sequence ?? conceptIdx}`;
+  }
+
+  conceptHierarchyFor(caseIdx: number, conceptIdx: number): ConceptHierarchyViewState | null {
+    const concept = this.cases()[caseIdx]?.concepts[conceptIdx];
+    const state = this.conceptHierarchy()[this.conceptHierarchyKey(caseIdx, conceptIdx)];
+    return concept?.sctid && state?.code === concept.sctid ? state : null;
+  }
+
+  loadConceptHierarchy(caseIdx: number, conceptIdx: number): void {
+    const concept = this.cases()[caseIdx]?.concepts[conceptIdx];
+    const code = concept?.sctid?.trim();
+    if (!code) return;
+    const server = this.terminologyServer();
+    const edition = this.editionUri();
+    const key = this.conceptHierarchyKey(caseIdx, conceptIdx);
+    const existing = this.conceptHierarchy()[key];
+    if (existing?.code === code && (existing.status === 'loading' || existing.status === 'ready')) {
+      return;
+    }
+
+    this.conceptHierarchy.update((current) => ({
+      ...current,
+      [key]: {
+        code,
+        status: 'loading',
+        parents: [],
+        children: [],
+        totalParents: 0,
+        totalChildren: 0,
+      },
+    }));
+
+    this.terminologyService
+      .lookupConceptHierarchy(code, server, edition)
+      .subscribe((hierarchy) => {
+        const currentConcept = this.cases()[caseIdx]?.concepts[conceptIdx];
+        if (
+          currentConcept?.sctid !== code ||
+          this.terminologyServer() !== server ||
+          this.editionUri() !== edition
+        ) {
+          return;
+        }
+        this.conceptHierarchy.update((current) => ({
+          ...current,
+          [key]: hierarchy
+            ? { ...hierarchy, status: 'ready' }
+            : {
+                code,
+                status: 'error',
+                parents: [],
+                children: [],
+                totalParents: 0,
+                totalChildren: 0,
+              },
+        }));
+      });
+  }
+
+  clearConceptHierarchy(caseIdx: number, conceptIdx: number): void {
+    const key = this.conceptHierarchyKey(caseIdx, conceptIdx);
+    this.conceptHierarchy.update((current) => {
+      if (!(key in current)) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  }
+
+  hierarchyConceptLabel(item: TerminologyHierarchyConcept): string {
+    return item.display?.trim() || `SCTID ${item.code}`;
+  }
+
+  /** Select a parent/child as the active concept without changing its category. */
+  selectHierarchyConcept(
+    caseIdx: number,
+    conceptIdx: number,
+    item: TerminologyHierarchyConcept
+  ): void {
+    const code = item.code?.trim();
+    if (!code) return;
+    this.onConceptSelected(caseIdx, conceptIdx, {
+      code,
+      display: item.display?.trim() || `SCTID ${code}`,
+    });
   }
 
   recordSearchTelemetry(
@@ -2702,6 +2983,19 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     });
   }
 
+  setClinicalContextReviewed(caseIdx: number, conceptIdx: number, reviewed: boolean): void {
+    this.mutateCase(caseIdx, (c) => {
+      const concept = c.concepts[conceptIdx];
+      if (!concept) return;
+      concept.contextReviewed = reviewed;
+      concept.provenance = {
+        createdPlatform: concept.provenance?.createdPlatform ?? this.currentPlatform,
+        lastEditedPlatform: this.currentPlatform,
+        terminologySelectedPlatform: concept.provenance?.terminologySelectedPlatform,
+      };
+    });
+  }
+
   updateComentarios(caseIdx: number, value: string): void {
     this.mutateCase(caseIdx, (c) => {
       c.comentarios = value;
@@ -2724,6 +3018,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   }
 
   onServerChange(value: string): void {
+    this.conceptHierarchy.set({});
     this.terminologyServer.set(value);
     this.terminologyService.setTerminologyServer(value);
     // Re-detect the edition on the new server.
@@ -2731,6 +3026,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   }
 
   onEditionChange(value: string): void {
+    this.conceptHierarchy.set({});
     this.editionUri.set(value);
     this.snomedVersion.set(value.includes('/version/') ? value : null);
     this.terminologyService.setEditionUri(value);

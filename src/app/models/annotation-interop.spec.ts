@@ -40,6 +40,10 @@ describe('SemantIAr annotation interoperability', () => {
               cert: 'Confirmado',
               temp: 'Actual',
               suj: 'Paciente',
+              section: 'examen físico',
+              clinicalStatus: 'Activo',
+              severity: 'Leve',
+              contextReviewed: true,
             },
           ],
         },
@@ -54,6 +58,12 @@ describe('SemantIAr annotation interoperability', () => {
       migrated.textNorm?.slice(migrated.spans![0].start, migrated.spans![0].end)
     ).toBe(migrated.spans?.[0].textoLiteral);
     expect(migrated.concepts?.[0].sctid).toBe('222980061000013107');
+    expect(migrated.concepts?.[0]).toMatchObject({
+      section: 'examen físico',
+      clinicalStatus: 'Activo',
+      severity: 'Leve',
+      contextReviewed: true,
+    });
     expect(prepared.document.schemaVersion).toBeUndefined();
     expect(prepared.document.textProfile?.offsetUnit).toBe('utf16-code-unit');
   });

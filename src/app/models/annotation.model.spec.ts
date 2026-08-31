@@ -1,5 +1,6 @@
 import {
   ASSISTED_ANNOTATION_PROTOCOL,
+  buildTextMarks,
   buildTextSegments,
   CORE_BLIND_PROTOCOL,
   createAnnotationTelemetry,
@@ -38,7 +39,21 @@ describe('premarked span helpers', () => {
 
     expect(result.invalidCount).toBe(0);
     expect(buildTextSegments(text, result.spans)).toEqual([
-      { kind: 'span', value: 'FX DE RODILLA', spans: [result.spans[0]] },
+      {
+        kind: 'span',
+        value: 'FX DE RODILLA',
+        marks: [
+          {
+            key: 'range-0-13',
+            start: 0,
+            end: 13,
+            surface: 'FX DE RODILLA',
+            kind: 'clinical',
+            spans: [result.spans[0]],
+            lexicalMentions: [],
+          },
+        ],
+      },
       { kind: 'text', value: ' con dolor' },
     ]);
   });
@@ -84,11 +99,52 @@ describe('premarked span helpers', () => {
     expect(buildTextSegments('FX DE RODILLA con dolor', result.spans)).toContainEqual({
       kind: 'span',
       value: 'FX',
-      spans: expect.arrayContaining([
-        expect.objectContaining({ spanId: 's001' }),
-        expect.objectContaining({ spanId: 's002' }),
+      marks: expect.arrayContaining([
+        expect.objectContaining({
+          key: 'range-0-2',
+          spans: [expect.objectContaining({ spanId: 's001' })],
+        }),
+        expect.objectContaining({
+          key: 'range-0-13',
+          spans: [expect.objectContaining({ spanId: 's002' })],
+        }),
       ]),
     });
+  });
+
+  it('derives clinical, lexical and combined visual marks from exact offsets', () => {
+    const text = 'dolor FC IAM';
+    const spans = [
+      {
+        spanId: 'clinical',
+        start: 0,
+        end: 5,
+        textoLiteral: 'dolor',
+        origin: 'human' as const,
+        confidence: 1,
+        status: 'pendiente' as const,
+      },
+      {
+        spanId: 'both',
+        start: 9,
+        end: 12,
+        textoLiteral: 'IAM',
+        origin: 'human' as const,
+        confidence: 1,
+        status: 'pendiente' as const,
+      },
+    ];
+    const lexicalOnly = newHumanLexicalMention('lexical', 6, 8, 'FC');
+    const lexicalBoth = newHumanLexicalMention('lexical-both', 9, 12, 'IAM');
+
+    expect(buildTextMarks(text, spans, [lexicalOnly, lexicalBoth])).toEqual([
+      expect.objectContaining({ key: 'range-0-5', kind: 'clinical' }),
+      expect.objectContaining({ key: 'range-6-8', kind: 'lexical' }),
+      expect.objectContaining({ key: 'range-9-12', kind: 'both' }),
+    ]);
+    expect(buildTextSegments(text, spans, [lexicalOnly, lexicalBoth])
+      .map((segment) => segment.value)
+      .join('')).toBe(text);
   });
 
   it('excludes isolated laboratory results but retains vital signs with values', () => {
@@ -287,7 +343,16 @@ describe('premarked span helpers', () => {
   });
 
   it('assigns an optional stable sequence when creating a concept block', () => {
-    expect(newConcept(3)).toMatchObject({ sequence: 3, cat: '', sctid: '' });
+    expect(newConcept(3)).toMatchObject({
+      sequence: 3,
+      cat: '',
+      sctid: '',
+      section: null,
+      clinicalStatus: null,
+      procedureStatus: null,
+      severity: null,
+      contextReviewed: false,
+    });
     expect(newConcept().sequence).toBeUndefined();
   });
 

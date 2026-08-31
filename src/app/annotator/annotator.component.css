@@ -793,6 +793,122 @@
   opacity: 0.75;
 }
 
+.concept-hierarchy {
+  margin-top: 9px;
+  border: 1px solid #c9d7e8;
+  border-radius: 9px;
+  background: #f7faff;
+  padding: 9px 10px 10px;
+}
+.hierarchy-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.hierarchy-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.hierarchy-title strong {
+  color: #2b4d75;
+  font-size: 12px;
+}
+.hierarchy-title span,
+.hierarchy-loading,
+.hierarchy-empty,
+.hierarchy-more {
+  color: #667891;
+  font-size: 11px;
+}
+.hierarchy-action {
+  flex: 0 0 auto;
+  min-height: 32px;
+  line-height: 30px;
+  font-size: 11px;
+}
+.hierarchy-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.hierarchy-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 9px;
+}
+.hierarchy-group {
+  min-width: 0;
+  border: 1px solid #d9e3ef;
+  border-radius: 7px;
+  background: #fff;
+  padding: 7px 8px;
+}
+.hierarchy-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #3f5878;
+  font-size: 11px;
+  font-weight: 700;
+}
+.hierarchy-count {
+  display: inline-grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 10px;
+  background: #e8f0fa;
+  color: #315a87;
+  font-size: 10px;
+}
+.hierarchy-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+.hierarchy-item {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  border: 0;
+  border-top: 1px solid #edf1f6;
+  background: transparent;
+  padding: 4px 0 0;
+  text-align: left;
+}
+.hierarchy-item:hover,
+.hierarchy-item:focus-visible {
+  background: #eef5fd;
+}
+.hierarchy-item-term {
+  overflow: visible;
+  color: #263958;
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.hierarchy-item code {
+  color: #6a7890;
+  font-size: 9px;
+}
+.hierarchy-empty,
+.hierarchy-more {
+  display: block;
+  margin-top: 6px;
+}
+.hierarchy-more {
+  color: #526985;
+  font-style: italic;
+}
+
 .context-row {
   display: grid;
   grid-template-columns: repeat(4, minmax(135px, 1fr));
@@ -931,6 +1047,9 @@
     padding: 0;
   }
   .concept-core-fields {
+    grid-template-columns: 1fr;
+  }
+  .hierarchy-columns {
     grid-template-columns: 1fr;
   }
   .concepts-section-head,
@@ -1139,19 +1258,6 @@
 .quick-lexical-candidate mat-icon {
   color: #6941a5;
 }
-.premarked-span {
-  border: 0;
-  border-bottom: 3px solid #0f766e;
-  border-radius: 4px;
-  background: #cffaf0;
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-  font-weight: 700;
-  line-height: inherit;
-  padding: 0 2px;
-}
-
 @media (max-width: 520px) {
   .case-card {
     padding: 12px 10px 16px;
@@ -1159,55 +1265,6 @@
   .context-row {
     grid-template-columns: 1fr;
   }
-}
-.premarked-span-group {
-  display: inline;
-}
-.premarked-span-group.overlapping {
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-  background: repeating-linear-gradient(135deg, #cffaf0 0, #cffaf0 5px, #e7f3ff 5px, #e7f3ff 10px);
-  border-bottom: 3px double #7c3aed;
-}
-.premarked-span.overlap-marker {
-  border-bottom-width: 0;
-  background: transparent;
-  padding: 0 1px;
-}
-.overlap-choice {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 15px;
-  height: 15px;
-  margin-left: 2px;
-  border-radius: 50%;
-  background: #6941a5;
-  color: #fff;
-  font-size: 10px;
-  font-weight: 800;
-  vertical-align: super;
-}
-.overlap-help {
-  margin: -8px 0 12px;
-  color: #625873;
-  font-size: 11px;
-  line-height: 1.35;
-}
-.premarked-span:hover,
-.premarked-span.selected {
-  background: #99f6e4;
-  outline: 2px solid rgba(15, 118, 110, 0.5);
-  outline-offset: 2px;
-}
-.premarked-span.confirmed {
-  border-bottom-color: var(--done-color);
-  background: #e6f4ea;
-}
-.premarked-span.discarded {
-  cursor: not-allowed;
-  opacity: 0.45;
-  text-decoration: line-through;
 }
 .human-span-draft,
 .span-panel {

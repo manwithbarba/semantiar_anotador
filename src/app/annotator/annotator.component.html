@@ -226,26 +226,44 @@
             } @else {
               <span
                 class="premarked-span-group"
-                [class.overlapping]="segment.spans.length > 1"
+                [class.overlapping]="segment.marks.length > 1"
                 [attr.data-source-start]="textSegmentStart(caseItem, si)">
-                @for (span of segment.spans; track span.spanId; let spanIndex = $index) {
-                  <button
-                    type="button"
+                @for (mark of segment.marks; track mark.key; let markIndex = $index) {
+                  <span
                     class="premarked-span"
-                    [class.overlap-marker]="segment.spans.length > 1"
-                    [class.selected]="selectedSpanFor(ci)?.spanId === span.spanId"
-                    [class.confirmed]="span.status === 'confirmado'"
-                    [class.discarded]="span.status === 'descartado'"
-                    [disabled]="span.status === 'descartado'"
-                    [attr.aria-label]="'Seleccionar mención: ' + span.textoLiteral"
-                    (click)="selectSpan(ci, span)">
-                    @if (spanIndex === 0) { {{ segment.value }} }
-                    @else { <span class="overlap-choice">{{ spanIndex + 1 }}</span> }
-                  </button>
+                    role="button"
+                    tabindex="0"
+                    [class.mark-clinical]="mark.kind === 'clinical'"
+                    [class.mark-lexical]="mark.kind === 'lexical'"
+                    [class.mark-both]="mark.kind === 'both'"
+                    [class.overlap-marker]="markIndex > 0"
+                    [class.selected]="textMarkSelected(ci, mark.key)"
+                    [attr.data-mark-kind]="mark.kind"
+                    [attr.aria-label]="'Seleccionar ' + textMarkKindLabel(mark.kind) + ': ' + mark.surface"
+                    (click)="selectTextMark(ci, mark)"
+                    (keydown.enter)="selectTextMark(ci, mark)"
+                    (keydown.space)="selectTextMark(ci, mark); $event.preventDefault()">
+                    @if (markIndex === 0) {
+                      <span
+                        class="marked-source-fragment"
+                        [attr.data-source-start]="textSegmentStart(caseItem, si)">{{ segment.value }}</span>
+                    }
+                    @else {
+                      <span
+                        class="overlap-choice"
+                        aria-hidden="true"
+                        [attr.data-choice]="markIndex + 1"></span>
+                    }
+                  </span>
                 }
               </span>
             }
           }
+        </div>
+        <div class="annotation-mark-legend" aria-label="Leyenda de marcas en la nota">
+          <span><i class="mark-swatch mark-clinical" aria-hidden="true">C</i> Información clínica</span>
+          <span><i class="mark-swatch mark-lexical" aria-hidden="true">F</i> Forma breve</span>
+          <span><i class="mark-swatch mark-both" aria-hidden="true">A</i> Ambas dimensiones</span>
         </div>
         <mat-form-field appearance="outline" class="case-specialty-field">
           <mat-label>Especialidad sospechada de la nota</mat-label>
@@ -348,7 +366,7 @@
                   <strong>“{{ draft.textoLiteral }}”</strong>
                 </div>
                 <div class="span-actions">
-                  @if (selectedSpanFor(ci)) {
+                  @if (selectedTextMarkFor(ci)) {
                     <button mat-stroked-button color="primary" (click)="adjustSelectedSpanBounds(ci)">
                       <mat-icon>border_color</mat-icon> Usar como nuevos límites
                     </button>
@@ -446,7 +464,7 @@
                 <h3>Asigná significado a cada marca</h3>
                 <p>La marcación de la nota ya está cerrada; ahora decidí qué representa cada aparición pendiente.</p>
               </div>
-              <button mat-stroked-button type="button" (click)="returnToUnifiedMarking(ci)">
+              <button mat-flat-button color="primary" type="button" (click)="returnToUnifiedMarking(ci)">
                 <mat-icon>edit_note</mat-icon>
                 Volver a la nota
               </button>
@@ -469,7 +487,7 @@
                           (click)="goToUnifiedItem(ci, -1)">
                     <mat-icon>arrow_upward</mat-icon> Anterior
                   </button>
-                  <button mat-flat-button color="primary" type="button"
+                  <button mat-stroked-button color="primary" type="button"
                           [disabled]="unifiedReviewItems(caseItem).length < 2"
                           (click)="goToUnifiedItem(ci, 1)">
                     Siguiente <mat-icon>arrow_downward</mat-icon>
@@ -499,11 +517,47 @@
                     </div>
                   </summary>
 
+                  @if (item.concept; as concept) {
+                    <div class="unified-clinical-attributes" aria-label="Atributos clínicos de la mención">
+                      <div class="unified-clinical-attributes-copy">
+                        <span class="unified-clinical-attributes-title">Atributos clínicos</span>
+                        <span>Se guardan junto al concepto SNOMED CT y se pueden revisar en cualquier momento.</span>
+                        <span class="unified-clinical-attributes-review"
+                              [class.pending]="concept.contextReviewed === false">
+                          {{ concept.contextReviewed === false ? 'Contexto pendiente de confirmar' : 'Contexto confirmado' }}
+                        </span>
+                      </div>
+                      <div class="unified-clinical-attributes-values" aria-label="Valores actuales de los atributos clínicos">
+                        <span><strong>Polaridad</strong>{{ concept.pol }}</span>
+                        <span><strong>Certeza</strong>{{ concept.cert }}</span>
+                        <span><strong>Temporalidad</strong>{{ concept.temp }}</span>
+                        <span><strong>Sujeto</strong>{{ concept.suj }}</span>
+                        @if (concept.section) {
+                          <span><strong>Sección</strong>{{ clinicalSectionLabel(concept.section) }}</span>
+                        }
+                        @if (concept.cat === 'Hallazgo clínico' && concept.clinicalStatus) {
+                          <span><strong>Estado</strong>{{ concept.clinicalStatus }}</span>
+                        }
+                        @if (concept.cat === 'Hallazgo clínico' && concept.severity) {
+                          <span><strong>Severidad</strong>{{ concept.severity }}</span>
+                        }
+                        @if (concept.cat === 'Procedimiento' && concept.procedureStatus) {
+                          <span><strong>Procedimiento</strong>{{ concept.procedureStatus }}</span>
+                        }
+                      </div>
+                      <button mat-stroked-button color="primary" type="button"
+                              (click)="openUnifiedItemDetails(ci, item.key)">
+                        <mat-icon>tune</mat-icon>
+                        Editar atributos
+                      </button>
+                    </div>
+                  }
+
                   @if (item.kind === 'pending') {
                     <div class="unified-choice">
                       <p>¿Qué representa aquí?</p>
                       <div class="unified-choice-actions">
-                        <button mat-flat-button color="primary" type="button"
+                        <button mat-stroked-button color="primary" type="button"
                                 (click)="classifyUnifiedItem(ci, item.key, 'clinical')">
                         <mat-icon>clinical_notes</mat-icon> Solo información clínica
                         </button>
@@ -528,7 +582,7 @@
                     <div class="unified-item-copy">
                       <p>Esta aparición quedó registrada con información clínica. Completá jerarquía, concepto SNOMED CT y contexto.</p>
                       <div class="unified-item-actions">
-                        <button mat-flat-button color="primary" type="button"
+                        <button mat-stroked-button color="primary" type="button"
                                 (click)="openUnifiedItemDetails(ci, item.key)">
                           <mat-icon>clinical_notes</mat-icon> Solo información clínica
                         </button>
@@ -557,7 +611,7 @@
                                   (click)="classifyUnifiedItem(ci, item.key, 'clinical')">
                             <mat-icon>clinical_notes</mat-icon> Solo información clínica
                           </button>
-                          <button mat-flat-button color="accent" type="button"
+                          <button mat-stroked-button color="accent" type="button"
                                   (click)="openUnifiedItemDetails(ci, item.key)">
                             <mat-icon>short_text</mat-icon> Solo abreviatura contextual
                           </button>
@@ -584,7 +638,7 @@
                                 (click)="classifyUnifiedItem(ci, item.key, 'lexical')">
                           <mat-icon>short_text</mat-icon> Solo abreviatura contextual
                         </button>
-                        <button mat-flat-button color="primary" type="button"
+                        <button mat-stroked-button color="primary" type="button"
                                 (click)="openUnifiedItemDetails(ci, item.key)">
                           <mat-icon>layers</mat-icon> Información clínica + abreviatura contextual
                         </button>
@@ -612,7 +666,7 @@
                           <mat-icon>layers</mat-icon> Información clínica + abreviatura contextual
                         </button>
                       }
-                      <button mat-flat-button color="warn" class="unified-exclude-choice" type="button"
+                      <button mat-stroked-button color="warn" class="unified-exclude-choice" type="button"
                               (click)="classifyUnifiedItem(ci, item.key, 'skip')">
                         <mat-icon>close</mat-icon> Sin valor clínico ni abreviatura (Anular)
                       </button>
@@ -1154,6 +1208,79 @@
                       </div>
                     }
                   </div>
+                  @if (concept.sctid) {
+                    @let hierarchy = conceptHierarchyFor(ci, cj);
+                    <section class="concept-hierarchy" aria-label="Jerarquía SNOMED CT">
+                      <div class="hierarchy-toolbar">
+                        <div class="hierarchy-title">
+                          <strong>Jerarquía SNOMED CT</strong>
+                          <span>Relaciones directas · consulta bajo demanda</span>
+                        </div>
+                        @if (!hierarchy || hierarchy.status === 'error') {
+                          <button mat-stroked-button type="button" class="hierarchy-action"
+                                  (click)="loadConceptHierarchy(ci, cj)">
+                            <mat-icon>{{ hierarchy?.status === 'error' ? 'refresh' : 'account_tree' }}</mat-icon>
+                            {{ hierarchy?.status === 'error' ? 'Reintentar' : 'Ver padres e hijos' }}
+                          </button>
+                        } @else if (hierarchy.status === 'loading') {
+                          <span class="hierarchy-loading"><mat-icon>sync</mat-icon> Consultando…</span>
+                        }
+                      </div>
+
+                      @if (hierarchy && hierarchy.status === 'ready') {
+                        <div class="hierarchy-columns">
+                          <div class="hierarchy-group">
+                            <div class="hierarchy-group-head">
+                              <span>Padres directos</span>
+                              <span class="hierarchy-count">{{ hierarchy.totalParents }}</span>
+                            </div>
+                            @if (hierarchy.parents.length) {
+                              <div class="hierarchy-list">
+                                @for (parent of hierarchy.parents; track parent.code) {
+                                  <button type="button" class="hierarchy-item"
+                                          [attr.aria-label]="'Seleccionar padre: ' + hierarchyConceptLabel(parent)"
+                                          [attr.title]="'Seleccionar ' + hierarchyConceptLabel(parent)"
+                                          (click)="selectHierarchyConcept(ci, cj, parent)">
+                                    <span class="hierarchy-item-term">{{ hierarchyConceptLabel(parent) }}</span>
+                                    <code>{{ parent.code }}</code>
+                                  </button>
+                                }
+                              </div>
+                            } @else {
+                              <span class="hierarchy-empty">Sin padres directos en esta edición.</span>
+                            }
+                          </div>
+                          <div class="hierarchy-group">
+                            <div class="hierarchy-group-head">
+                              <span>Hijos directos</span>
+                              <span class="hierarchy-count">{{ hierarchy.totalChildren }}</span>
+                            </div>
+                            @if (hierarchy.children.length) {
+                              <div class="hierarchy-list">
+                                @for (child of hierarchy.children; track child.code) {
+                                  <button type="button" class="hierarchy-item"
+                                          [attr.aria-label]="'Seleccionar hijo: ' + hierarchyConceptLabel(child)"
+                                          [attr.title]="'Seleccionar ' + hierarchyConceptLabel(child)"
+                                          (click)="selectHierarchyConcept(ci, cj, child)">
+                                    <span class="hierarchy-item-term">{{ hierarchyConceptLabel(child) }}</span>
+                                    <code>{{ child.code }}</code>
+                                  </button>
+                                }
+                              </div>
+                              @if (hierarchy.totalChildren > hierarchy.children.length) {
+                                <span class="hierarchy-more">
+                                  Se muestran {{ hierarchy.children.length }} de {{ hierarchy.totalChildren }}.
+                                  La lista se limita para no saturar la nota.
+                                </span>
+                              }
+                            } @else {
+                              <span class="hierarchy-empty">Sin hijos directos: puede ser un concepto hoja.</span>
+                            }
+                          </div>
+                        </div>
+                      }
+                    </section>
+                  }
                 </div>
               </div>
 
@@ -1165,12 +1292,35 @@
                          (ngModelChange)="updateConceptField(ci, cj, 'textoLiteral', $event)"
                          placeholder="expresión exacta del texto" />
                 </mat-form-field>
+                <mat-form-field appearance="outline" class="f-section" subscriptSizing="dynamic">
+                  <mat-label>Sección de la nota</mat-label>
+                  <mat-select
+                    [ngModel]="concept.section"
+                    (ngModelChange)="updateConceptField(ci, cj, 'section', $event)">
+                    @if (concept.section && !isKnownClinicalSection(concept.section)) {
+                      <mat-option [value]="concept.section">
+                        Valor existente: {{ concept.section }}
+                      </mat-option>
+                    }
+                    @for (section of clinicalSections; track section.value) {
+                      <mat-option [value]="section.value">{{ section.label }}</mat-option>
+                    }
+                  </mat-select>
+                  <mat-hint>Ubicación local que ayuda a interpretar la mención.</mat-hint>
+                </mat-form-field>
               </div>
 
               <!-- Clinical context -->
               <div class="context-heading">
-                <strong>4. Contexto clínico</strong>
-                <span>Decidí cada dimensión de forma independiente.</span>
+                <strong>4. Atributos de contexto clínico</strong>
+                <span>Evaluá cada dimensión según lo que expresa la mención.</span>
+                <label class="context-review-toggle">
+                  <input
+                    type="checkbox"
+                    [ngModel]="concept.contextReviewed !== false"
+                    (ngModelChange)="setClinicalContextReviewed(ci, cj, $event)" />
+                  <span>Confirmé los cuatro atributos</span>
+                </label>
               </div>
               <div class="context-row">
                 <mat-form-field appearance="outline" class="f-ctx" subscriptSizing="dynamic">
@@ -1202,6 +1352,50 @@
                   </mat-select>
                 </mat-form-field>
               </div>
+              @if (concept.cat === 'Hallazgo clínico' || concept.cat === 'Procedimiento') {
+                <div class="context-extra-row" aria-label="Atributos clínicos adicionales en prueba local">
+                  @if (concept.cat === 'Hallazgo clínico') {
+                  <mat-form-field appearance="outline" class="f-extra" subscriptSizing="dynamic">
+                    <mat-label>Estado clínico</mat-label>
+                    <mat-select
+                      [ngModel]="concept.clinicalStatus"
+                      (ngModelChange)="updateConceptField(ci, cj, 'clinicalStatus', $event)">
+                      <mat-option [value]="null">Sin especificar</mat-option>
+                      @for (status of clinicalStatuses; track status) {
+                        <mat-option [value]="status">{{ status }}</mat-option>
+                      }
+                    </mat-select>
+                    <mat-hint>Usalo sólo si la nota expresa el estado.</mat-hint>
+                  </mat-form-field>
+                  <mat-form-field appearance="outline" class="f-extra" subscriptSizing="dynamic">
+                    <mat-label>Severidad (si aparece)</mat-label>
+                    <mat-select
+                      [ngModel]="concept.severity"
+                      (ngModelChange)="updateConceptField(ci, cj, 'severity', $event)">
+                      <mat-option [value]="null">No expresada</mat-option>
+                      @for (severity of severities; track severity) {
+                        <mat-option [value]="severity">{{ severity }}</mat-option>
+                      }
+                    </mat-select>
+                    <mat-hint>No la infieras desde el concepto SNOMED.</mat-hint>
+                  </mat-form-field>
+                }
+                  @if (concept.cat === 'Procedimiento') {
+                  <mat-form-field appearance="outline" class="f-extra" subscriptSizing="dynamic">
+                    <mat-label>Estado del procedimiento</mat-label>
+                    <mat-select
+                      [ngModel]="concept.procedureStatus"
+                      (ngModelChange)="updateConceptField(ci, cj, 'procedureStatus', $event)">
+                      <mat-option [value]="null">Sin especificar</mat-option>
+                      @for (status of procedureStatuses; track status) {
+                        <mat-option [value]="status">{{ status }}</mat-option>
+                      }
+                    </mat-select>
+                    <mat-hint>Separá lo indicado de lo efectivamente realizado.</mat-hint>
+                  </mat-form-field>
+                  }
+                </div>
+              }
             </details>
             }
           }
@@ -1372,7 +1566,9 @@
       <p>
         Leé el texto completo. Seleccioná una expresión y usá <strong>Marcar para revisar</strong>.
         Decidí si corresponde a un término con información clínica, a un término sin información
-        clínica, a ambos tipos de anotación o si no debe anotarse.
+        clínica, a ambos tipos de anotación o si no debe anotarse. Las marcas verdes son clínicas,
+        las violetas son formas breves y las ámbar reúnen ambas dimensiones. Para corregir límites,
+        elegí la marca, seleccioná el tramo completo y pulsá <strong>Usar como nuevos límites</strong>.
       </p>
     </section>
     <section>

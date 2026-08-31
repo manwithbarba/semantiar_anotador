@@ -135,9 +135,26 @@ export interface PremarkedSpan {
   humanAudit?: SpanHumanAudit;
 }
 
+/** Visual dimension represented by one exact source range. */
+export type TextMarkKind = 'clinical' | 'lexical' | 'both';
+
+/**
+ * Presentation-only grouping for records that share the same exact offsets.
+ * The persisted clinical and lexical records remain separate in the JSON.
+ */
+export interface TextMark {
+  key: string;
+  start: number;
+  end: number;
+  surface: string;
+  kind: TextMarkKind;
+  spans: PremarkedSpan[];
+  lexicalMentions: LexicalMention[];
+}
+
 export type TextSegment =
   | { kind: 'text'; value: string }
-  | { kind: 'span'; value: string; spans: PremarkedSpan[] };
+  | { kind: 'span'; value: string; marks: TextMark[] };
 
 export interface SpanNormalizationResult {
   spans: PremarkedSpan[];
@@ -189,26 +206,87 @@ export function normalizePremarkedSpans(
   return { spans, invalidCount };
 }
 
+/** Groups clinical and lexical records by exact range for display only. */
+export function buildTextMarks(
+  textNorm: string,
+  spans: readonly PremarkedSpan[],
+  lexicalMentions: readonly LexicalMention[] = []
+): TextMark[] {
+  const grouped = new Map<
+    string,
+    { start: number; end: number; spans: PremarkedSpan[]; lexicalMentions: LexicalMention[] }
+  >();
+  const groupFor = (start: number, end: number) => {
+    const key = `range-${start}-${end}`;
+    const existing = grouped.get(key);
+    if (existing) return existing;
+    const created = { start, end, spans: [], lexicalMentions: [] };
+    grouped.set(key, created);
+    return created;
+  };
+
+  for (const span of spans) {
+    if (!isValidTextSpan(textNorm, span.start, span.end, span.textoLiteral)) continue;
+    groupFor(span.start, span.end).spans.push(span);
+  }
+  for (const mention of lexicalMentions) {
+    if (!isValidTextSpan(textNorm, mention.start, mention.end, mention.surface)) continue;
+    groupFor(mention.start, mention.end).lexicalMentions.push(mention);
+  }
+
+  return [...grouped.entries()]
+    .map(([key, groupedRange]): TextMark | null => {
+      const selectableSpans = groupedRange.spans.filter((span) => span.status !== 'descartado');
+      const activeClinical = selectableSpans.some(
+        (span) => span.review?.disposition !== 'excluido'
+      );
+      const activeLexical = groupedRange.lexicalMentions.filter(
+        (mention) => mention.annotation.decisionStatus !== 'rejected'
+      );
+      if (!activeClinical && activeLexical.length === 0) return null;
+      return {
+        key,
+        start: groupedRange.start,
+        end: groupedRange.end,
+        surface: textNorm.slice(groupedRange.start, groupedRange.end),
+        kind: activeClinical && activeLexical.length
+          ? 'both'
+          : activeClinical
+            ? 'clinical'
+            : 'lexical',
+        spans: selectableSpans,
+        lexicalMentions: activeLexical,
+      };
+    })
+    .filter((mark): mark is TextMark => mark !== null)
+    .sort(
+      (left, right) =>
+        left.start - right.start || left.end - right.end || left.key.localeCompare(right.key)
+    );
+}
+
 /**
  * Turns verified offsets into text segments. Each marked segment carries every
- * active span covering it, so partially or fully overlapping spans remain
- * independently selectable without duplicating source text.
+ * active exact-range mark covering it, so partially or fully overlapping marks
+ * remain independently selectable without duplicating source text.
  */
-export function buildTextSegments(textNorm: string, spans: readonly PremarkedSpan[]): TextSegment[] {
-  const activeSpans = spans
-    .filter((span) => span.review?.disposition !== 'excluido')
-    .sort((left, right) => left.start - right.start || left.end - right.end || left.spanId.localeCompare(right.spanId));
-  const boundaries = [...new Set([0, textNorm.length, ...activeSpans.flatMap((span) => [span.start, span.end])])]
+export function buildTextSegments(
+  textNorm: string,
+  spans: readonly PremarkedSpan[],
+  lexicalMentions: readonly LexicalMention[] = []
+): TextSegment[] {
+  const marks = buildTextMarks(textNorm, spans, lexicalMentions);
+  const boundaries = [...new Set([0, textNorm.length, ...marks.flatMap((mark) => [mark.start, mark.end])])]
     .sort((left, right) => left - right);
   const segments: TextSegment[] = [];
   for (let index = 0; index < boundaries.length - 1; index += 1) {
     const start = boundaries[index];
     const end = boundaries[index + 1];
     if (end <= start) continue;
-    const covering = activeSpans.filter((span) => span.start < end && span.end > start);
+    const covering = marks.filter((mark) => mark.start < end && mark.end > start);
     const value = textNorm.slice(start, end);
     if (covering.length) {
-      segments.push({ kind: 'span', value, spans: covering });
+      segments.push({ kind: 'span', value, marks: covering });
     } else {
       segments.push({ kind: 'text', value });
     }
@@ -811,6 +889,11 @@ export const LEXICAL_SECTIONS: LexicalChoice<string>[] = [
   { value: 'otra parte de la nota', label: 'Otra parte de la nota', description: 'Ubicación no incluida en las opciones anteriores.' },
 ];
 
+/** The same controlled note sections are available for clinical concepts. */
+export const CLINICAL_SECTIONS: LexicalChoice<string>[] = LEXICAL_SECTIONS.map((section) => ({
+  ...section,
+}));
+
 /** Standardized contextual clues. Multiple clues may be chosen for one appearance. */
 export const LEXICAL_EVIDENCE_CODES: LexicalChoice<string>[] = [
   { value: 'encabezado cercano', label: 'Encabezado cercano', description: 'Un título o rótulo local orienta el sentido.' },
@@ -1092,6 +1175,25 @@ export type Polarity = 'Activo' | 'Negado';
 export type Certainty = 'Confirmado' | 'Sospecha' | 'Diferencial';
 export type Temporality = 'Actual' | 'Histórico';
 export type Subject = 'Paciente' | 'Familiar';
+/** Estado afirmado del hallazgo, cuando la nota lo expresa de forma explícita. */
+export type ClinicalStatus =
+  | 'Activo'
+  | 'Resuelto'
+  | 'Recurrente'
+  | 'En remisión'
+  | 'Inactivo'
+  | 'No determinable';
+/** Estado del procedimiento, cuando la nota permite distinguir su ejecución. */
+export type ProcedureStatus =
+  | 'Planificado'
+  | 'Indicado'
+  | 'En curso'
+  | 'Realizado'
+  | 'Cancelado'
+  | 'No realizado'
+  | 'No determinable';
+/** Gravedad sólo cuando está escrita o inequívocamente expresada en la nota. */
+export type Severity = 'Leve' | 'Moderada' | 'Grave' | 'Crítica';
 
 /** One annotated concept block. A case may contain any number of concepts. */
 export interface ConceptAnnotation {
@@ -1110,6 +1212,14 @@ export interface ConceptAnnotation {
   suj: Subject;
   /** Sección de la nota clínica donde se ubica el concepto. */
   section?: string | null;
+  /** Experimental local: sólo se completa para hallazgos clínicos explícitos. */
+  clinicalStatus?: ClinicalStatus | null;
+  /** Experimental local: sólo se completa para procedimientos explícitos. */
+  procedureStatus?: ProcedureStatus | null;
+  /** Experimental local: gravedad expresada; no se infiere desde el concepto. */
+  severity?: Severity | null;
+  /** True when the annotator explicitly confirms the four assertion attributes. */
+  contextReviewed?: boolean;
   /** Fixed source span when the concept was produced from premarking. */
   spanId?: string;
   provenance?: {
@@ -1132,7 +1242,15 @@ export function conceptHasContent(concept: ConceptAnnotation): boolean {
 
 /** A concept is exportable and eligible for closure only when these fields agree. */
 export function conceptIsComplete(concept: ConceptAnnotation): boolean {
-  return !!concept.cat && !!concept.sctid && !!concept.term.trim() && !!concept.textoLiteral.trim();
+  return (
+    !!concept.cat &&
+    !!concept.sctid &&
+    !!concept.term.trim() &&
+    !!concept.textoLiteral.trim() &&
+    // `undefined` is treated as reviewed for backwards compatibility with
+    // exports created before the explicit confirmation checkbox existed.
+    concept.contextReviewed !== false
+  );
 }
 
 /** Candidates that still require an explicit clinical/non-clinical decision. */
@@ -1544,6 +1662,24 @@ export const POLARITIES: Polarity[] = ['Activo', 'Negado'];
 export const CERTAINTIES: Certainty[] = ['Confirmado', 'Sospecha', 'Diferencial'];
 export const TEMPORALITIES: Temporality[] = ['Actual', 'Histórico'];
 export const SUBJECTS: Subject[] = ['Paciente', 'Familiar'];
+export const CLINICAL_STATUSES: ClinicalStatus[] = [
+  'Activo',
+  'Resuelto',
+  'Recurrente',
+  'En remisión',
+  'Inactivo',
+  'No determinable',
+];
+export const PROCEDURE_STATUSES: ProcedureStatus[] = [
+  'Planificado',
+  'Indicado',
+  'En curso',
+  'Realizado',
+  'Cancelado',
+  'No realizado',
+  'No determinable',
+];
+export const SEVERITIES: Severity[] = ['Leve', 'Moderada', 'Grave', 'Crítica'];
 
 /** Medical specialties offered for note-level provenance, sorted alphabetically. */
 export const MEDICAL_SPECIALTIES: string[] = [
@@ -1578,6 +1714,7 @@ export const MEDICAL_SPECIALTIES: string[] = [
   'Neumología',
   'Neurocirugía',
   'Neurología',
+  'Neonatología',
   'Nutrición',
   'Oftalmología',
   'Oncología',
@@ -1624,6 +1761,10 @@ export function newConcept(sequence?: number): ConceptAnnotation {
     temp: 'Actual',
     suj: 'Paciente',
     section: null,
+    clinicalStatus: null,
+    procedureStatus: null,
+    severity: null,
+    contextReviewed: false,
   };
 }
 

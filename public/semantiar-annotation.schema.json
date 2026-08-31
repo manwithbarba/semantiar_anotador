@@ -65,6 +65,19 @@
             "items": {
               "type": "object",
               "properties": {
+                "pol": { "enum": ["Activo", "Negado"] },
+                "cert": { "enum": ["Confirmado", "Sospecha", "Diferencial"] },
+                "temp": { "enum": ["Actual", "Histórico"] },
+                "suj": { "enum": ["Paciente", "Familiar"] },
+                "section": { "type": ["string", "null"] },
+                "clinicalStatus": {
+                  "enum": ["Activo", "Resuelto", "Recurrente", "En remisión", "Inactivo", "No determinable", null]
+                },
+                "procedureStatus": {
+                  "enum": ["Planificado", "Indicado", "En curso", "Realizado", "Cancelado", "No realizado", "No determinable", null]
+                },
+                "severity": { "enum": ["Leve", "Moderada", "Grave", "Crítica", null] },
+                "contextReviewed": { "type": "boolean" },
                 "sctid": {
                   "type": "string",
                   "pattern": "^(|[0-9]{6,18})$"

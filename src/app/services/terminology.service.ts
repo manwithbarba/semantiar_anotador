@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { catchError, map, Observable, of } from 'rxjs';
+import { catchError, concat, forkJoin, map, Observable, of, switchMap } from 'rxjs';
 import {
   AR_DISPLAY_LANGUAGE,
   AR_EDITION_URI,
@@ -21,6 +21,22 @@ export interface EditionInfo {
   label: string;
   /** True when the Argentina edition was found on the server. */
   isArgentina: boolean;
+}
+
+/** A direct SNOMED CT hierarchy neighbour returned for a selected concept. */
+export interface TerminologyHierarchyConcept {
+  code: string;
+  display: string;
+  inactive: boolean;
+}
+
+/** Read-only hierarchy metadata for the concept currently being inspected. */
+export interface TerminologyConceptHierarchy {
+  code: string;
+  parents: TerminologyHierarchyConcept[];
+  children: TerminologyHierarchyConcept[];
+  totalParents: number;
+  totalChildren: number;
 }
 
 /**
@@ -175,5 +191,123 @@ export class TerminologyService {
       }),
       catchError(() => of(null))
     );
+  }
+
+  /**
+   * Load direct SNOMED CT parents and children for a concept.
+   *
+   * `$lookup` returns the relationship values as SCTIDs.  The first page of
+   * each side is resolved with the same lookup operation so the UI can show
+   * preferred terms without making an unbounded number of requests for large
+   * hierarchies.  The complete relation counts remain available to the UI.
+   */
+  lookupConceptHierarchy(
+    code: string,
+    terminologyServer?: string,
+    editionUri?: string,
+    neighbourLimit = 8
+  ): Observable<TerminologyConceptHierarchy | null> {
+    const base = (terminologyServer || this.terminologyServer || '').replace(/\/$/, '');
+    const edition = editionUri || this.editionUri;
+    if (!base || !code) {
+      return of(null);
+    }
+
+    let requestUrl =
+      `${base}/CodeSystem/$lookup` +
+      `?system=http://snomed.info/sct&code=${encodeURIComponent(code)}` +
+      '&property=parent&property=child';
+    if (edition && edition !== 'http://snomed.info/sct') {
+      requestUrl += `&version=${encodeURIComponent(edition)}`;
+    }
+    const headers = new HttpHeaders({
+      Accept: 'application/fhir+json',
+      'Accept-Language': this.displayLanguage,
+    });
+
+    return this.http.get<any>(requestUrl, { headers }).pipe(
+      map((res: any) => this.parseHierarchyCodes(res)),
+      switchMap((relations) => {
+        if (!relations) return of(null);
+
+        // Emit the relationship IDs immediately. Label lookups are a
+        // progressive enhancement and must never block the hierarchy panel.
+        const visibleParents = relations.parents.slice(0, Math.max(0, neighbourLimit));
+        const visibleChildren = relations.children.slice(0, Math.max(0, neighbourLimit));
+        const base: TerminologyConceptHierarchy = {
+          code,
+          parents: visibleParents.map((parentCode) => ({
+            code: parentCode,
+            display: '',
+            inactive: false,
+          })),
+          children: visibleChildren.map((childCode) => ({
+            code: childCode,
+            display: '',
+            inactive: false,
+          })),
+          totalParents: relations.parents.length,
+          totalChildren: relations.children.length,
+        };
+
+        const resolve = (codes: string[]) =>
+          forkJoin(
+            codes.slice(0, Math.max(0, neighbourLimit)).map((neighbourCode) =>
+              this.lookupConcept(neighbourCode, terminologyServer, edition).pipe(
+                map((concept) =>
+                  concept ?? { code: neighbourCode, display: '', inactive: false }
+                )
+              )
+            )
+          );
+
+        const enriched = forkJoin({
+          parents: resolve(relations.parents),
+          children: resolve(relations.children),
+        }).pipe(
+          map(({ parents, children }) => ({
+            code,
+            parents,
+            children,
+            totalParents: relations.parents.length,
+            totalChildren: relations.children.length,
+          }))
+        );
+        return concat(of(base), enriched.pipe(catchError(() => of(base))));
+      }),
+      catchError(() => of(null))
+    );
+  }
+
+  private parseHierarchyCodes(
+    response: any
+  ): { parents: string[]; children: string[] } | null {
+    const params: any[] = response?.parameter ?? [];
+    if (!Array.isArray(params) || !params.length) return null;
+
+    const parents: string[] = [];
+    const children: string[] = [];
+    for (const parameter of params) {
+      if (parameter?.name !== 'property') continue;
+      const parts: any[] = Array.isArray(parameter.part) ? parameter.part : [];
+      const propertyCode = String(
+        parts.find((part) => part?.name === 'code')?.valueCode ??
+          parts.find((part) => part?.name === 'code')?.valueString ??
+          ''
+      ).trim();
+      const valuePart = parts.find((part) => part?.name === 'value');
+      const value = String(
+        valuePart?.valueCode ?? valuePart?.valueCoding?.code ?? valuePart?.valueString ?? ''
+      ).trim();
+      if (!value) continue;
+      if (propertyCode === 'parent') parents.push(value);
+      if (propertyCode === 'child') children.push(value);
+    }
+
+    // Preserve server order while avoiding duplicated relationship entries.
+    return {
+      parents: [...new Set(parents)],
+      children: [...new Set(children)],
+    };
   }
 }

@@ -8,6 +8,7 @@ import {
   ASSISTED_ANNOTATION_PROTOCOL,
   createAnnotationTelemetry,
   buildTextSegments,
+  conceptIsComplete,
   newHumanLexicalMention,
   newLexicalReview,
   newConcept,
@@ -148,7 +149,7 @@ describe('App', () => {
 
   it('should offer clinical and interdisciplinary note specialties', () => {
     expect(MEDICAL_SPECIALTIES).toEqual(
-      expect.arrayContaining(['Enfermería', 'Salud mental', 'Trabajo social'])
+      expect.arrayContaining(['Enfermería', 'Neonatología', 'Salud mental', 'Trabajo social'])
     );
   });
 
@@ -263,6 +264,111 @@ describe('App', () => {
     expect(annotator.unifiedReviewItems(annotator.cases()[0])[0].kind).toBe('clinical');
     annotator.classifyUnifiedItem(0, key, 'lexical');
     expect(annotator.unifiedReviewItems(annotator.cases()[0])[0].kind).toBe('lexical');
+  });
+
+  it('should expose clinical context attributes in the unified review', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    const concept = {
+      ...newConcept(1),
+      cat: 'Hallazgo clínico' as const,
+      sctid: '386661006',
+      term: 'Fiebre',
+      textoLiteral: 'fiebre',
+      pol: 'Negado' as const,
+      cert: 'Sospecha' as const,
+      temp: 'Histórico' as const,
+      suj: 'Familiar' as const,
+      spanId: 'span-context-001',
+    };
+    annotator.cases.set([
+      {
+        id: 'CONTEXT-UI-001',
+        text: 'Sin fiebre familiar previa.',
+        textNorm: 'Sin fiebre familiar previa.',
+        spans: [{
+          spanId: 'span-context-001',
+          start: 4,
+          end: 10,
+          textoLiteral: 'fiebre',
+          origin: 'candidate',
+          confidence: 1,
+          status: 'confirmado',
+          review: { disposition: 'elegible', reason: 'Fixture de atributos clínicos.' },
+        }],
+        concepts: [concept],
+        comentarios: '',
+        review: { status: 'pending' },
+      },
+    ]);
+    annotator.finishUnifiedMarking(0);
+    fixture.detectChanges();
+
+    const attributes = fixture.nativeElement.querySelector('.unified-clinical-attributes') as HTMLElement;
+    expect(attributes).toBeTruthy();
+    expect(attributes.textContent).toContain('PolaridadNegado');
+    expect(attributes.textContent).toContain('CertezaSospecha');
+    expect(attributes.textContent).toContain('TemporalidadHistórico');
+    expect(attributes.textContent).toContain('SujetoFamiliar');
+    expect(attributes.textContent).toContain('Editar atributos');
+  });
+
+  it('should expose category-specific attributes and require explicit context confirmation for new concepts', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    annotator.unifiedReviewPrototype.set(false);
+    const concept = {
+      ...newConcept(1),
+      cat: 'Hallazgo clínico' as const,
+      sctid: '386661006',
+      term: 'Fiebre',
+      textoLiteral: 'fiebre',
+    };
+    annotator.cases.set([{
+      id: 'CONTEXT-EXTRA-001',
+      text: 'Fiebre en evolución.',
+      textNorm: 'Fiebre en evolución.',
+      spans: [],
+      concepts: [concept],
+      comentarios: '',
+      review: { status: 'pending' },
+    }]);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.f-section')).toBeTruthy();
+    expect(fixture.nativeElement.textContent).toContain('Estado clínico');
+    expect(fixture.nativeElement.textContent).toContain('Severidad (si aparece)');
+    expect(fixture.nativeElement.textContent).not.toContain('Estado del procedimiento');
+    expect(conceptIsComplete(concept)).toBe(false);
+
+    annotator.updateConceptField(0, 0, 'section', 'evolución');
+    annotator.updateConceptField(0, 0, 'clinicalStatus', 'Recurrente');
+    annotator.updateConceptField(0, 0, 'severity', 'Moderada');
+    annotator.setClinicalContextReviewed(0, 0, true);
+    expect(annotator.cases()[0].concepts[0]).toMatchObject({
+      section: 'evolución',
+      clinicalStatus: 'Recurrente',
+      severity: 'Moderada',
+      contextReviewed: true,
+    });
+    expect(conceptIsComplete(annotator.cases()[0].concepts[0])).toBe(true);
+
+    annotator.onCategoryChange(0, 0, 'Procedimiento');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Estado del procedimiento');
+    expect(fixture.nativeElement.textContent).not.toContain('Estado clínico');
+    expect(annotator.cases()[0].concepts[0]).toMatchObject({
+      cat: 'Procedimiento',
+      clinicalStatus: null,
+      severity: null,
+      procedureStatus: null,
+      sctid: '',
+      term: '',
+    });
   });
 
   it('should keep the free-form meaning input mounted while typing', async () => {
@@ -418,11 +524,224 @@ describe('App', () => {
     expect(buildTextSegments(text, normalized.spans)).toContainEqual({
       kind: 'span',
       value: 'O2',
-      spans: expect.arrayContaining([
-        expect.objectContaining({ spanId: 'sat' }),
-        expect.objectContaining({ spanId: 'o2' }),
+      marks: expect.arrayContaining([
+        expect.objectContaining({
+          key: 'range-0-11',
+          spans: [expect.objectContaining({ spanId: 'sat' })],
+        }),
+        expect.objectContaining({
+          key: 'range-4-6',
+          spans: [expect.objectContaining({ spanId: 'o2' })],
+        }),
       ]),
     });
+  });
+
+  it('should render clinical, lexical and combined marks with an accessible legend', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    const lexicalOnly = newHumanLexicalMention('lexical-only', 6, 8, 'FC');
+    const lexicalBoth = newHumanLexicalMention('lexical-both', 9, 12, 'IAM');
+    annotator.annotationProtocol.set({ ...ASSISTED_ANNOTATION_PROTOCOL, lexicalLayerEnabled: true });
+    annotator.cases.set([
+      {
+        id: 'MARK-COLORS-001',
+        text: 'dolor FC IAM',
+        textNorm: 'dolor FC IAM',
+        spans: [
+          {
+            spanId: 'clinical', start: 0, end: 5, textoLiteral: 'dolor',
+            origin: 'human', confidence: 1, status: 'pendiente',
+          },
+          {
+            spanId: 'both', start: 9, end: 12, textoLiteral: 'IAM',
+            origin: 'human', confidence: 1, status: 'pendiente',
+          },
+        ],
+        concepts: [],
+        lexicalMentions: [lexicalOnly, lexicalBoth],
+        lexicalReview: newLexicalReview(),
+        comentarios: '',
+      },
+    ]);
+
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelectorAll('[data-mark-kind="clinical"]')).toHaveLength(1);
+    expect(root.querySelectorAll('[data-mark-kind="lexical"]')).toHaveLength(1);
+    expect(root.querySelectorAll('[data-mark-kind="both"]')).toHaveLength(1);
+    expect(root.querySelector('.annotation-mark-legend')?.textContent).toContain('Información clínica');
+    expect(root.querySelector('.annotation-mark-legend')?.textContent).toContain('Forma breve');
+    expect(root.querySelector('.annotation-mark-legend')?.textContent).toContain('Ambas dimensiones');
+  });
+
+  it('should capture a selection that crosses a rendered overlapping mark without badge text', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    const text = 'antes FC después';
+    annotator.cases.set([
+      {
+        id: 'CROSS-MARK-001',
+        text,
+        textNorm: text,
+        spans: [
+          {
+            spanId: 'short', start: 6, end: 8, textoLiteral: 'FC',
+            origin: 'human', confidence: 1, status: 'pendiente',
+          },
+          {
+            spanId: 'long', start: 6, end: text.length, textoLiteral: 'FC después',
+            origin: 'human', confidence: 1, status: 'pendiente',
+          },
+        ],
+        concepts: [],
+        comentarios: '',
+      },
+    ]);
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement.querySelector('.case-text') as HTMLElement;
+    const leadingText = root.querySelector('[data-source-start="0"]')?.firstChild;
+    const trailingText = root.querySelector(
+      '.marked-source-fragment[data-source-start="8"]'
+    )?.firstChild;
+    expect(leadingText).toBeTruthy();
+    expect(trailingText).toBeTruthy();
+    expect(root.textContent).not.toContain('2');
+    const range = document.createRange();
+    range.setStart(leadingText!, 0);
+    range.setEnd(trailingText!, trailingText!.textContent!.length);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    annotator.captureTextSelection(0, root);
+
+    expect(annotator.humanSpanDraft()).toEqual({
+      caseIndex: 0,
+      start: 0,
+      end: text.length,
+      textoLiteral: text,
+    });
+    selection.removeAllRanges();
+  });
+
+  it('should adjust a combined mark atomically and reopen its lexical decision', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    const mention = newHumanLexicalMention('lex-both', 0, 2, 'FC');
+    mention.annotation.decisionStatus = 'resolved';
+    mention.annotation.senseId = 'frecuencia cardíaca';
+    annotator.annotationProtocol.set({ ...ASSISTED_ANNOTATION_PROTOCOL, lexicalLayerEnabled: true });
+    annotator.cases.set([
+      {
+        id: 'ADJUST-BOTH-001',
+        text: 'FC elevada',
+        textNorm: 'FC elevada',
+        spans: [
+          {
+            spanId: 'span-both', start: 0, end: 2, textoLiteral: 'FC',
+            origin: 'candidate', confidence: 1, status: 'confirmado',
+          },
+        ],
+        concepts: [
+          {
+            ...newConcept(1),
+            cat: 'Hallazgo clínico',
+            sctid: '364075005',
+            term: 'Heart rate',
+            textoLiteral: 'FC',
+            spanId: 'span-both',
+          },
+        ],
+        lexicalMentions: [mention],
+        lexicalReview: {
+          ...newLexicalReview(),
+          status: 'completed',
+          annotatorId: 'A001',
+          completedAt: '2026-08-27T00:00:00.000Z',
+        },
+        comentarios: '',
+      },
+    ]);
+    annotator.selectedTextMark.set({ caseIndex: 0, key: 'range-0-2' });
+    annotator.selectedSpan.set({ caseIndex: 0, spanId: 'span-both' });
+    annotator.humanSpanDraft.set({
+      caseIndex: 0,
+      start: 0,
+      end: 10,
+      textoLiteral: 'FC elevada',
+    });
+
+    annotator.adjustSelectedSpanBounds(0);
+
+    const adjusted = annotator.cases()[0];
+    expect(adjusted.spans[0]).toMatchObject({
+      start: 0,
+      end: 10,
+      textoLiteral: 'FC elevada',
+      status: 'pendiente',
+      humanAudit: {
+        originalStart: 0,
+        originalEnd: 2,
+        originalTextoLiteral: 'FC',
+        boundaryAdjusted: true,
+      },
+    });
+    expect(adjusted.concepts[0].textoLiteral).toBe('FC elevada');
+    expect(adjusted.lexicalMentions?.[0]).toMatchObject({
+      start: 0,
+      end: 10,
+      surface: 'FC elevada',
+      normalizedKey: 'FC ELEVADA',
+      candidateSenseIds: [],
+      annotation: { decisionStatus: 'pending', senseId: null },
+    });
+    expect(adjusted.lexicalReview?.status).toBe('pending');
+    expect(annotator.selectedTextMark()).toEqual({ caseIndex: 0, key: 'range-0-10' });
+  });
+
+  it('should reject an adjusted range that exactly duplicates another active mark', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    annotator.cases.set([
+      {
+        id: 'ADJUST-COLLISION-001',
+        text: 'FC dolor',
+        textNorm: 'FC dolor',
+        spans: [
+          {
+            spanId: 'first', start: 0, end: 2, textoLiteral: 'FC',
+            origin: 'human', confidence: 1, status: 'pendiente',
+          },
+          {
+            spanId: 'second', start: 3, end: 8, textoLiteral: 'dolor',
+            origin: 'human', confidence: 1, status: 'pendiente',
+          },
+        ],
+        concepts: [],
+        comentarios: '',
+      },
+    ]);
+    annotator.selectedTextMark.set({ caseIndex: 0, key: 'range-0-2' });
+    annotator.selectedSpan.set({ caseIndex: 0, spanId: 'first' });
+    annotator.humanSpanDraft.set({ caseIndex: 0, start: 3, end: 8, textoLiteral: 'dolor' });
+
+    annotator.adjustSelectedSpanBounds(0);
+
+    expect(annotator.cases()[0].spans.map(({ start, end }) => [start, end])).toEqual([
+      [0, 2],
+      [3, 8],
+    ]);
+    expect(annotator.humanSpanDraft()).not.toBeNull();
   });
 
   it('should add a mobile typed mention with verified offsets and platform provenance', async () => {
@@ -1073,6 +1392,7 @@ describe('App', () => {
     coded.sctid = '386661006';
     coded.term = 'Adecuadamente hidratado';
     coded.textoLiteral = 'adecuadamente hidratado';
+    coded.contextReviewed = true;
     const added = newConcept(2);
     added.textoLiteral = 'alta médica';
 
