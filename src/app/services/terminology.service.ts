@@ -21,6 +21,10 @@ export interface EditionInfo {
   label: string;
   /** True when the Argentina edition was found on the server. */
   isArgentina: boolean;
+  /** False when the server could not be verified or has no known edition. */
+  available: boolean;
+  /** Human-readable diagnostic retained for the UI; never contains query text. */
+  error?: 'server-unavailable' | 'edition-not-found';
 }
 
 /** A direct SNOMED CT hierarchy neighbour returned for a selected concept. */
@@ -80,9 +84,10 @@ export class TerminologyService {
       displayLanguage: INTL_DISPLAY_LANGUAGE,
       label: 'Internacional (en)',
       isArgentina: false,
+      available: false,
     };
     if (!base) {
-      return of(intl);
+      return of({ ...intl, label: 'Servidor terminológico no configurado', error: 'server-unavailable' });
     }
     const headers = new HttpHeaders({ Accept: 'application/fhir+json' });
     return this.http
@@ -104,15 +109,25 @@ export class TerminologyService {
                 displayLanguage: AR_DISPLAY_LANGUAGE,
                 label: 'Argentina (es)',
                 isArgentina: true,
+                available: true,
               }
             : {
                 ...intl,
                 editionUri: intlVersion ?? INTL_EDITION_URI,
                 version: intlVersion,
+                available: !!intlVersion,
+                ...(intlVersion ? {} : { error: 'edition-not-found' as const }),
               };
           return info;
         }),
-        catchError(() => of(intl))
+        // Do not silently switch to the International edition after a network
+        // failure. That would make a calibration result look terminologically
+        // pinned when the server was never verified.
+        catchError(() => of({
+          ...intl,
+          label: 'Servidor terminológico no disponible',
+          error: 'server-unavailable' as const,
+        }))
       );
   }
 

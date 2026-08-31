@@ -223,6 +223,7 @@ export function prepareAnnotationDocument(raw: unknown): PreparedAnnotationDocum
     throw new AnnotationInteropError('El JSON no contiene una lista no vacía de "cases".');
   }
 
+  const seenCaseIds = new Set<string>();
   const cases = input.cases.map((rawCase, index): ClinicalCase => {
     if (!rawCase || typeof rawCase !== 'object') {
       throw new AnnotationInteropError(`El caso ${index + 1} no es un objeto válido.`);
@@ -231,6 +232,12 @@ export function prepareAnnotationDocument(raw: unknown): PreparedAnnotationDocum
     if (!caseId) {
       throw new AnnotationInteropError(`El caso ${index + 1} no tiene un "id" válido.`);
     }
+    if (seenCaseIds.has(caseId)) {
+      throw new AnnotationInteropError(
+        `El ID de caso “${caseId}” está repetido. Cada caso debe tener un ID único para preservar la trazabilidad.`
+      );
+    }
+    seenCaseIds.add(caseId);
     if (typeof rawCase.text !== 'string') {
       throw new AnnotationInteropError(`El caso “${caseId}” no tiene un "text" válido.`);
     }

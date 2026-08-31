@@ -1,98 +1,47 @@
-import { provideHttpClient } from '@angular/common/http';
-import {
-  HttpTestingController,
-  provideHttpClientTesting,
-} from '@angular/common/http/testing';
-import { TestBed } from '@angular/core/testing';
-import { TerminologyConceptHierarchy, TerminologyService } from './terminology.service';
+import { describe, expect, it } from 'vitest';
+import { firstValueFrom, of, throwError } from 'rxjs';
+import { TerminologyService } from './terminology.service';
+import { AR_EDITION_URI } from '../models/annotation.model';
 
-function lookupResponse(display: string) {
-  return {
-    parameter: [
-      { name: 'display', valueString: display },
-      { name: 'inactive', valueBoolean: false },
-    ],
-  };
-}
+describe('TerminologyService', () => {
+  it('does not silently fall back to International after a server failure', async () => {
+    const http = {
+      get: () => throwError(() => new Error('offline')),
+    };
+    const service = new TerminologyService(http as never);
 
-describe('TerminologyService hierarchy lookup', () => {
-  let service: TerminologyService;
-  let http: HttpTestingController;
-
-  beforeEach(() => {
-    TestBed.configureTestingModule({
-      providers: [TerminologyService, provideHttpClient(), provideHttpClientTesting()],
-    });
-    service = TestBed.inject(TerminologyService);
-    http = TestBed.inject(HttpTestingController);
-    service.setDisplayLanguage('es');
+    await expect(firstValueFrom(service.detectEdition('https://terminology.invalid/fhir'))).resolves
+      .toMatchObject({
+        available: false,
+        error: 'server-unavailable',
+        label: 'Servidor terminológico no disponible',
+      });
   });
 
-  afterEach(() => http.verify());
+  it('pins the Argentina edition only when the server advertises a version', async () => {
+    const http = {
+      get: () => of({ entry: [{ resource: { version: `${AR_EDITION_URI}/version/20260731` } }] }),
+    };
+    const service = new TerminologyService(http as never);
 
-  it('requests parent/child properties and resolves only the visible neighbours', () => {
-    let result: TerminologyConceptHierarchy | null | undefined;
-    service
-      .lookupConceptHierarchy(
-        '123',
-        'https://terminology.example/fhir',
-        'http://snomed.info/sct/version/20260701',
-        1
-      )
-      .subscribe((value) => (result = value));
+    await expect(firstValueFrom(service.detectEdition('https://terminology.example/fhir'))).resolves
+      .toMatchObject({
+        available: true,
+        isArgentina: true,
+        version: `${AR_EDITION_URI}/version/20260731`,
+      });
+  });
 
-    const hierarchyRequest = http.expectOne(
-      (request) => request.urlWithParams.startsWith('https://terminology.example/fhir/CodeSystem/$lookup')
-    );
-    expect(hierarchyRequest.request.urlWithParams).toContain('property=parent&property=child');
-    expect(hierarchyRequest.request.urlWithParams).toContain(
-      'version=http%3A%2F%2Fsnomed.info%2Fsct%2Fversion%2F20260701'
-    );
-    hierarchyRequest.flush({
-      parameter: [
-        {
-          name: 'property',
-          part: [
-            { name: 'code', valueString: 'parent' },
-            { name: 'value', valueCode: 'p1' },
-          ],
-        },
-        {
-          name: 'property',
-          part: [
-            { name: 'code', valueString: 'child' },
-            { name: 'value', valueCode: 'c1' },
-          ],
-        },
-        {
-          name: 'property',
-          part: [
-            { name: 'code', valueString: 'child' },
-            { name: 'value', valueCode: 'c2' },
-          ],
-        },
-      ],
-    });
-    expect(result).toEqual({
-      code: '123',
-      parents: [{ code: 'p1', display: '', inactive: false }],
-      children: [{ code: 'c1', display: '', inactive: false }],
-      totalParents: 1,
-      totalChildren: 2,
-    });
+  it('reports no edition instead of inventing a terminology pin', async () => {
+    const http = {
+      get: () => of({ entry: [{ resource: { version: 'unrelated-edition' } }] }),
+    };
+    const service = new TerminologyService(http as never);
 
-    const parentRequest = http.expectOne((request) => request.urlWithParams.includes('code=p1'));
-    const childRequest = http.expectOne((request) => request.urlWithParams.includes('code=c1'));
-    expect(http.match((request) => request.urlWithParams.includes('code=c2'))).toHaveLength(0);
-    parentRequest.flush(lookupResponse('Parent concept'));
-    childRequest.flush(lookupResponse('Child concept'));
-
-    expect(result).toEqual({
-      code: '123',
-      parents: [{ code: 'p1', display: 'Parent concept', inactive: false }],
-      children: [{ code: 'c1', display: 'Child concept', inactive: false }],
-      totalParents: 1,
-      totalChildren: 2,
-    });
+    await expect(firstValueFrom(service.detectEdition('https://terminology.example/fhir'))).resolves
+      .toMatchObject({
+        available: false,
+        error: 'edition-not-found',
+      });
   });
 });

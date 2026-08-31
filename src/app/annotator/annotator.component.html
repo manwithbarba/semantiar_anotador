@@ -43,8 +43,9 @@
   }
   @if (loaded()) {
     <button mat-icon-button class="stats-btn" (click)="openStats()"
-            matTooltip="Ver estadísticas de sesiones">
-      <mat-icon>bar_chart</mat-icon>
+            matTooltip="Ver estadísticas de sesiones"
+            aria-label="Ver estadísticas de sesiones">
+      <mat-icon aria-hidden="true">bar_chart</mat-icon>
     </button>
     <button mat-stroked-button color="warn" class="clear-btn" (click)="clearAll()"
             matTooltip="Limpiar todo y empezar de nuevo">
@@ -57,9 +58,10 @@
     <span class="toolbar-label toolbar-label-wide">{{ downloadButtonLabel() }}</span>
     <span class="toolbar-label toolbar-label-compact">Guardar avance</span>
   </button>
-  <button mat-icon-button class="settings-btn" (click)="openSettings()"
-          matTooltip="Configuración de terminología">
-    <mat-icon>settings</mat-icon>
+    <button mat-icon-button class="settings-btn" (click)="openSettings()"
+          matTooltip="Configuración de terminología"
+          aria-label="Abrir configuración de terminología">
+    <mat-icon aria-hidden="true">settings</mat-icon>
   </button>
 </mat-toolbar>
 
@@ -67,11 +69,20 @@
   <aside class="tester-notice" role="note" aria-label="Versión tester para uso académico">
     <mat-icon aria-hidden="true">science</mat-icon>
     <div>
-      <strong>Versión tester pública · uso académico</strong>
-      <span>
-        Aplicación en evaluación y actualización continua. No constituye software médico ni debe
-        utilizarse para atención clínica. No cargues información identificatoria de pacientes.
-      </span>
+      @if (isAndroidApp) {
+        <strong>Versión Android deprecada · Calibración 3 usa la página web</strong>
+        <span>
+          Esta aplicación Android queda sólo para recuperar sesiones antiguas autorizadas. Para
+          comenzar una nueva calibración, usá la versión web o PWA vigente. No constituye software
+          médico y no debe cargarse información identificatoria de pacientes.
+        </span>
+      } @else {
+        <strong>Versión tester móvil · uso académico</strong>
+        <span>
+          Aplicación en evaluación y actualización continua. No constituye software médico ni debe
+          utilizarse para atención clínica. No cargues información identificatoria de pacientes.
+        </span>
+      }
     </div>
   </aside>
 }
@@ -94,6 +105,37 @@
           Cargá el archivo JSON asignado para comenzar la revisión. La anotación se guarda en esta
           pestaña y podés descargar un avance cuando lo necesites.
         </p>
+
+        @if (recoveryOfferVisible()) {
+          <section class="recovery-card" role="region" aria-label="Recuperación local disponible">
+            <div class="recovery-card-copy">
+              <span class="recovery-kicker">Recuperación local en este dispositivo</span>
+              <strong>Hay un avance sin descargar para retomar.</strong>
+              <span>
+                Guardado {{ recoveryDateLabel(recoverySnapshot()!.savedAt) }} ·
+                {{ recoverySnapshot()!.sourceFile || 'archivo sin nombre' }}
+              </span>
+              <small>
+                Se conserva únicamente en este navegador. Puede contener texto clínico sin cifrado de aplicación:
+                no lo uses en un dispositivo compartido y borrá la recuperación al terminar. Restaurarlo no reemplaza
+                ningún archivo que cargues después. Este respaldo no forma parte del JSON descargado ni se sube a
+                GitHub.
+              </small>
+            </div>
+            <div class="recovery-card-actions">
+              <button mat-flat-button color="primary" type="button" (click)="restoreRecovery()">
+                <mat-icon aria-hidden="true">restore</mat-icon> Restaurar avance
+              </button>
+              <button mat-stroked-button color="warn" type="button" (click)="clearRecovery()">
+                <mat-icon aria-hidden="true">delete_outline</mat-icon> Borrar recuperación
+              </button>
+            </div>
+          </section>
+        } @else if (!loaded() && !recoveryStorageAvailable()) {
+          <p class="recovery-unavailable" role="status">
+            La recuperación local no está disponible en este navegador; descargá el avance con frecuencia.
+          </p>
+        }
 
         <button mat-flat-button color="primary" class="home-cta" (click)="fileInput.click()">
           <mat-icon>upload_file</mat-icon> Cargar archivo JSON
@@ -119,6 +161,14 @@
           <span>
             @if (dirty()) {
               El progreso queda en esta pestaña hasta descargarlo. Usá “Descargar JSON de avance” para poder retomarlo o entregarlo.
+              @if (recoveryStorageAvailable()) {
+                <small class="recovery-status-inline">
+                  Recuperación local activa
+                  @if (recoverySavedAt(); as savedAt) {
+                    · último guardado {{ recoveryDateLabel(savedAt) }}
+                  }
+                </small>
+              }
             } @else {
               {{ loadedFileName() || sourceFile() || 'Archivo de anotación' }} está cargado. La próxima sesión comienza cargando el JSON descargado.
             }
@@ -159,6 +209,8 @@
       </div>
       <nav class="case-workflow-steps" aria-label="Pasos de revisión de la nota">
         <button type="button"
+                [attr.aria-current]="caseWorkflowStep(activeCaseIndex()) === 'cell' ? 'step' : null"
+                aria-label="Paso 1: leer la nota y revisar la especialidad"
                 [class.active]="caseWorkflowStep(activeCaseIndex()) === 'cell'"
                 (click)="setCaseWorkflowStep(activeCaseIndex(), 'cell')">
           <span>1</span>
@@ -167,6 +219,10 @@
         </button>
         <span class="case-workflow-arrow" aria-hidden="true">→</span>
         <button type="button"
+                [attr.aria-current]="caseWorkflowStep(activeCaseIndex()) === 'marking' ? 'step' : null"
+                [attr.aria-label]="readingCompleteFor(activeCaseIndex())
+                  ? 'Paso 2: marcar todas las menciones'
+                  : 'Paso 2: marcar menciones, disponible después de confirmar la lectura'"
                 [class.active]="caseWorkflowStep(activeCaseIndex()) === 'marking'"
                 (click)="setCaseWorkflowStep(activeCaseIndex(), 'marking')">
           <span>2</span>
@@ -175,21 +231,16 @@
         </button>
         <span class="case-workflow-arrow" aria-hidden="true">→</span>
         <button type="button"
-                [class.active]="caseWorkflowStep(activeCaseIndex()) === 'decisions'"
+                [attr.aria-current]="caseWorkflowStep(activeCaseIndex()) === 'decisions'
+                  || caseWorkflowStep(activeCaseIndex()) === 'finalize' ? 'step' : null"
+                aria-label="Paso 3: decidir, completar y cerrar la nota"
+                [class.active]="caseWorkflowStep(activeCaseIndex()) === 'decisions'
+                  || caseWorkflowStep(activeCaseIndex()) === 'finalize'"
                 [class.locked]="unifiedMarkingPhaseActive(activeCaseIndex())"
                 (click)="setCaseWorkflowStep(activeCaseIndex(), 'decisions')">
           <span>3</span>
           <strong>Decisiones</strong>
-          <small>Clínico (SNOMED), Abreviatura o Ambos</small>
-        </button>
-        <span class="case-workflow-arrow" aria-hidden="true">→</span>
-        <button type="button"
-                [class.active]="caseWorkflowStep(activeCaseIndex()) === 'finalize'"
-                [class.locked]="unifiedMarkingPhaseActive(activeCaseIndex())"
-                (click)="setCaseWorkflowStep(activeCaseIndex(), 'finalize')">
-          <span>4</span>
-          <strong>Finalizar</strong>
-          <small>Resultado y cierre de nota</small>
+          <small>Decisiones clínicas y léxicas · cierre incluido</small>
         </button>
       </nav>
     </section>
@@ -220,6 +271,9 @@
           (pointerup)="queueTextSelection(ci, caseText)"
           (touchend)="queueTextSelection(ci, caseText)"
           (keyup)="queueTextSelection(ci, caseText)">
+          @if (unifiedReviewPrototype() && !premarkedVisibleFor(ci)) {
+            <span class="blind-reading-text">{{ caseItem.textNorm }}</span>
+          } @else {
           @for (segment of textSegments(caseItem); track $index; let si = $index) {
             @if (segment.kind === 'text') {
               <span [attr.data-source-start]="textSegmentStart(caseItem, si)">{{ segment.value }}</span>
@@ -259,12 +313,35 @@
               </span>
             }
           }
+          }
         </div>
-        <div class="annotation-mark-legend" aria-label="Leyenda de marcas en la nota">
-          <span><i class="mark-swatch mark-clinical" aria-hidden="true">C</i> Información clínica</span>
-          <span><i class="mark-swatch mark-lexical" aria-hidden="true">F</i> Forma breve</span>
-          <span><i class="mark-swatch mark-both" aria-hidden="true">A</i> Ambas dimensiones</span>
-        </div>
+        <p class="case-text-help" [attr.id]="'selection-help-' + ci">
+          @if (unifiedReviewPrototype() && !premarkedVisibleFor(ci)) {
+            Leé la nota completa sin sugerencias resaltadas. Después confirmá la lectura para iniciar la marcación.
+          } @else {
+            Seleccioná un tramo exacto del texto para agregar una mención; las marcas superpuestas se pueden elegir por separado.
+          }
+        </p>
+        @if (!unifiedReviewPrototype() || premarkedVisibleFor(ci)) {
+          <div class="annotation-mark-legend" aria-label="Leyenda de marcas en la nota">
+            <span><i class="mark-swatch mark-clinical" aria-hidden="true">C</i> Información clínica</span>
+            <span><i class="mark-swatch mark-lexical" aria-hidden="true">F</i> Forma breve</span>
+            <span><i class="mark-swatch mark-both" aria-hidden="true">A</i> Ambas dimensiones</span>
+          </div>
+        }
+        @if (unifiedReviewPrototype() && !readingCompleteFor(ci)) {
+          <section class="unified-reading-gate" aria-label="Confirmación de lectura inicial" role="region">
+            <span class="unified-kicker">Paso 1 · lectura ciega</span>
+            <strong>Leé toda la nota antes de ver las sugerencias.</strong>
+            <p>
+              La aplicación oculta las premarcaciones durante esta primera lectura para que puedas detectar también las menciones omitidas.
+            </p>
+            <button mat-flat-button color="primary" type="button" (click)="startUnifiedMarking(ci)">
+              <mat-icon aria-hidden="true">menu_book</mat-icon>
+              Terminé de leer · iniciar marcación
+            </button>
+          </section>
+        }
         <mat-form-field appearance="outline" class="case-specialty-field">
           <mat-label>Especialidad sospechada de la nota</mat-label>
           <mat-select
@@ -277,7 +354,7 @@
           </mat-select>
         </mat-form-field>
 
-          @if (compactMobile()) {
+          @if (compactMobile() && readingCompleteFor(ci)) {
             <section
               class="quick-lexical-add quick-mention-add"
               [attr.id]="'case-mention-add-' + ci"
@@ -317,7 +394,7 @@
             </section>
           }
 
-          @if (lexicalLayerEnabled() && compactMobile()) {
+          @if (lexicalLayerEnabled() && compactMobile() && readingCompleteFor(ci)) {
             <section
               class="quick-lexical-add quick-brief-add"
               [attr.id]="'case-lexical-' + ci"
@@ -409,7 +486,7 @@
               </div>
             </div>
           }
-          @if (unifiedReviewPrototype() && unifiedMarkingPhaseActive(ci)) {
+          @if (unifiedReviewPrototype() && unifiedMarkingPhaseActive(ci) && readingCompleteFor(ci)) {
             <section class="unified-marking-left-control" aria-label="Fin de la marcación de la nota">
               <span class="unified-kicker">Paso 2 · marcación de pendientes</span>
               <strong>{{ unifiedMarkingAddedCount(caseItem) }} marcas agregadas</strong>
@@ -513,7 +590,9 @@
                   <summary (click)="$event.preventDefault(); setUnifiedActiveItem(ci, item.key)">
                     <div>
                       <strong>“{{ item.surface }}”</strong>
-                      <span>{{ unifiedItemStatus(item) }}</span>
+                      <span
+                        [class.status-resolved]="unifiedItemStatusResolved(item)"
+                        [class.status-pending]="unifiedItemStatusPending(item)">{{ unifiedItemStatus(item) }}</span>
                     </div>
                   </summary>
 
@@ -557,21 +636,21 @@
                     <div class="unified-choice">
                       <p>¿Qué representa aquí?</p>
                       <div class="unified-choice-actions">
-                        <button mat-stroked-button color="primary" type="button"
+                        <button mat-stroked-button color="primary" class="unified-mark-choice mark-clinical" type="button"
                                 (click)="classifyUnifiedItem(ci, item.key, 'clinical')">
                         <mat-icon>clinical_notes</mat-icon> Solo información clínica
                         </button>
                         @if (lexicalLayerEnabled()) {
-                          <button mat-stroked-button color="accent" type="button"
+                          <button mat-stroked-button color="accent" class="unified-mark-choice mark-lexical" type="button"
                                   (click)="classifyUnifiedItem(ci, item.key, 'lexical')">
                             <mat-icon>short_text</mat-icon> Solo abreviatura contextual
                           </button>
-                          <button mat-stroked-button type="button"
+                          <button mat-stroked-button class="unified-mark-choice mark-both" type="button"
                                   (click)="classifyUnifiedItem(ci, item.key, 'both')">
                             <mat-icon>layers</mat-icon> Información clínica + abreviatura contextual
                           </button>
                         }
-                        <button mat-stroked-button color="warn" class="unified-exclude-choice" type="button"
+                        <button mat-stroked-button color="warn" class="unified-exclude-choice mark-choice-skip" type="button"
                                 (click)="classifyUnifiedItem(ci, item.key, 'skip')">
                           <mat-icon>close</mat-icon> Sin valor clínico ni abreviatura (Anular)
                         </button>
@@ -582,21 +661,21 @@
                     <div class="unified-item-copy">
                       <p>Esta aparición quedó registrada con información clínica. Completá jerarquía, concepto SNOMED CT y contexto.</p>
                       <div class="unified-item-actions">
-                        <button mat-stroked-button color="primary" type="button"
+                        <button mat-stroked-button color="primary" class="unified-mark-choice mark-clinical" type="button"
                                 (click)="openUnifiedItemDetails(ci, item.key)">
                           <mat-icon>clinical_notes</mat-icon> Solo información clínica
                         </button>
                         @if (lexicalLayerEnabled()) {
-                          <button mat-stroked-button color="accent" type="button"
+                          <button mat-stroked-button color="accent" class="unified-mark-choice mark-lexical" type="button"
                                   (click)="classifyUnifiedItem(ci, item.key, 'lexical')">
                             <mat-icon>short_text</mat-icon> Solo abreviatura contextual
                           </button>
-                          <button mat-stroked-button type="button"
+                          <button mat-stroked-button class="unified-mark-choice mark-both" type="button"
                                   (click)="classifyUnifiedItem(ci, item.key, 'both')">
                             <mat-icon>layers</mat-icon> Información clínica + abreviatura contextual
                           </button>
                         }
-                        <button mat-stroked-button color="warn" class="unified-exclude-choice" type="button"
+                        <button mat-stroked-button color="warn" class="unified-exclude-choice mark-choice-skip" type="button"
                                 (click)="classifyUnifiedItem(ci, item.key, 'skip')">
                           <mat-icon>close</mat-icon> Sin valor clínico ni abreviatura (Anular)
                         </button>
@@ -607,20 +686,20 @@
                       <p>Esta aparición quedó registrada como abreviatura contextual. Resolvela en contexto.</p>
                       <div class="unified-item-actions">
                         @if (lexicalLayerEnabled()) {
-                          <button mat-stroked-button color="primary" type="button"
+                          <button mat-stroked-button color="primary" class="unified-mark-choice mark-clinical" type="button"
                                   (click)="classifyUnifiedItem(ci, item.key, 'clinical')">
                             <mat-icon>clinical_notes</mat-icon> Solo información clínica
                           </button>
-                          <button mat-stroked-button color="accent" type="button"
+                          <button mat-stroked-button color="accent" class="unified-mark-choice mark-lexical" type="button"
                                   (click)="openUnifiedItemDetails(ci, item.key)">
                             <mat-icon>short_text</mat-icon> Solo abreviatura contextual
                           </button>
-                          <button mat-stroked-button type="button"
+                          <button mat-stroked-button class="unified-mark-choice mark-both" type="button"
                                   (click)="classifyUnifiedItem(ci, item.key, 'both')">
                             <mat-icon>layers</mat-icon> Información clínica + abreviatura contextual
                           </button>
                         }
-                        <button mat-stroked-button color="warn" class="unified-exclude-choice" type="button"
+                        <button mat-stroked-button color="warn" class="unified-exclude-choice mark-choice-skip" type="button"
                                 (click)="classifyUnifiedItem(ci, item.key, 'skip')">
                           <mat-icon>close</mat-icon> Sin valor clínico ni abreviatura (Anular)
                         </button>
@@ -630,19 +709,19 @@
                     <div class="unified-item-copy">
                       <p>Esta aparición requiere información clínica y abreviatura contextual.</p>
                       <div class="unified-item-actions">
-                        <button mat-stroked-button color="primary" type="button"
+                        <button mat-stroked-button color="primary" class="unified-mark-choice mark-clinical" type="button"
                                 (click)="classifyUnifiedItem(ci, item.key, 'clinical')">
                           <mat-icon>clinical_notes</mat-icon> Solo información clínica
                         </button>
-                        <button mat-stroked-button color="accent" type="button"
+                          <button mat-stroked-button color="accent" class="unified-mark-choice mark-lexical" type="button"
                                 (click)="classifyUnifiedItem(ci, item.key, 'lexical')">
                           <mat-icon>short_text</mat-icon> Solo abreviatura contextual
                         </button>
-                        <button mat-stroked-button color="primary" type="button"
+                        <button mat-stroked-button color="primary" class="unified-mark-choice mark-both" type="button"
                                 (click)="openUnifiedItemDetails(ci, item.key)">
                           <mat-icon>layers</mat-icon> Información clínica + abreviatura contextual
                         </button>
-                        <button mat-stroked-button color="warn" class="unified-exclude-choice" type="button"
+                        <button mat-stroked-button color="warn" class="unified-exclude-choice mark-choice-skip" type="button"
                                 (click)="classifyUnifiedItem(ci, item.key, 'skip')">
                           <mat-icon>close</mat-icon> Sin valor clínico ni abreviatura (Anular)
                         </button>
@@ -652,21 +731,21 @@
                   <div class="unified-item-copy">
                     <p class="unified-skipped-copy">Esta aparición fue anulada (sin valor clínico ni abreviatura).</p>
                     <div class="unified-item-actions">
-                      <button mat-stroked-button color="primary" type="button"
+                      <button mat-stroked-button color="primary" class="unified-mark-choice mark-clinical" type="button"
                               (click)="classifyUnifiedItem(ci, item.key, 'clinical')">
                         <mat-icon>clinical_notes</mat-icon> Solo información clínica
                       </button>
                       @if (lexicalLayerEnabled()) {
-                        <button mat-stroked-button color="accent" type="button"
+                        <button mat-stroked-button color="accent" class="unified-mark-choice mark-lexical" type="button"
                                 (click)="classifyUnifiedItem(ci, item.key, 'lexical')">
                           <mat-icon>short_text</mat-icon> Solo abreviatura contextual
                         </button>
-                        <button mat-stroked-button type="button"
+                          <button mat-stroked-button class="unified-mark-choice mark-both" type="button"
                                 (click)="classifyUnifiedItem(ci, item.key, 'both')">
                           <mat-icon>layers</mat-icon> Información clínica + abreviatura contextual
                         </button>
                       }
-                      <button mat-stroked-button color="warn" class="unified-exclude-choice" type="button"
+                        <button mat-stroked-button color="warn" class="unified-exclude-choice mark-choice-skip" type="button"
                               (click)="classifyUnifiedItem(ci, item.key, 'skip')">
                         <mat-icon>close</mat-icon> Sin valor clínico ni abreviatura (Anular)
                       </button>
@@ -684,7 +763,7 @@
 
             <div class="unified-review-footer">
               <button mat-flat-button color="primary" type="button" (click)="setCaseWorkflowStep(ci, 'finalize')">
-                <mat-icon>task_alt</mat-icon> Pasar al Paso 4 · Finalizar y cerrar nota
+                <mat-icon>task_alt</mat-icon> Ir al cierre del Paso 3
               </button>
             </div>
           </section>
@@ -759,8 +838,6 @@
             </div>
             }
 
-
-
             @if (!(caseItem.lexicalMentions?.length)) {
               <div class="lexical-empty">
                 No hay formas sugeridas. Revisá igualmente toda la nota y seleccioná cada forma
@@ -780,8 +857,10 @@
                   <summary class="lexical-card-head">
                     <div>
                       <strong>“{{ mention.surface }}”</strong>
-                      <span>
-                        {{ isLexicalMentionComplete(mention) ? 'Decidida' : 'Pendiente' }} ·
+                      <span
+                        [class.status-resolved]="isLexicalMentionComplete(mention)"
+                        [class.status-pending]="!isLexicalMentionComplete(mention)">
+                        {{ isLexicalMentionComplete(mention) ? 'Codificada' : 'Pendiente' }} ·
                         {{ lexicalOriginLabel(mention.origin) }}
                       </span>
                     </div>
@@ -1163,7 +1242,9 @@
                   <span class="concept-num">C{{ concept.sequence ?? cj + 1 }}</span>
                   <div>
                     <strong>{{ conceptDisplayLabel(concept) }}</strong>
-                    <span>{{ conceptMetaLabel(concept) }}</span>
+                    <span
+                      [class.status-resolved]="!!concept.sctid.trim() && concept.contextReviewed !== false"
+                      [class.status-pending]="!concept.sctid.trim() || concept.contextReviewed === false">{{ conceptMetaLabel(concept) }}</span>
                   </div>
                 </div>
                 <button mat-icon-button color="warn" class="remove-btn"
@@ -1423,7 +1504,7 @@
 
         @if (caseWorkflowStep(ci) === 'finalize' || !unifiedReviewPrototype()) {
           <div class="case-finalization" [attr.id]="'case-finalize-' + ci" [class.finalized]="isCaseFinalized(caseItem)">
-            <span class="unified-kicker">Paso 4 · Resultado y cierre de la nota</span>
+            <span class="unified-kicker">Paso 3 · cierre de la nota</span>
             @if (isCaseFinalized(caseItem)) {
               <div class="case-finalization-copy">
                 <mat-icon>verified</mat-icon>
@@ -1441,7 +1522,7 @@
               <div class="case-finalization-copy">
                 <mat-icon>task_alt</mat-icon>
                 <div>
-                  <strong>Paso 4 · Resultado y cierre de nota</strong>
+                  <strong>Paso 3 · resultado y cierre de nota</strong>
                   <span>Confirmá el resultado final de la revisión y descargá el JSON de anotación.</span>
                 </div>
               </div>
@@ -1557,39 +1638,34 @@
     <section>
       <h3>1. Cargá el archivo asignado</h3>
       <p>
-        Elegí <strong>Cargar archivo JSON</strong> y seleccioná únicamente el archivo asociado
-        con tu ID de anotador. También podés cargar un JSON de avance para continuar.
+        Elegí <strong>Cargar archivo</strong> y seleccioná el lote asociado con tu identificador.
+        También podés cargar un archivo de avance para continuar.
       </p>
     </section>
     <section>
-      <h3>2. Revisá cada nota</h3>
+      <h3>2. Leé y marcá la nota</h3>
       <p>
-        Leé el texto completo. Seleccioná una expresión y usá <strong>Marcar para revisar</strong>.
-        Decidí si corresponde a un término con información clínica, a un término sin información
-        clínica, a ambos tipos de anotación o si no debe anotarse. Las marcas verdes son clínicas,
-        las violetas son formas breves y las ámbar reúnen ambas dimensiones. Para corregir límites,
-        elegí la marca, seleccioná el tramo completo y pulsá <strong>Usar como nuevos límites</strong>.
+        Leé la nota completa antes de mirar las marcas sugeridas. Después recorré todo el texto:
+        aceptá, corregí, anulá o agregá cada mención. Las marcas verdes son clínicas, las violetas
+        son formas breves y las ámbar reúnen las dos revisiones.
       </p>
     </section>
     <section>
-      <h3>3. Completá formas y conceptos</h3>
+      <h3>3. Decidí y cerrá la nota</h3>
       <p>
-        Resolvé cada forma breve según su contexto, sin adivinar. Para cada concepto clínico,
-        elegí la jerarquía, seleccioná el término SNOMED CT y completá su contexto.
+        Revisá una marca por vez. Elegí información clínica, forma breve, ambas o anulación.
+        Completá el concepto SNOMED CT o el significado de la forma cuando corresponda. Si hay
+        una duda, elegí <strong>Ambigua</strong> o <strong>No puedo determinarla</strong>.
+        Cerrá la nota como <strong>Revisada con conceptos</strong> o <strong>Sin conceptos anotables</strong>
+        sólo cuando no queden pendientes.
       </p>
     </section>
     <section>
-      <h3>4. Cerrá la nota</h3>
+      <h3>Guardá el avance</h3>
       <p>
-        Elegí <strong>Revisada con conceptos</strong> o <strong>Sin conceptos anotables</strong>.
-        El contador disminuye al cerrar la nota. Si después la modificás, vuelve a pendiente.
-      </p>
-    </section>
-    <section>
-      <h3>5. Guardá el avance</h3>
-      <p>
-        Usá <strong>Guardar avance</strong> con frecuencia. Conservá el JSON descargado para
-        continuar o enviarlo al responsable del estudio cuando completes todas las notas.
+        Usá <strong>Guardar avance</strong> con frecuencia. Conservá el archivo descargado para
+        continuar o enviarlo al responsable del estudio. La recuperación local ayuda ante un
+        cierre accidental, pero puede contener texto clínico y no reemplaza la descarga.
       </p>
     </section>
   </mat-dialog-content>

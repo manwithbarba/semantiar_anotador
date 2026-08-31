@@ -1,7 +1,7 @@
 {
   "name": "SemantIAr Anotador · anotación clínica",
   "short_name": "SemantIAr Anotador",
-  "description": "Anotación clínica con SNOMED CT para el proyecto SEMANTIAR.",
+  "description": "Anotación académica con SNOMED CT · Calibración 3 de SEMANTIAR.",
   "lang": "es-AR",
   "start_url": "./",
   "scope": "./",

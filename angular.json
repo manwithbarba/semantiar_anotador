@@ -19,6 +19,7 @@
           "options": {
             "browser": "src/main.ts",
             "tsConfig": "tsconfig.app.json",
+            "allowedCommonJsDependencies": ["ajv", "ajv-formats"],
             "assets": [
               {
                 "glob": "**/*",
@@ -35,13 +36,13 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "1mb",
+                  "maximumWarning": "1.1mb",
                   "maximumError": "2mb"
                 },
                 {
                   "type": "anyComponentStyle",
-                  "maximumWarning": "8kb",
-                  "maximumError": "28kb"
+                  "maximumWarning": "32kb",
+                  "maximumError": "36kb"
                 }
               ],
               "outputHashing": "all",

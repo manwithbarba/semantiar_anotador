@@ -26,6 +26,8 @@ export interface AutocompleteTelemetryEvent {
   selectedRank?: number;
 }
 
+type AutocompleteSearchState = 'idle' | 'loading' | 'results' | 'empty' | 'error';
+
 @Component({
     selector: 'app-autocomplete-binding',
     templateUrl: './autocomplete-binding.component.html',
@@ -70,6 +72,9 @@ export class AutocompleteBindingComponent implements OnInit, OnChanges, AfterVie
   formControl = new UntypedFormControl();
   autoFilter: Observable<any> | undefined;
   loading = false;
+  /** Explicitly distinguishes an empty terminology result from a failed query. */
+  searchState: AutocompleteSearchState = 'idle';
+  searchErrorMessage = 'No se pudo consultar la terminología. Revisá la conexión o reintentá.';
   selectedConcept: any = {};
 
   static nextId = 0;
@@ -254,6 +259,9 @@ export class AutocompleteBindingComponent implements OnInit, OnChanges, AfterVie
       /** 1️⃣  Launch request only when term ≥ 3 chars */
       switchMap((term: unknown) => {
         if (this.readonly) {
+          this.searchState = 'idle';
+          this.latestQuery = '';
+          this.latestResults = [];
           return of([]); // Don't search if readonly
         }
         const query = this.normalizeQuery(term);
@@ -268,6 +276,7 @@ export class AutocompleteBindingComponent implements OnInit, OnChanges, AfterVie
           this.latestQuery = query;
           this.latestResults = [];
           this.loading = true;
+          this.searchState = 'loading';
           const startedAt = performance.now();
           let settled = false;
           this.searchTelemetry.emit({ type: 'request', query });
@@ -280,6 +289,7 @@ export class AutocompleteBindingComponent implements OnInit, OnChanges, AfterVie
                 tap((results: any[]) => {
                   settled = true;
                   this.latestResults = results;
+                  this.searchState = results.length ? 'results' : 'empty';
                   this.searchTelemetry.emit({
                     type: 'result',
                     query,
@@ -291,6 +301,7 @@ export class AutocompleteBindingComponent implements OnInit, OnChanges, AfterVie
                   settled = true;
                   console.error('Error expanding value set:', err);
                   this.latestResults = [];
+                  this.searchState = 'error';
                   this.searchTelemetry.emit({
                     type: 'error',
                     query,
@@ -312,6 +323,10 @@ export class AutocompleteBindingComponent implements OnInit, OnChanges, AfterVie
           );
         }
         /** 3️⃣  Short queries → always empty */
+        this.latestQuery = '';
+        this.latestResults = [];
+        this.loading = false;
+        this.searchState = 'idle';
         return of([]);
       })
     );

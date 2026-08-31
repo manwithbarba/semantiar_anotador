@@ -109,6 +109,10 @@ import {
   AnnotationInteropError,
   prepareAnnotationDocument,
 } from '../models/annotation-interop';
+import {
+  AnnotationRecoveryEnvelope,
+  AnnotationRecoveryService,
+} from '../services/annotation-recovery.service';
 
 type UnifiedReviewItemKind = 'pending' | 'clinical' | 'lexical' | 'both' | 'skipped';
 type UnifiedReviewChoice = 'clinical' | 'lexical' | 'both' | 'skip';
@@ -163,6 +167,7 @@ interface UnifiedReviewItem {
 })
 export class AnnotatorComponent implements OnInit, OnDestroy {
   private terminologyService = inject(TerminologyService);
+  private recoveryService = inject(AnnotationRecoveryService);
   private snackBar = inject(MatSnackBar);
   private dialog = inject(MatDialog);
   private timingCaseIndex: number | null = null;
@@ -171,6 +176,9 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   private textSelectionTimer: number | undefined;
   private pendingActiveMs = new Map<number, number>();
   private terminologyDetectionGeneration = 0;
+  private recoverySaveTimer: number | undefined;
+  /** The offer is only shown before the first explicit file/recovery load. */
+  private recoveryOfferSuppressed = false;
 
   @ViewChild('confirmClear') confirmClearTpl!: TemplateRef<unknown>;
   @ViewChild('settingsDialog') settingsTpl!: TemplateRef<unknown>;
@@ -193,8 +201,12 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   readonly medicalSpecialties = MEDICAL_SPECIALTIES;
   readonly lexicalEvidenceCodes = LEXICAL_EVIDENCE_CODES;
   readonly lexicalUnclassifiedFunction = LEXICAL_UNCLASSIFIED_FUNCTION;
+  /** The browser build is the normative Calibración 3 path. Android remains
+   * available only as a legacy tester so old sessions can be recovered. */
+  readonly nativePlatform = Capacitor.getPlatform();
   readonly isNativeApp = Capacitor.isNativePlatform();
-  readonly currentPlatform = this.isNativeApp ? 'android' as const : 'web' as const;
+  readonly isAndroidApp = this.nativePlatform === 'android';
+  readonly currentPlatform = this.nativePlatform === 'android' ? 'android' as const : 'web' as const;
 
   // Document metadata
   project = signal<string>('');
@@ -236,6 +248,13 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   private unifiedActiveItemKeys = signal<Record<number, string>>({});
   /** Two-phase flow: mark the note independently before exposing candidates. */
   private unifiedMarkingPhase = signal<Record<number, boolean>>({});
+  /**
+   * Explicit reading gate for the calibration protocol. Premarked candidates
+   * stay out of the text until the annotator confirms that the note was read
+   * in full. This keeps the first pass blind to the assisted suggestions while
+   * preserving the underlying spans for the later decision queue.
+   */
+  private readingComplete = signal<Record<number, boolean>>({});
   /** Compact three-step navigation for the active cell. */
   private caseWorkflowSteps = signal<Record<number, CaseWorkflowStep>>({});
   /** The active branch is local UI state; it is not persisted in the annotation JSON. */
@@ -255,6 +274,10 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
 
   /** True when there are annotation changes not yet downloaded. */
   dirty = signal<boolean>(false);
+  /** Last device-local recovery snapshot offered to the annotator. */
+  recoverySnapshot = signal<AnnotationRecoveryEnvelope | null>(null);
+  recoveryStorageAvailable = signal<boolean>(false);
+  recoverySavedAt = signal<string | null>(null);
 
   loaded = computed(() => this.cases().length > 0);
   coreBlindMode = computed(() => this.annotationProtocol().mode === 'core-blind');
@@ -337,14 +360,17 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.refreshMobileLayout();
+    this.refreshRecoveryState();
     this.detectEdition();
   }
 
   ngOnDestroy(): void {
     this.terminologyDetectionGeneration += 1;
     if (this.textSelectionTimer !== undefined) window.clearTimeout(this.textSelectionTimer);
+    if (this.recoverySaveTimer !== undefined) window.clearTimeout(this.recoverySaveTimer);
     this.flushActiveTime();
     this.flushPendingActiveTime();
+    this.flushRecoverySave();
   }
 
   /** Update the control pattern when the browser crosses the mobile breakpoint. */
@@ -378,9 +404,16 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   onVisibilityChange(): void {
     if (document.hidden) {
       this.pauseActivityTracking();
+      this.flushRecoverySave();
     } else {
       this.resumeActivityTracking();
     }
+  }
+
+  /** Synchronous last chance snapshot before a tab/window is discarded. */
+  @HostListener('window:beforeunload')
+  onBeforeUnload(): void {
+    this.flushRecoverySave();
   }
 
   @HostListener('window:blur')
@@ -616,7 +649,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       : `${minutes} min ${String(seconds).padStart(2, '0')} s`;
   }
 
-  /** Auto-select the Argentina edition (Spanish) if present, else International (English). */
+  /** Verify and select a known edition; never hide an unavailable terminology server. */
   detectEdition(): void {
     const generation = ++this.terminologyDetectionGeneration;
     const requestedServer = this.terminologyServer();
@@ -628,6 +661,23 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       ) {
         return;
       }
+      if (!info.available) {
+        this.snomedVersion.set(null);
+        this.editionLabel.set(
+          info.error === 'server-unavailable'
+            ? 'Servidor terminológico no disponible'
+            : 'Edición terminológica no verificada'
+        );
+        this.conceptHierarchy.set({});
+        this.snackBar.open(
+          info.error === 'server-unavailable'
+            ? 'No se pudo verificar el servidor terminológico. Conservá el avance y reintentá antes de codificar.'
+            : 'No se encontró una edición SNOMED CT verificable. No se habilita una sustitución automática.',
+          'OK',
+          { duration: 6500 }
+        );
+        return;
+      }
       this.editionUri.set(info.editionUri);
       this.snomedVersion.set(info.version);
       this.displayLanguage.set(info.displayLanguage);
@@ -636,7 +686,8 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       this.terminologyService.setDisplayLanguage(info.displayLanguage);
       this.editionLabel.set(info.label);
       this.conceptHierarchy.set({});
-      // No notice on success (Argentina present). Only warn on the English fallback.
+      // A verified International result is allowed but remains visibly marked
+      // as a fallback for the calibration record.
       if (!info.isArgentina) {
         this.snackBar.open(
           'Edición Argentina no disponible — usando Internacional (inglés).',
@@ -679,8 +730,8 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   }
 
   async downloadManual(): Promise<void> {
-    const path = 'manuales/Manual_de_uso_SemantIAr_App.pdf';
-    const filename = 'Manual_de_uso_SemantIAr_App.pdf';
+    const path = 'manuales/Manual_de_uso_SemantIAr_App_CAL3.pdf';
+    const filename = 'Manual_de_uso_SemantIAr_App_CAL3.pdf';
 
     try {
       if (Capacitor.isNativePlatform()) {
@@ -726,6 +777,97 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.scrollActiveCaseIntoView(idx);
   }
 
+  // ---- Device-local recovery ----
+
+  private refreshRecoveryState(): void {
+    this.recoveryStorageAvailable.set(this.recoveryService.available());
+    this.recoverySnapshot.set(this.recoveryService.load());
+    this.recoverySavedAt.set(this.recoverySnapshot()?.savedAt ?? null);
+  }
+
+  recoveryOfferVisible(): boolean {
+    return !this.loaded() && !this.recoveryOfferSuppressed && !!this.recoverySnapshot();
+  }
+
+  recoveryDateLabel(value: string): string {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return new Intl.DateTimeFormat('es-AR', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    }).format(date);
+  }
+
+  /** Restore only from the explicit home-screen action, never automatically. */
+  restoreRecovery(): void {
+    if (this.loaded()) {
+      this.snackBar.open('Primero terminá o limpiá la nota que ya está cargada.', 'OK', {
+        duration: 4000,
+      });
+      return;
+    }
+    const recovery = this.recoverySnapshot();
+    if (!recovery) return;
+    try {
+      const prepared = prepareAnnotationDocument(recovery.document);
+      this.ingestDocument(
+        prepared.document,
+        recovery.sourceFile || 'recuperacion-local.json',
+        prepared.warnings,
+      );
+      // A restored snapshot represents work not yet exported in this tab.
+      this.dirty.set(true);
+      this.scheduleRecoverySave();
+      this.snackBar.open('Recuperación local restaurada. Verificá la nota activa y guardá un JSON.', 'OK', {
+        duration: 5500,
+      });
+    } catch (error) {
+      const message =
+        error instanceof AnnotationInteropError
+          ? error.message
+          : 'La recuperación local no es válida y no se pudo restaurar.';
+      this.snackBar.open(message, 'OK', { duration: 6500 });
+    }
+  }
+
+  clearRecovery(): void {
+    this.recoveryService.clear();
+    this.recoverySnapshot.set(null);
+    this.recoverySavedAt.set(null);
+    this.recoveryStorageAvailable.set(this.recoveryService.available());
+    this.snackBar.open('Recuperación local borrada de este dispositivo.', 'OK', { duration: 3000 });
+  }
+
+  private scheduleRecoverySave(): void {
+    if (!this.loaded() || !this.dirty()) return;
+    if (this.recoverySaveTimer !== undefined) window.clearTimeout(this.recoverySaveTimer);
+    this.recoverySaveTimer = window.setTimeout(() => {
+      this.recoverySaveTimer = undefined;
+      this.flushRecoverySave();
+    }, 700);
+  }
+
+  private flushRecoverySave(): void {
+    if (this.recoverySaveTimer !== undefined) {
+      window.clearTimeout(this.recoverySaveTimer);
+      this.recoverySaveTimer = undefined;
+    }
+    if (!this.loaded() || !this.dirty()) return;
+    const document = this.buildPersistenceDocument();
+    if (!document) return;
+    const saved = this.recoveryService.save(document, {
+      sourceFile: this.loadedFileName() || this.sourceFile(),
+      annotatorId: this.annotatorId(),
+      batch: this.batch(),
+    });
+    this.recoveryStorageAvailable.set(saved || this.recoveryService.available());
+    if (saved) {
+      const snapshot = this.recoveryService.load();
+      this.recoverySnapshot.set(snapshot);
+      this.recoverySavedAt.set(snapshot?.savedAt ?? null);
+    }
+  }
+
   // ---- Loading ----
 
   onFileSelected(event: Event): void {
@@ -767,6 +909,11 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       );
       return;
     }
+    // A manually selected JSON always wins over a stale local recovery. Keep
+    // the envelope on disk until the user explicitly clears it, but suppress
+    // its home-screen offer so it can never overwrite this loaded file.
+    this.recoveryOfferSuppressed = true;
+    this.recoverySnapshot.set(null);
     this.pauseActivityTracking();
     this.timingCaseIndex = null;
     this.pendingActiveMs.clear();
@@ -905,6 +1052,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.mentionQuickEntry.set({});
     this.unifiedActiveItemKeys.set({});
     this.unifiedMarkingPhase.set(Object.fromEntries(cases.map((_, index) => [index, true])));
+    this.readingComplete.set(Object.fromEntries(cases.map((_, index) => [index, false])));
     this.caseWorkflowSteps.set(Object.fromEntries(cases.map((_, index) => [index, 'cell' as CaseWorkflowStep])));
     this.unifiedDetailContext.set(null);
     this.conceptHierarchy.set({});
@@ -1011,12 +1159,18 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.mentionQuickEntry.set({});
     this.unifiedActiveItemKeys.set({});
     this.unifiedMarkingPhase.set({});
+    this.readingComplete.set({});
     this.caseWorkflowSteps.set({});
     this.unifiedDetailContext.set(null);
     this.conceptHierarchy.set({});
     this.activeCaseIndex.set(0);
     this.caseSearch.set('');
     this.sessionMeta.set(null);
+    this.recoveryService.clear();
+    this.recoverySnapshot.set(null);
+    this.recoverySavedAt.set(null);
+    this.recoveryStorageAvailable.set(this.recoveryService.available());
+    this.recoveryOfferSuppressed = false;
     this.timingCaseIndex = null;
     this.pendingActiveMs.clear();
     this.dirty.set(false);
@@ -1068,6 +1222,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       });
     }
     this.dirty.set(true);
+    this.scheduleRecoverySave();
   }
 
   addConcept(caseIdx: number): void {
@@ -1160,9 +1315,10 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   conceptMetaLabel(concept: ConceptAnnotation): string {
     const category = concept.cat?.trim();
     if (concept.sctid?.trim()) {
-      return `${category || 'Concepto clínico'} · Codificado${
-        concept.contextReviewed === false ? ' · contexto pendiente' : ''
-      }`;
+      if (concept.contextReviewed === false) {
+        return `${category || 'Concepto clínico'} · Pendiente de revisar el contexto`;
+      }
+      return `${category || 'Concepto clínico'} · Codificado`;
     }
     if (concept.textoLiteral?.trim() || concept.term?.trim()) {
       return `${category || 'Mención clínica'} · Pendiente de codificación`;
@@ -1179,6 +1335,41 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     return this.unifiedReviewPrototype() && (this.unifiedMarkingPhase()[caseIdx] ?? true);
   }
 
+  /** Whether the explicit reading gate has been completed for a note. */
+  readingCompleteFor(caseIdx: number): boolean {
+    if (!this.unifiedReviewPrototype()) return true;
+    // Tests, embedded integrations and legacy callers may populate `cases`
+    // directly. Preserve their pre-existing behaviour unless the document
+    // loader explicitly installed a blind-reading state for this case.
+    if (!Object.prototype.hasOwnProperty.call(this.readingComplete(), caseIdx)) return true;
+    return this.readingComplete()[caseIdx] === true;
+  }
+
+  /** Premarked highlights are only shown after the reading gate. */
+  premarkedVisibleFor(caseIdx: number): boolean {
+    return this.readingCompleteFor(caseIdx);
+  }
+
+  /**
+   * Move a note from the blind reading pass into exhaustive marking. The
+   * action is deliberately explicit and auditable in the UI; it is not
+   * inferred from a click or text selection.
+   */
+  startUnifiedMarking(caseIdx: number): void {
+    if (!this.cases()[caseIdx]) return;
+    this.readingComplete.update((current) => ({ ...current, [caseIdx]: true }));
+    this.caseWorkflowSteps.update((current) => ({ ...current, [caseIdx]: 'marking' }));
+    this.selectedSpan.set(null);
+    this.selectedTextMark.set(null);
+    this.humanSpanDraft.set(null);
+    this.scrollCaseSection(caseIdx, 'source');
+    this.snackBar.open(
+      'Lectura confirmada. Ahora podés recorrer la nota y marcar todas las menciones.',
+      'OK',
+      { duration: 3200 }
+    );
+  }
+
   caseWorkflowStep(caseIdx: number): CaseWorkflowStep {
     return this.caseWorkflowSteps()[caseIdx] ?? 'cell';
   }
@@ -1186,6 +1377,12 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   setCaseWorkflowStep(caseIdx: number, step: CaseWorkflowStep): void {
     const caseItem = this.cases()[caseIdx];
     if (!caseItem) return;
+    if (step === 'marking' && this.unifiedReviewPrototype() && !this.readingCompleteFor(caseIdx)) {
+      this.snackBar.open('Primero confirmá la lectura completa de la nota.', 'OK', {
+        duration: 3500,
+      });
+      return;
+    }
     if ((step === 'decisions' || step === 'finalize') && this.unifiedMarkingPhaseActive(caseIdx)) {
       this.snackBar.open('Primero completá la marcación de menciones en la nota.', 'OK', {
         duration: 3500,
@@ -1195,6 +1392,9 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     this.caseWorkflowSteps.update((current) => ({ ...current, [caseIdx]: step }));
     if (step === 'cell' || step === 'marking') {
       this.unifiedMarkingPhase.update((current) => ({ ...current, [caseIdx]: true }));
+      if (step === 'cell' && this.unifiedReviewPrototype()) {
+        this.readingComplete.update((current) => ({ ...current, [caseIdx]: false }));
+      }
       this.unifiedDetailContext.set(null);
       this.selectedSpan.set(null);
       this.selectedTextMark.set(null);
@@ -1238,6 +1438,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   }
 
   returnToUnifiedMarking(caseIdx: number): void {
+    this.readingComplete.update((current) => ({ ...current, [caseIdx]: true }));
     this.unifiedMarkingPhase.update((current) => ({ ...current, [caseIdx]: true }));
     this.caseWorkflowSteps.update((current) => ({ ...current, [caseIdx]: 'marking' }));
     this.unifiedDetailContext.set(null);
@@ -1457,6 +1658,15 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     return Math.max(0, this.unifiedTotalCount(caseItem) - this.unifiedPendingCount(caseItem));
   }
 
+  /** Visible status tone for the active Step 3 decision card. */
+  unifiedItemStatusResolved(item: UnifiedReviewItem): boolean {
+    return item.kind !== 'skipped' && !this.unifiedItemRequiresAction(item);
+  }
+
+  unifiedItemStatusPending(item: UnifiedReviewItem): boolean {
+    return item.kind !== 'skipped' && this.unifiedItemRequiresAction(item);
+  }
+
   unifiedItemStatus(item: UnifiedReviewItem): string {
     if (item.kind === 'pending') {
       return item.span?.origin === 'human'
@@ -1476,7 +1686,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
         return 'Solo información clínica · pendiente de codificación';
       }
       return item.concept?.contextReviewed === false
-        ? 'Solo información clínica · codificada · contexto pendiente'
+        ? 'Solo información clínica · pendiente de revisar el contexto'
         : 'Solo información clínica · codificada';
     }
     return this.unifiedLexicalComplete(item)
@@ -1780,6 +1990,14 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   }
 
   captureTextSelection(caseIdx: number, element: HTMLElement): void {
+    // Text selection is intentionally inert during the blind reading pass.
+    // The annotator must confirm the full-note reading before any mention can
+    // enter the review queue.
+    if (this.unifiedReviewPrototype() && !this.readingCompleteFor(caseIdx)) {
+      this.humanSpanDraft.set(null);
+      window.getSelection()?.removeAllRanges();
+      return;
+    }
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
       this.humanSpanDraft.set(null);
@@ -1870,6 +2088,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   }
 
   addHumanSpan(caseIdx: number): void {
+    if (this.unifiedReviewPrototype() && !this.readingCompleteFor(caseIdx)) return;
     const draft = this.humanSpanDraft();
     const caseItem = this.cases()[caseIdx];
     if (!draft || draft.caseIndex !== caseIdx || !caseItem) return;
@@ -1897,6 +2116,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   }
 
   addHumanSpanAt(caseIdx: number, start: number, end: number): void {
+    if (this.unifiedReviewPrototype() && !this.readingCompleteFor(caseIdx)) return;
     if (!this.createHumanSpan(caseIdx, start, end)) return;
     const literal = this.cases()[caseIdx]?.textNorm.slice(start, end) ?? '';
     this.snackBar.open(`Mención “${literal}” incorporada con offsets verificados.`, 'OK', {
@@ -1947,6 +2167,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   }
 
   addHumanLexicalMention(caseIdx: number): void {
+    if (this.unifiedReviewPrototype() && !this.readingCompleteFor(caseIdx)) return;
     const draft = this.humanSpanDraft();
     const caseItem = this.cases()[caseIdx];
     if (!draft || draft.caseIndex !== caseIdx || !caseItem || !this.lexicalLayerEnabled()) return;
@@ -2022,6 +2243,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   }
 
   addHumanLexicalMentionAt(caseIdx: number, start: number, end: number): void {
+    if (this.unifiedReviewPrototype() && !this.readingCompleteFor(caseIdx)) return;
     const caseItem = this.cases()[caseIdx];
     const surface = caseItem?.textNorm.slice(start, end) ?? '';
     if (!caseItem || !isValidTextSpan(caseItem.textNorm, start, end, surface)) {
@@ -2479,13 +2701,17 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
 
   scrollCaseSection(caseIdx: number, section: 'source' | 'unified' | 'lexical' | 'concepts' | 'finalize'): void {
     const element = document.getElementById(`case-${section}-${caseIdx}`);
-    element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (element && typeof element.scrollIntoView === 'function') {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   }
 
   private scrollActiveCaseIntoView(caseIdx: number): void {
     window.setTimeout(() => {
       const element = document.querySelector(`[data-case-index="${caseIdx}"]`) as HTMLElement | null;
-      element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (element && typeof element.scrollIntoView === 'function') {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     });
   }
 
@@ -2500,6 +2726,21 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   caseIncompleteConceptCount(caseItem: CaseAnnotation): number {
     return caseItem.concepts.filter(
       (concept) => conceptHasContent(concept) && !conceptIsComplete(concept)
+    ).length;
+  }
+
+  /** Completed concepts must still point to the exact source span they explain. */
+  caseOrphanConceptCount(caseItem: CaseAnnotation): number {
+    const spanIds = new Set(
+      caseItem.spans
+        .filter((span) => span.review?.disposition !== 'excluido')
+        .map((span) => span.spanId)
+    );
+    return caseItem.concepts.filter(
+      (concept) =>
+        conceptHasContent(concept) &&
+        conceptIsComplete(concept) &&
+        (!concept.spanId || !spanIds.has(concept.spanId))
     ).length;
   }
 
@@ -2521,6 +2762,12 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     if (incompleteConcepts) {
       blockers.push(
         `${incompleteConcepts} concepto${incompleteConcepts === 1 ? '' : 's'} iniciado${incompleteConcepts === 1 ? '' : 's'} sin completar.`
+      );
+    }
+    const orphanConcepts = this.caseOrphanConceptCount(caseItem);
+    if (orphanConcepts) {
+      blockers.push(
+        `${orphanConcepts} concepto${orphanConcepts === 1 ? '' : 's'} sin vínculo con una mención del texto; seleccioná o incorporá el tramo exacto.`
       );
     }
     if (!this.lexicalReviewReady(caseItem)) {
@@ -3035,6 +3282,71 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
 
   // ---- Export ----
 
+  /**
+   * Build the canonical JSON shape used by both downloads and device-local
+   * recovery. Keeping one serializer prevents a recovery restore from
+   * silently dropping newer annotation fields.
+   */
+  private buildPersistenceDocument(
+    now = new Date().toISOString(),
+    meta: AnnotationMeta | null = this.sessionMeta(),
+  ): AnnotationOutput | null {
+    if (!this.loaded()) return null;
+    const persistedMeta: AnnotationMeta = meta ?? {
+      sessions: [],
+      totalDownloads: 0,
+      firstLoadedAt: now,
+      telemetry: createAnnotationTelemetry(this.cases().map((item) => item.id)),
+    };
+    return {
+      schemaVersion: SEMANTIAR_SCHEMA_VERSION,
+      sourceSchemaVersion: this.sourceSchemaVersion(),
+      textProfile: { ...SEMANTIAR_TEXT_PROFILE },
+      terminology: {
+        server: this.terminologyServer(),
+        editionUri: this.editionUri(),
+        version: this.snomedVersion(),
+        displayLanguage: this.displayLanguage(),
+        capturedAt: now,
+      },
+      producer: {
+        app: 'SemantIAr',
+        build: TELEMETRY_APP_BUILD,
+        platform: this.currentPlatform,
+      },
+      project: this.project() || undefined,
+      batch: this.batch() || undefined,
+      annotatorId: this.annotatorId() || undefined,
+      sourceFile: this.sourceFile() || undefined,
+      exportedAt: now,
+      terminologyServer: this.terminologyServer(),
+      editionUri: this.editionUri(),
+      cases: this.cases().map((c) => ({
+        id: c.id,
+        text: c.text,
+        ...(c.specialty?.trim() ? { specialty: c.specialty.trim() } : {}),
+        textNorm: c.textNorm,
+        spans: c.spans,
+        // Preserve every started block. An unfinished concept is progress
+        // that must survive both download and local recovery.
+        concepts: c.concepts.map((concept) => ({ ...concept })),
+        comentarios: c.comentarios,
+        review: c.review,
+        lexicalMentions: (c.lexicalMentions ?? []).map((mention) => ({
+          ...mention,
+          candidateSenseIds: [...mention.candidateSenseIds],
+          annotation: normalizeLexicalAnnotation(mention.annotation, mention.surface),
+        })),
+        lexicalReview: c.lexicalReview,
+      })),
+      _meta: persistedMeta,
+      _premarking: this.premarking(),
+      _trace: this.trace(),
+      _annotationProtocol: this.annotationProtocol(),
+      _lexicalInventory: this.lexicalInventory(),
+    };
+  }
+
   async download(): Promise<void> {
     this.flushActiveTime();
     this.flushPendingActiveTime();
@@ -3072,53 +3384,8 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     // Persist updated meta in the signal so it survives if the user re-uploads this file.
     this.sessionMeta.set(updatedMeta);
 
-    const output: AnnotationOutput = {
-      schemaVersion: SEMANTIAR_SCHEMA_VERSION,
-      sourceSchemaVersion: this.sourceSchemaVersion(),
-      textProfile: { ...SEMANTIAR_TEXT_PROFILE },
-      terminology: {
-        server: this.terminologyServer(),
-        editionUri: this.editionUri(),
-        version: this.snomedVersion(),
-        displayLanguage: this.displayLanguage(),
-        capturedAt: now,
-      },
-      producer: {
-        app: 'SemantIAr',
-        build: TELEMETRY_APP_BUILD,
-        platform: this.currentPlatform,
-      },
-      project: this.project() || undefined,
-      batch: this.batch() || undefined,
-      annotatorId: this.annotatorId() || undefined,
-      sourceFile: this.sourceFile() || undefined,
-      exportedAt: now,
-      terminologyServer: this.terminologyServer(),
-      editionUri: this.editionUri(),
-      cases: this.cases().map((c) => ({
-        id: c.id,
-        text: c.text,
-        ...(c.specialty?.trim() ? { specialty: c.specialty.trim() } : {}),
-        textNorm: c.textNorm,
-        spans: c.spans,
-        // Preserve every started block. An unfinished concept is progress that
-        // must survive download/reload; closure, not export, enforces completeness.
-        concepts: c.concepts.map((concept) => ({ ...concept })),
-        comentarios: c.comentarios,
-        review: c.review,
-        lexicalMentions: (c.lexicalMentions ?? []).map((mention) => ({
-          ...mention,
-          candidateSenseIds: [...mention.candidateSenseIds],
-          annotation: normalizeLexicalAnnotation(mention.annotation, mention.surface),
-        })),
-        lexicalReview: c.lexicalReview,
-      })),
-      _meta: updatedMeta,
-      _premarking: this.premarking(),
-      _trace: this.trace(),
-      _annotationProtocol: this.annotationProtocol(),
-      _lexicalInventory: this.lexicalInventory(),
-    };
+    const output = this.buildPersistenceDocument(now, updatedMeta);
+    if (!output) return;
     const stamp = now.slice(0, 10);
     const idPart = this.annotatorId() ? `_${this.annotatorId()}` : '';
     const filename = `SEMANTIAR_anotado${idPart}_${stamp}.json`;
@@ -3148,6 +3415,10 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
         URL.revokeObjectURL(url);
       }
       this.dirty.set(false);
+      this.recoveryService.clear();
+      this.recoverySnapshot.set(null);
+      this.recoverySavedAt.set(null);
+      this.recoveryStorageAvailable.set(this.recoveryService.available());
     } catch {
       this.snackBar.open(
         'No se pudo guardar el JSON. Volvé a intentarlo o elegí otra aplicación de destino.',

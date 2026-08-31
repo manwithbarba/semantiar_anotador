@@ -51,13 +51,60 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["spanId", "start", "end", "textoLiteral"],
+              "required": ["spanId", "start", "end", "textoLiteral", "origin", "confidence", "status"],
               "properties": {
                 "spanId": { "type": "string", "minLength": 1 },
                 "start": { "type": "integer", "minimum": 0 },
                 "end": { "type": "integer", "minimum": 1 },
-                "textoLiteral": { "type": "string", "minLength": 1 }
+                "textoLiteral": { "type": "string", "minLength": 1 },
+                "origin": { "enum": ["candidate", "dict", "matcher", "ner", "spancat", "rescue", "human"] },
+                "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+                "status": { "enum": ["pendiente", "confirmado", "descartado"] }
               }
+            }
+          },
+          "lexicalMentions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["mentionId", "start", "end", "surface", "normalizedKey", "origin", "candidateSenseIds", "annotation"],
+              "properties": {
+                "mentionId": { "type": "string", "minLength": 1 },
+                "start": { "type": "integer", "minimum": 0 },
+                "end": { "type": "integer", "minimum": 1 },
+                "surface": { "type": "string", "minLength": 1 },
+                "normalizedKey": { "type": "string", "minLength": 1 },
+                "origin": { "enum": ["sense_inventory", "legacy_dictionary", "orthographic_heuristic", "human"] },
+                "candidateSenseIds": { "type": "array", "items": { "type": "string" } },
+                "annotation": {
+                  "type": "object",
+                  "required": ["decisionStatus", "formType", "correctedForm", "senseId", "proposedExpansion", "function", "section", "evidenceCodes", "comment", "annotatorId", "annotatedAt"],
+                  "properties": {
+                    "decisionStatus": { "enum": ["pending", "resolved", "ambiguous", "unknown", "new_sense_proposed", "form_error", "nonclinical", "rejected"] },
+                    "formType": { "enum": ["abbreviation", "acronym", "initialism", "alphanumeric", "symbolic_abbreviation", "other"] },
+                    "correctedForm": { "type": ["string", "null"] },
+                    "senseId": { "type": ["string", "null"] },
+                    "proposedExpansion": { "type": ["string", "null"] },
+                    "function": { "type": ["string", "null"] },
+                    "section": { "type": ["string", "null"] },
+                    "evidenceCodes": { "type": "array", "items": { "type": "string" } },
+                    "comment": { "type": ["string", "null"] },
+                    "annotatorId": { "type": ["string", "null"] },
+                    "annotatedAt": { "type": ["string", "null"] }
+                  }
+                }
+              }
+            }
+          },
+          "lexicalReview": {
+            "type": "object",
+            "required": ["status", "exhaustiveReviewRequired", "annotatorId", "completedAt", "inventoryVersion"],
+            "properties": {
+              "status": { "enum": ["pending", "completed"] },
+              "exhaustiveReviewRequired": { "const": true },
+              "annotatorId": { "type": ["string", "null"] },
+              "completedAt": { "type": ["string", "null"] },
+              "inventoryVersion": { "type": ["string", "null"] }
             }
           },
           "concepts": {
@@ -65,6 +112,7 @@
             "items": {
               "type": "object",
               "properties": {
+                "spanId": { "type": ["string", "null"], "minLength": 1 },
                 "pol": { "enum": ["Activo", "Negado"] },
                 "cert": { "enum": ["Confirmado", "Sospecha", "Diferencial"] },
                 "temp": { "enum": ["Actual", "Histórico"] },

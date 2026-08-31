@@ -88,6 +88,16 @@ export interface ClinicalCase {
 export type SpanOrigin = 'candidate' | 'dict' | 'matcher' | 'ner' | 'spancat' | 'rescue' | 'human';
 export type SpanStatus = 'pendiente' | 'confirmado' | 'descartado';
 
+const SPAN_ORIGINS = new Set<SpanOrigin>([
+  'candidate',
+  'dict',
+  'matcher',
+  'ner',
+  'spancat',
+  'rescue',
+  'human',
+]);
+
 /** Contextual hints generated with a span. They intentionally exclude an SCTID. */
 export interface SpanSuggestion {
   /** Source systems may use labels outside the three annotation categories. */
@@ -182,7 +192,11 @@ export function normalizePremarkedSpans(
         typeof (span as PremarkedSpan).end === 'number' &&
         typeof (span as PremarkedSpan).textoLiteral === 'string' &&
         typeof (span as PremarkedSpan).origin === 'string' &&
-        typeof (span as PremarkedSpan).confidence === 'number'
+        SPAN_ORIGINS.has((span as PremarkedSpan).origin) &&
+        Number.isFinite((span as PremarkedSpan).confidence) &&
+        (span as PremarkedSpan).confidence >= 0 &&
+        (span as PremarkedSpan).confidence <= 1 &&
+        (span as PremarkedSpan).spanId.trim().length > 0
     )
     .sort((left, right) => left.start - right.start || left.end - right.end);
 
@@ -199,7 +213,9 @@ export function normalizePremarkedSpans(
       continue;
     }
 
-    spans.push(reviewPremarkedSpan({ ...span, status: span.status ?? 'pendiente' }, textNorm));
+    const status: SpanStatus =
+      span.status === 'confirmado' || span.status === 'descartado' ? span.status : 'pendiente';
+    spans.push(reviewPremarkedSpan({ ...span, status }, textNorm));
     ids.add(span.spanId);
   }
 
@@ -1458,7 +1474,8 @@ export interface AnnotationTelemetry {
   cases: CaseTelemetry[];
 }
 
-export const TELEMETRY_APP_BUILD = 'SEMANTIAR-ANNOTATOR-2026.08';
+/** Immutable release identifier for the third calibration workspace. */
+export const TELEMETRY_APP_BUILD = 'SEMANTIAR-ANNOTATOR-CAL3-2026.08.27';
 export const TELEMETRY_IDLE_THRESHOLD_MS = 120_000;
 
 function emptyCaseTelemetryBase(id: string): CaseTelemetryBase {

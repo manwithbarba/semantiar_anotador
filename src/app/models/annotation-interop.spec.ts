@@ -82,6 +82,17 @@ describe('SemantIAr annotation interoperability', () => {
     ).toThrow(AnnotationInteropError);
   });
 
+  it('rejects duplicate case IDs to preserve double-blind traceability', () => {
+    expect(() =>
+      prepareAnnotationDocument({
+        cases: [
+          { id: 'DUP-001', text: 'Primera versión sintética.' },
+          { id: ' DUP-001 ', text: 'Segunda versión sintética.' },
+        ],
+      })
+    ).toThrow(/ID de caso.*repetido/);
+  });
+
   it('rejects incompatible offset profiles', () => {
     expect(() =>
       prepareAnnotationDocument({

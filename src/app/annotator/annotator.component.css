@@ -404,6 +404,58 @@
   font-size: 14px;
   margin: 0;
 }
+.recovery-card {
+  display: grid;
+  gap: 14px;
+  margin: 16px 0;
+  border: 1px solid #e2c76e;
+  border-left: 5px solid #c57b12;
+  border-radius: 12px;
+  background: #fffaf0;
+  padding: 14px 16px;
+  text-align: left;
+}
+.recovery-card-copy {
+  display: grid;
+  gap: 4px;
+}
+.recovery-kicker {
+  color: #8a5a08;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.recovery-card-copy strong {
+  color: #563d0c;
+  font-size: 14px;
+}
+.recovery-card-copy span:not(.recovery-kicker),
+.recovery-card-copy small {
+  color: #725c28;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.recovery-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+.recovery-card-actions button {
+  min-height: 40px;
+}
+.recovery-unavailable {
+  margin: 12px 0;
+  color: #725c28;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.recovery-status-inline {
+  display: block;
+  margin-top: 3px;
+  color: #49647e;
+  font-size: 11px;
+}
 .home-steps {
   list-style: none;
   margin: 0 0 26px;
@@ -708,6 +760,18 @@
 .concept-title > div > span {
   color: #67738a;
   font-size: 11px;
+}
+.concept-title > div > span.status-resolved,
+.lexical-card-head span.status-resolved,
+.unified-review-item > summary > div > span.status-resolved {
+  color: var(--done-color) !important;
+  font-weight: 800;
+}
+.concept-title > div > span.status-pending,
+.lexical-card-head span.status-pending,
+.unified-review-item > summary > div > span.status-pending {
+  color: #b42318 !important;
+  font-weight: 800;
 }
 .concept-num {
   display: inline-flex;
@@ -1420,57 +1484,6 @@
   line-height: 1.35;
 }
 
-.lexical-help {
-  margin-top: 12px;
-  border: 1px solid #d8ccec;
-  border-radius: 8px;
-  background: #faf8fe;
-}
-
-.lexical-help summary {
-  display: flex;
-  min-height: 44px;
-  align-items: center;
-  gap: 7px;
-  padding: 0 12px;
-  color: #50317f;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.lexical-help summary:focus-visible {
-  border-radius: 8px;
-  outline: 3px solid #7c5ab8;
-  outline-offset: 2px;
-}
-
-.lexical-help summary mat-icon {
-  width: 18px;
-  height: 18px;
-  font-size: 18px;
-}
-
-.lexical-help-content {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 18px;
-  border-top: 1px solid #e5ddf2;
-  padding: 12px;
-}
-
-.lexical-help-content strong {
-  color: #38255c;
-  font-size: 13px;
-}
-
-.lexical-help-content p {
-  margin: 3px 0 0;
-  color: #625873;
-  font-size: 13px;
-  line-height: 1.45;
-}
-
 .lexical-empty {
   margin-top: 12px;
   border: 1px dashed #b8a7d8;
@@ -1670,9 +1683,6 @@
     flex-direction: column;
   }
   .lexical-grid {
-    grid-template-columns: 1fr;
-  }
-  .lexical-help-content {
     grid-template-columns: 1fr;
   }
 }

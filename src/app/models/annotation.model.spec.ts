@@ -112,6 +112,42 @@ describe('premarked span helpers', () => {
     });
   });
 
+  it('rejects unknown span origins and out-of-range confidence values', () => {
+    const text = 'hallazgo';
+    const result = normalizePremarkedSpans(
+      [
+        {
+          spanId: 'bad-origin',
+          start: 0,
+          end: 8,
+          textoLiteral: text,
+          origin: 'model-interno',
+          confidence: 0.9,
+        },
+        {
+          spanId: 'bad-confidence',
+          start: 0,
+          end: 8,
+          textoLiteral: text,
+          origin: 'candidate',
+          confidence: 1.1,
+        },
+        {
+          spanId: 'valid',
+          start: 0,
+          end: 8,
+          textoLiteral: text,
+          origin: 'candidate',
+          confidence: 1,
+        },
+      ],
+      text,
+    );
+
+    expect(result.invalidCount).toBe(2);
+    expect(result.spans.map((span) => span.spanId)).toEqual(['valid']);
+  });
+
   it('derives clinical, lexical and combined visual marks from exact offsets', () => {
     const text = 'dolor FC IAM';
     const spans = [

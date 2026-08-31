@@ -18,6 +18,7 @@ import {
   MEDICAL_SPECIALTIES,
 } from './models/annotation.model';
 import { prepareAnnotationDocument } from './models/annotation-interop';
+import { AnnotationRecoveryService } from './services/annotation-recovery.service';
 
 /** Sanitized structural fixture distilled from A034; it contains no clinical text. */
 function makeA034ContractFixture(): Record<string, unknown> {
@@ -217,6 +218,36 @@ describe('App', () => {
     expect(fixture.nativeElement.querySelector('.case-source #case-mention-add-0')).toBeTruthy();
   });
 
+  it('should present closure as a subview of step three', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    annotator.annotationProtocol.set({ ...ASSISTED_ANNOTATION_PROTOCOL, lexicalLayerEnabled: true });
+    annotator.cases.set([
+      {
+        id: 'WORKFLOW-THREE-STEPS-001',
+        text: 'Texto sintético de control.',
+        textNorm: 'Texto sintético de control.',
+        spans: [],
+        concepts: [],
+        lexicalMentions: [],
+        comentarios: '',
+      },
+    ]);
+
+    fixture.detectChanges();
+
+    const workflowNav = fixture.nativeElement.querySelector('.case-workflow-steps') as HTMLElement;
+    const workflowButtons = [...workflowNav.querySelectorAll('button')];
+    expect(workflowButtons).toHaveLength(3);
+    expect(workflowNav.textContent).toContain('Nota');
+    expect(workflowNav.textContent).toContain('Marcación');
+    expect(workflowNav.textContent).toContain('Decisiones');
+    expect(workflowNav.textContent).toContain('cierre incluido');
+    expect(workflowNav.querySelector('[aria-label="Paso 3: revisar el resultado y cerrar la nota"]')).toBeNull();
+  });
+
   it('should expose the three unified annotation categories and preserve both dimensions', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
@@ -249,6 +280,12 @@ describe('App', () => {
     expect(choiceText).toContain('Solo información clínica');
     expect(choiceText).toContain('Solo abreviatura contextual');
     expect(choiceText).toContain('Información clínica + abreviatura contextual');
+    const choiceButtons = [...fixture.nativeElement.querySelectorAll('.unified-choice-actions button')] as HTMLButtonElement[];
+    expect(choiceButtons[0].classList).toContain('mark-clinical');
+    expect(choiceButtons[1].classList).toContain('mark-lexical');
+    expect(choiceButtons[2].classList).toContain('mark-both');
+    expect(choiceButtons[3].classList).toContain('mark-choice-skip');
+    expect(fixture.nativeElement.querySelector('.unified-review-item .status-pending')).toBeTruthy();
 
     const key = 'range-0-2';
     annotator.classifyUnifiedItem(0, key, 'lexical');
@@ -264,6 +301,108 @@ describe('App', () => {
     expect(annotator.unifiedReviewItems(annotator.cases()[0])[0].kind).toBe('clinical');
     annotator.classifyUnifiedItem(0, key, 'lexical');
     expect(annotator.unifiedReviewItems(annotator.cases()[0])[0].kind).toBe('lexical');
+  });
+
+  it('should keep assisted suggestions hidden until the annotator confirms the first reading', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    annotator.cases.set([{
+      id: 'BLIND-READING-001',
+      text: 'Paciente con fiebre.',
+      textNorm: 'Paciente con fiebre.',
+      spans: [{
+        spanId: 'blind-span-001',
+        start: 13,
+        end: 19,
+        textoLiteral: 'fiebre',
+        origin: 'candidate',
+        confidence: 0.9,
+        status: 'pendiente',
+      }],
+      concepts: [],
+      comentarios: '',
+      review: { status: 'pending' },
+    }]);
+    (annotator as any).readingComplete.set({ 0: false });
+
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.premarked-span')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.unified-reading-gate')).toBeTruthy();
+    expect(fixture.nativeElement.textContent).toContain('Terminé de leer');
+    expect(annotator.readingCompleteFor(0)).toBe(false);
+
+    annotator.startUnifiedMarking(0);
+    fixture.detectChanges();
+    expect(annotator.readingCompleteFor(0)).toBe(true);
+    expect(fixture.nativeElement.querySelector('.unified-reading-gate')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.premarked-span')).toBeTruthy();
+  });
+
+  it('should ignore text selection during the blind reading pass', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    annotator.cases.set([{
+      id: 'BLIND-READING-002',
+      text: 'Dolor lumbar.',
+      textNorm: 'Dolor lumbar.',
+      spans: [],
+      concepts: [],
+      comentarios: '',
+      review: { status: 'pending' },
+    }]);
+    (annotator as any).readingComplete.set({ 0: false });
+    const root = document.createElement('div');
+    root.textContent = 'Dolor lumbar.';
+    document.body.appendChild(root);
+    const node = root.firstChild!;
+    const range = document.createRange();
+    range.setStart(node, 0);
+    range.setEnd(node, 4);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    annotator.captureTextSelection(0, root);
+
+    expect(annotator.humanSpanDraft()).toBeNull();
+    selection.removeAllRanges();
+    root.remove();
+  });
+
+  it('should expose and explicitly restore a device-local recovery without overwriting a loaded file', async () => {
+    const recovery = TestBed.inject(AnnotationRecoveryService);
+    recovery.clear();
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    recovery.save(
+      { cases: [{ id: 'RECOVERY-001', text: 'Texto de recuperación.' }] },
+      { sourceFile: 'CAL3_A048.json', annotatorId: 'A048', batch: 'CAL3' },
+      '2026-08-27T10:00:00.000Z',
+    );
+    (annotator as any).refreshRecoveryState();
+    fixture.detectChanges();
+
+    expect(annotator.recoveryOfferVisible()).toBe(true);
+    expect(fixture.nativeElement.querySelector('.recovery-card')).toBeTruthy();
+    expect(fixture.nativeElement.textContent).toContain('Restaurar avance');
+
+    annotator.restoreRecovery();
+    fixture.detectChanges();
+    expect(annotator.loaded()).toBe(true);
+    expect(annotator.cases()[0].id).toBe('RECOVERY-001');
+    expect(annotator.dirty()).toBe(true);
+    expect(annotator.recoveryOfferVisible()).toBe(false);
+
+    const previousCaseId = annotator.cases()[0].id;
+    annotator.restoreRecovery();
+    expect(annotator.cases()[0].id).toBe(previousCaseId);
+    recovery.clear();
   });
 
   it('should expose clinical context attributes in the unified review', async () => {
@@ -857,7 +996,11 @@ describe('App', () => {
         id: 'REVIEW-001',
         text: 'Paciente con fiebre.',
         textNorm: 'Paciente con fiebre.',
-        spans: [],
+        spans: [{
+          spanId: 'review-span-1', start: 13, end: 19, textoLiteral: 'fiebre',
+          origin: 'human', confidence: 1, status: 'confirmado',
+          review: { disposition: 'elegible', reason: 'Prueba de cierre.' },
+        }],
         concepts: [
           {
             sequence: 1,
@@ -869,6 +1012,7 @@ describe('App', () => {
             cert: 'Confirmado',
             temp: 'Actual',
             suj: 'Paciente',
+            spanId: 'review-span-1',
           },
         ],
         comentarios: '',
@@ -905,7 +1049,11 @@ describe('App', () => {
         id: 'FLOW-001',
         text: 'Paciente con fiebre.',
         textNorm: 'Paciente con fiebre.',
-        spans: [],
+        spans: [{
+          spanId: 'flow-span-1', start: 13, end: 19, textoLiteral: 'fiebre',
+          origin: 'human', confidence: 1, status: 'confirmado',
+          review: { disposition: 'elegible', reason: 'Prueba de cierre.' },
+        }],
         concepts: [
           {
             sequence: 1,
@@ -917,6 +1065,7 @@ describe('App', () => {
             cert: 'Confirmado',
             temp: 'Actual',
             suj: 'Paciente',
+            spanId: 'flow-span-1',
           },
         ],
         comentarios: '',
@@ -1106,6 +1255,33 @@ describe('App', () => {
     click.mockRestore();
     revokeObjectUrl.mockRestore();
     createObjectUrl.mockRestore();
+  });
+
+  it('should block closure when a complete concept has no source span', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    const orphan = {
+      ...newConcept(1),
+      cat: 'Hallazgo clínico' as const,
+      sctid: '386661006',
+      term: 'Fiebre',
+      textoLiteral: 'fiebre',
+      contextReviewed: true,
+    };
+    const caseItem = {
+      id: 'ORPHAN-001',
+      text: 'Paciente con fiebre.',
+      textNorm: 'Paciente con fiebre.',
+      spans: [],
+      concepts: [orphan],
+      comentarios: '',
+      review: { status: 'pending' as const },
+    };
+    expect(annotator.caseOrphanConceptCount(caseItem)).toBe(1);
+    expect(annotator.caseCanFinalize(caseItem, 'coded')).toBe(false);
+    expect(annotator.caseClosureBlockers(caseItem).join(' ')).toContain('sin vínculo');
   });
 
   it('should reopen an inconsistent completed v2 lexical review on reload', async () => {
@@ -1332,6 +1508,16 @@ describe('App', () => {
     expect(compiled.querySelector('.case-source #case-lexical-0')).toBeNull();
     expect(compiled.querySelector('.case-review #case-lexical-0')).toBeNull();
     expect(text).toContain('Pendiente bloquea el cierre');
+    expect(compiled.querySelector('.lexical-decision-guide')).toBeNull();
+    expect(annotator.lexicalDecisions.map((option) => option.label)).toEqual(
+      expect.arrayContaining([
+        'Sentido resuelto',
+        'Ambigua aun con contexto',
+        'No puedo determinarla',
+        'Proponer sentido nuevo',
+        'Forma errónea o corrupta',
+      ])
+    );
     expect(text).toContain('Sin clasificar deja el papel vacío');
     expect(text).toContain('las mayúsculas no prueban que sea una sigla');
     expect(text).not.toContain('sense:internal-only');
@@ -1412,8 +1598,10 @@ describe('App', () => {
     const conceptCards = fixture.nativeElement.querySelectorAll('.concept-block');
     expect(conceptCards[0].textContent).toContain('Adecuadamente hidratado');
     expect(conceptCards[0].textContent).toContain('Hallazgo clínico · Codificado');
+    expect(conceptCards[0].querySelector('.status-resolved')).toBeTruthy();
     expect(conceptCards[1].textContent).toContain('alta médica');
     expect(conceptCards[1].textContent).toContain('Mención clínica · Pendiente de codificación');
+    expect(conceptCards[1].querySelector('.status-pending')).toBeTruthy();
     expect(fixture.nativeElement.textContent).not.toContain('Concepto clínico sin codificar');
     expect(fixture.nativeElement.textContent).not.toContain('Sin jerarquía · Pendiente');
   });

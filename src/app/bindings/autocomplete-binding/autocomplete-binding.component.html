@@ -2,7 +2,7 @@
   @if (binding.title) {
     <mat-label>2. {{ binding.title }}</mat-label>
   }
-  <input #inputElement type="text" placeholder="{{ formControl.value?.display || binding.title || 'Search...' }}" matInput [formControl]="formControl" [matAutocomplete]="auto" [readonly]="readonly" (blur)="onBlur()" (focus)="onFocus()">
+  <input #inputElement type="text" placeholder="{{ formControl.value?.display || binding.title || 'Buscar concepto' }}" matInput [formControl]="formControl" [matAutocomplete]="auto" [readonly]="readonly" [attr.aria-label]="binding.title ? 'Buscar ' + binding.title : 'Buscar concepto SNOMED CT'" [attr.aria-describedby]="describedBy || null" (blur)="onBlur()" (focus)="onFocus()">
   <!-- [value]="(formControl.value?.display) ? formControl.value.display : ''"> -->
   @if (!selectedConcept?.code && !errorState && binding.note) {
     <mat-hint><span [innerHTML]="binding.note"></span></mat-hint>
@@ -20,6 +20,13 @@
         Please select a valid value
       }
     </mat-error>
+  }
+  @if (!readonly && searchState === 'loading') {
+    <div class="autocomplete-status" role="status" aria-live="polite">Buscando conceptos…</div>
+  } @else if (!readonly && searchState === 'empty') {
+    <div class="autocomplete-status" role="status" aria-live="polite">No se encontraron conceptos para esta búsqueda.</div>
+  } @else if (!readonly && searchState === 'error') {
+    <div class="autocomplete-status autocomplete-status-error" role="alert">{{ searchErrorMessage }}</div>
   }
   <mat-autocomplete autoActiveFirstOption #auto="matAutocomplete" (optionSelected)="change($event)">
     @if (loading) {

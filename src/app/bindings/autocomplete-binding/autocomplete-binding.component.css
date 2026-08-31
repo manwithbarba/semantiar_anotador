@@ -54,6 +54,18 @@ mat-hint {
     font-size: 12px;
 }
 
+.autocomplete-status {
+    margin: -2px 0 4px;
+    color: #53627a;
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+.autocomplete-status-error {
+    color: #a32929;
+    font-weight: 600;
+}
+
 .compact-field mat-hint {
     font-size: 11px;
 }
