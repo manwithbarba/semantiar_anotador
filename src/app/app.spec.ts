@@ -303,6 +303,55 @@ describe('App', () => {
     expect(annotator.unifiedReviewItems(annotator.cases()[0])[0].kind).toBe('lexical');
   });
 
+  it('should enable all four Step 3 decisions for assisted input without protocol metadata', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+
+    (annotator as any).ingestDocument(
+      {
+        project: 'SEMANTIAR - calibración',
+        batch: 'CAL3',
+        cases: [{
+          id: 'CAL3-NO-PROTOCOL-001',
+          text: 'Paciente afebril.',
+          spans: [{
+            spanId: 'cal3-span-001',
+            start: 9,
+            end: 16,
+            textoLiteral: 'afebril',
+            origin: 'dict',
+            confidence: 0.9,
+            status: 'pendiente',
+          }],
+          concepts: [],
+          lexicalMentions: [],
+        }],
+      },
+      'casos-avanzados-cal3.input.json'
+    );
+    annotator.finishUnifiedMarking(0);
+    fixture.detectChanges();
+
+    expect(annotator.lexicalLayerEnabled()).toBe(true);
+    const choiceButtons = [
+      ...fixture.nativeElement.querySelectorAll('.unified-choice-actions button'),
+    ] as HTMLButtonElement[];
+    expect(choiceButtons.map((button) => button.textContent?.trim())).toEqual([
+      expect.stringContaining('Solo información clínica'),
+      expect.stringContaining('Solo abreviatura contextual'),
+      expect.stringContaining('Información clínica + abreviatura contextual'),
+      expect.stringContaining('Sin valor clínico ni abreviatura'),
+    ]);
+    expect(choiceButtons.map((button) => [...button.classList])).toEqual([
+      expect.arrayContaining(['mark-clinical']),
+      expect.arrayContaining(['mark-lexical']),
+      expect.arrayContaining(['mark-both']),
+      expect.arrayContaining(['mark-choice-skip']),
+    ]);
+  });
+
   it('should keep assisted suggestions hidden until the annotator confirms the first reading', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();

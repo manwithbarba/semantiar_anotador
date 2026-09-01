@@ -938,9 +938,11 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       );
     }
 
-    // A legacy JSON without a protocol has no lexical contract to enforce.
-    // Do not silently turn an old, coded-only note into an assisted lexical
-    // review. If lexical records are actually present, retain that layer.
+    // New assisted input files are allowed to omit the protocol and contain
+    // only cases (optionally with pending spans). In that shape the default
+    // protocol must keep all four Step 3 decisions available. Preserve the
+    // clinical-only fallback solely for old exports that already contain
+    // concept blocks and no lexical records.
     const hasExplicitProtocol = !!doc._annotationProtocol;
     const hasLexicalRecords = doc.cases.some(
       (item) =>
@@ -948,12 +950,16 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
         !!item.lexicalReview ||
         !!doc._lexicalInventory
     );
+    const isLegacyClinicalOnlyExport =
+      !hasExplicitProtocol &&
+      !hasLexicalRecords &&
+      doc.cases.every((item) => (item.concepts?.length ?? 0) > 0);
     const resolvedProtocol =
       doc._annotationProtocol?.mode === 'core-blind'
         ? { ...CORE_BLIND_PROTOCOL, ...doc._annotationProtocol }
-        : hasExplicitProtocol || hasLexicalRecords
-          ? { ...ASSISTED_ANNOTATION_PROTOCOL, ...doc._annotationProtocol }
-          : { ...ASSISTED_ANNOTATION_PROTOCOL, lexicalLayerEnabled: false };
+        : isLegacyClinicalOnlyExport
+          ? { ...ASSISTED_ANNOTATION_PROTOCOL, lexicalLayerEnabled: false }
+          : { ...ASSISTED_ANNOTATION_PROTOCOL, ...doc._annotationProtocol };
     this.annotationProtocol.set(resolvedProtocol);
     this.lexicalInventory.set(doc._lexicalInventory);
     const lexicalLayerEnabled = resolvedProtocol.lexicalLayerEnabled === true;
