@@ -177,7 +177,7 @@ UPDATE_HTML = """
   <p>Esta decisión es gradual: los spans discontinuos pueden ser más fieles al texto, pero requieren una interfaz de selección múltiple, un formato de offsets diferente y reglas adicionales para solapamientos, adjudicación, métricas y modelos. La política se apoya en la revisión sistemática de 44 estudios de Alhassan et al. (2025), en el modelo específico de Dai et al. (2020) y en la evaluación de reconocimiento y normalización de Trivedi et al. (2020). La evidencia y las referencias completas están en <a href="Fundamentos_metodologicos_para_anotadores_SemantIAr.docx">Fundamentos metodológicos para anotadores SemantIAr</a>.</p>
   <aside class="callout key" role="note"><h2>Regla práctica</h2><p>No incluya palabras intermedias que no pertenecen a la entidad solo para evitar una discontinuidad. Registrar el caso para revisión es preferible a alterar el literal o introducir ruido semántico.</p></aside>
   <h2 id="sentido-resuelto">Qué significa “Sentido resuelto”</h2>
-  <p>Use “Sentido resuelto” únicamente después de elegir un significado disponible. Si la interfaz no ofrece un significado que pueda confirmar, use “Proponer sentido nuevo”, “Ambigua aun con contexto” o “No puedo determinarla”, según corresponda. Una decisión resuelta sin significado vuelve a <strong>Pendiente</strong> al cargar el archivo y no permite completar la revisión. Consulte <a href="#6-como-decidir-el-significado">Cómo decidir el significado</a> y la lista de <a href="#11-1-antes-de-cerrar">verificación antes del cierre</a>.</p>
+  <p>Use “Sentido resuelto” únicamente después de confirmar un significado por el contexto. Si no puede confirmarlo, use “Proponer sentido nuevo”, “Ambigua aun con contexto” o “No puedo determinarla”, según corresponda. Una decisión resuelta sin significado vuelve a <strong>Pendiente</strong> al cargar el archivo y no permite completar la revisión. Consulte <a href="#6-como-decidir-el-significado">Cómo decidir el significado</a> y la lista de <a href="#11-1-antes-de-cerrar">verificación antes del cierre</a>.</p>
   <aside class="callout key" role="note"><h2>Regla práctica</h2><p>Primero confirme el texto y su contexto; después clasifique la marca y complete las dimensiones que correspondan. No fuerce una resolución para cerrar la nota.</p></aside>
   <p><a href="#manual-top">Volver al inicio</a> · <a href="#flujo-tres-pasos">Volver al recorrido en tres pasos</a> · <a href="#clasificacion-unificada">Volver a las etiquetas</a></p>
 </section>
@@ -205,7 +205,7 @@ UPDATE_HTML = """
   <h2 id="interfaz-spans">Spans superpuestos y discontinuos</h2>
   <p>Conserve spans superpuestos solo cuando representan menciones distintas y defendibles; revise cada aparición por separado. No cree superposiciones para mostrar niveles de detalle de una misma mención. La aplicación usa spans continuos como modalidad predeterminada: si una expresión parece discontinua, divídala solo cuando cada parte tenga sentido propio; de lo contrario, registre el caso para adjudicación según el protocolo.</p>
   <h2 id="interfaz-sentido">Sentido resuelto</h2>
-  <p>Seleccione <strong>Sentido resuelto</strong> únicamente después de elegir un significado disponible. Si no puede confirmarlo, use <strong>Proponer sentido nuevo</strong>, <strong>Ambigua aun con contexto</strong> o <strong>No puedo determinarla</strong>. No fuerce una resolución para cerrar la nota.</p>
+  <p>Seleccione <strong>Sentido resuelto</strong> únicamente después de confirmar un significado por el contexto. Si no puede confirmarlo, use <strong>Proponer sentido nuevo</strong>, <strong>Ambigua aun con contexto</strong> o <strong>No puedo determinarla</strong>. No fuerce una resolución para cerrar la nota.</p>
   <p><a href="#manual-top">Volver al inicio</a> · <a href="#3-1-orden-basico-de-trabajo">Volver al flujo de trabajo</a> · <a href="#8-como-revisar-la-informacion-clinica">Volver a información clínica</a></p>
 </section>
 """
@@ -320,7 +320,7 @@ def build_docx():
     )
     document.add_heading("Sentido resuelto", level=2)
     document.add_paragraph(
-        "Seleccione “Sentido resuelto” únicamente después de elegir un significado disponible. Si no puede confirmarlo, "
+        "Seleccione “Sentido resuelto” únicamente después de confirmar un significado por el contexto. Si no puede confirmarlo, "
         "use “Proponer sentido nuevo”, “Ambigua aun con contexto” o “No puedo determinarla”. No fuerce una resolución "
         "para cerrar la nota."
     )
@@ -450,7 +450,7 @@ def build_docx():
     )
     document.add_heading("Sentido resuelto y cierre", level=2)
     document.add_paragraph(
-        "Seleccione “Sentido resuelto” solo cuando haya elegido un significado disponible. Si no puede confirmar "
+        "Seleccione “Sentido resuelto” solo cuando haya confirmado un significado por el contexto. Si no puede confirmar "
         "uno, use “Proponer sentido nuevo”, “Ambigua aun con contexto” o “No puedo determinarla”. Una decisión "
         "resuelta sin significado se normaliza a Pendiente al volver a cargar el archivo y bloquea el cierre de la nota."
     )

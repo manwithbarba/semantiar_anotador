@@ -52,8 +52,6 @@ import {
   TelemetryClickTarget,
   TelemetryDeletionType,
   Category,
-  CLINICAL_SECTIONS,
-  CLINICAL_STATUSES,
   actionablePendingSpans,
   conceptHasContent,
   conceptIsComplete,
@@ -95,12 +93,11 @@ import {
   isValidTextSpan,
   newConcept,
   POLARITIES,
-  PROCEDURE_STATUSES,
+  isHumanExcludedSpan,
   SEMANTIAR_SCHEMA_VERSION,
   SEMANTIAR_TEXT_PROFILE,
   SessionEntry,
   SUBJECTS,
-  SEVERITIES,
   TELEMETRY_APP_BUILD,
   TELEMETRY_IDLE_THRESHOLD_MS,
   TEMPORALITIES,
@@ -122,6 +119,38 @@ type HierarchyLoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 interface ConceptHierarchyViewState extends TerminologyConceptHierarchy {
   status: HierarchyLoadStatus;
+}
+
+/** Keep legacy clinical attributes out of every new export. */
+function persistConcept(concept: ConceptAnnotation): ConceptAnnotation {
+  const clean = { ...concept } as Record<string, unknown>;
+  delete clean['section'];
+  delete clean['clinicalStatus'];
+  delete clean['procedureStatus'];
+  delete clean['severity'];
+  return clean as unknown as ConceptAnnotation;
+}
+
+/** Machine-generated span suggestions are never part of the annotation output. */
+function persistSpan(span: PremarkedSpan): PremarkedSpan {
+  const clean = {
+    ...span,
+    status: span.status === 'descartado' && !isHumanExcludedSpan(span) ? 'pendiente' : span.status,
+  } as Record<string, unknown>;
+  delete clean['suggest'];
+  // A disposition without a human lexical action is legacy machine metadata,
+  // not an annotation decision. Do not export it as if it were one.
+  if (!isHumanExcludedSpan(span)) delete clean['review'];
+  return clean as unknown as PremarkedSpan;
+}
+
+/** Candidate senses are reference metadata, never an answer for a calibrator. */
+function persistLexicalMention(mention: LexicalMention): LexicalMention {
+  return {
+    ...mention,
+    candidateSenseIds: [],
+    annotation: normalizeLexicalAnnotation(mention.annotation, mention.surface),
+  };
 }
 
 /**
@@ -190,10 +219,6 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   readonly certainties = CERTAINTIES;
   readonly temporalities = TEMPORALITIES;
   readonly subjects = SUBJECTS;
-  readonly clinicalSections = CLINICAL_SECTIONS;
-  readonly clinicalStatuses = CLINICAL_STATUSES;
-  readonly procedureStatuses = PROCEDURE_STATUSES;
-  readonly severities = SEVERITIES;
   readonly lexicalDecisions = LEXICAL_DECISIONS;
   readonly lexicalFormTypes = LEXICAL_FORM_TYPES;
   readonly lexicalFunctions = LEXICAL_FUNCTIONS;
@@ -251,7 +276,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   /**
    * Explicit reading gate for the calibration protocol. Premarked candidates
    * stay out of the text until the annotator confirms that the note was read
-   * in full. This keeps the first pass blind to the assisted suggestions while
+   * in full. This keeps the first pass blind to the premarked candidates while
    * preserving the underlying spans for the later decision queue.
    */
   private readingComplete = signal<Record<number, boolean>>({});
@@ -346,14 +371,14 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   eligibleSpanCount = computed(() =>
     this.cases().reduce(
       (total, caseItem) =>
-        total + caseItem.spans.filter((span) => span.review?.disposition !== 'excluido').length,
+        total + caseItem.spans.filter((span) => !isHumanExcludedSpan(span)).length,
       0
     )
   );
   excludedSpanCount = computed(() =>
     this.cases().reduce(
       (total, caseItem) =>
-        total + caseItem.spans.filter((span) => span.review?.disposition === 'excluido').length,
+        total + caseItem.spans.filter((span) => isHumanExcludedSpan(span)).length,
       0
     )
   );
@@ -959,9 +984,26 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
         ? { ...CORE_BLIND_PROTOCOL, ...doc._annotationProtocol }
         : isLegacyClinicalOnlyExport
           ? { ...ASSISTED_ANNOTATION_PROTOCOL, lexicalLayerEnabled: false }
-          : { ...ASSISTED_ANNOTATION_PROTOCOL, ...doc._annotationProtocol };
-    this.annotationProtocol.set(resolvedProtocol);
-    this.lexicalInventory.set(doc._lexicalInventory);
+        : { ...ASSISTED_ANNOTATION_PROTOCOL, ...doc._annotationProtocol };
+    // The client is deliberately neutral even when a legacy header claims
+    // that suggestions or candidate metadata were enabled.
+    this.annotationProtocol.set({
+      ...resolvedProtocol,
+      candidateMetadataVisible: false,
+      candidateMetadataStripped: true,
+      suggestedSctidVisible: false,
+      suggestedCategoryApplied: false,
+      semanticAutomationEnabled: false,
+      lexicalCandidateMetadataVisible: false,
+      lexicalPreferredSenseVisible: false,
+      lexicalSenseRankingVisible: false,
+      lexicalSenseCodebookAvailable: false,
+      lexicalInventoryVersion:
+        resolvedProtocol.lexicalInventoryVersion ?? doc._lexicalInventory?.inventoryVersion,
+    });
+    // Keep the inventory version for provenance, but never expose or carry the
+    // expansion catalogue into a neutral annotation session.
+    this.lexicalInventory.set(undefined);
     const lexicalLayerEnabled = resolvedProtocol.lexicalLayerEnabled === true;
 
     let invalidSpans = 0;
@@ -973,6 +1015,10 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       invalidSpans += normalizedSpans.invalidCount;
       const normalizedLexicalMentions = normalizeLexicalMentions(c.lexicalMentions, textNorm);
       invalidLexicalMentions += normalizedLexicalMentions.invalidCount;
+      const neutralLexicalMentions = normalizedLexicalMentions.mentions.map((mention) => ({
+        ...mention,
+        candidateSenseIds: [],
+      }));
 
       const concepts = Array.isArray(c.concepts)
         ? c.concepts.map((concept, index) => {
@@ -1002,14 +1048,14 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       const lexicalReview = lexicalLayerEnabled
         ? normalizeLexicalReview(
             c.lexicalReview,
-            normalizedLexicalMentions.mentions,
-            doc._lexicalInventory?.inventoryVersion ?? null
+            neutralLexicalMentions,
+            doc._lexicalInventory?.inventoryVersion ?? resolvedProtocol.lexicalInventoryVersion ?? null
           )
         : c.lexicalReview
           ? normalizeLexicalReview(
               c.lexicalReview,
-              normalizedLexicalMentions.mentions,
-              doc._lexicalInventory?.inventoryVersion ?? null
+              neutralLexicalMentions,
+              doc._lexicalInventory?.inventoryVersion ?? resolvedProtocol.lexicalInventoryVersion ?? null
             )
           : undefined;
       const completeConcepts = reconciled.concepts.every(
@@ -1042,7 +1088,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
         concepts: reconciled.concepts,
         comentarios: String(c.comentarios ?? ''),
         review,
-        lexicalMentions: normalizedLexicalMentions.mentions,
+        lexicalMentions: neutralLexicalMentions,
         lexicalReview,
       };
     });
@@ -1109,7 +1155,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     }
     if (invalidLexicalMentions) {
       this.snackBar.open(
-        `Se omitieron ${invalidLexicalMentions} formas sugeridas porque no coincidían correctamente con la nota.`,
+        `Se omitieron ${invalidLexicalMentions} formas del lote porque no coincidían correctamente con la nota.`,
         'OK',
         { duration: 6500 }
       );
@@ -1197,7 +1243,6 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
         review: c.review ? { ...c.review } : { status: 'pending' as const },
         spans: c.spans.map((span) => ({
           ...span,
-          suggest: span.suggest ? { ...span.suggest } : undefined,
           review: span.review ? { ...span.review } : undefined,
           humanAudit: span.humanAudit ? { ...span.humanAudit } : undefined,
         })),
@@ -1251,7 +1296,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   }
 
   textMarkKindLabel(kind: TextMarkKind): string {
-    if (kind === 'pending') return 'Sugerencia pendiente de clasificar';
+    if (kind === 'pending') return 'Mención pendiente de decidir';
     if (kind === 'clinical') return 'Información clínica';
     if (kind === 'lexical') return 'Forma breve';
     return 'Información clínica y forma breve';
@@ -1277,7 +1322,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
 
   selectTextMark(caseIdx: number, mark: TextMark): void {
     this.selectedTextMark.set({ caseIndex: caseIdx, key: mark.key });
-    const sourceSpan = mark.spans.find((span) => span.status !== 'descartado');
+    const sourceSpan = mark.spans.find((span) => !isHumanExcludedSpan(span));
     this.selectedSpan.set(
       sourceSpan ? { caseIndex: caseIdx, spanId: sourceSpan.spanId } : null
     );
@@ -1634,8 +1679,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       .map((item): UnifiedReviewItem => {
         const activeLexicalMention =
           !!item.lexicalMention && item.lexicalMention.annotation.decisionStatus !== 'rejected';
-        const excludedSpan =
-          item.span?.status === 'descartado' || item.span?.review?.disposition === 'excluido';
+        const excludedSpan = !!item.span && isHumanExcludedSpan(item.span);
         const kind: UnifiedReviewItemKind =
           excludedSpan && !item.concept && !activeLexicalMention
             ? 'skipped'
@@ -1764,7 +1808,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
     if (!caseItem || !item) return;
 
     if (choice === 'skip') {
-      if (item.span && item.span.status !== 'descartado') {
+      if (item.span && !isHumanExcludedSpan(item.span)) {
         this.selectedSpan.set({ caseIndex: caseIdx, spanId: item.span.spanId });
         this.discardSelectedSpan(caseIdx);
       }
@@ -2290,6 +2334,9 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
    * the input with a select, and truncates the value at one character.
    */
   lexicalSenseChoices(mention: LexicalMention): LexicalSenseOption[] {
+    // Neutral calibration never exposes inventory candidates or their
+    // expansions. A resolved sense can still be entered explicitly by hand.
+    if (this.annotationProtocol().lexicalCandidateMetadataVisible !== true) return [];
     const allEntries = this.lexicalInventory()?.abbreviations ?? [];
     const allSenses = this.uniqueLexicalSenseOptions(allEntries.flatMap((entry) => entry.senses));
 
@@ -2350,22 +2397,16 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       case 'human':
         return 'Agregada por vos';
       case 'sense_inventory':
-        return 'Sugerida por una lista de formas conocidas';
+        return 'Incluida por un inventario de referencia';
       case 'legacy_dictionary':
-        return 'Sugerida por coincidencia con una forma conocida';
+        return 'Incluida por un diccionario heredado';
       default:
-        return 'Sugerida por su escritura';
+        return 'Detectada por su escritura';
     }
   }
 
   lexicalFormSuggestion(mention: LexicalMention): string {
-    if (/\d/u.test(mention.surface)) {
-      return 'Sugerencia automática por letras y números: revisala; la escritura no determina el significado.';
-    }
-    if (/^[A-ZÁÉÍÓÚÜÑ]{2,}$/u.test(mention.surface)) {
-      return 'Sugerencia automática por mayúsculas: revisala; las mayúsculas no prueban que sea una sigla.';
-    }
-    return 'El tipo está preseleccionado como ayuda inicial: revisalo antes de cerrar.';
+    return `Elegí el tipo por la forma observada en “${mention.surface}”; la escritura por sí sola no determina el significado.`;
   }
 
   lexicalFormLabel(value: string | null): string {
@@ -2395,15 +2436,6 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   lexicalSectionLabel(value: string | null): string {
     if (!value) return 'Sin especificar';
     return this.lexicalSections.find((option) => option.value === value)?.label ?? `Valor existente: ${value}`;
-  }
-
-  clinicalSectionLabel(value: string | null): string {
-    if (!value) return 'Sin especificar';
-    return this.clinicalSections.find((option) => option.value === value)?.label ?? `Valor existente: ${value}`;
-  }
-
-  isKnownClinicalSection(section: string | null): boolean {
-    return !!section && this.clinicalSections.some((option) => option.value === section);
   }
 
   lexicalEvidenceSummary(values: readonly string[]): string {
@@ -2581,8 +2613,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       caseItem.spans.some(
         (span) =>
           !selectedSpanIds.has(span.spanId) &&
-          span.status !== 'descartado' &&
-          span.review?.disposition !== 'excluido' &&
+          !isHumanExcludedSpan(span) &&
           span.start === draft.start &&
           span.end === draft.end
       ) ||
@@ -2668,7 +2699,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   }
 
   selectSpan(caseIdx: number, span: PremarkedSpan): void {
-    if (span.status === 'descartado') return;
+    if (isHumanExcludedSpan(span)) return;
     this.selectedSpan.set({ caseIndex: caseIdx, spanId: span.spanId });
     this.selectedTextMark.set({
       caseIndex: caseIdx,
@@ -2740,7 +2771,7 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   caseOrphanConceptCount(caseItem: CaseAnnotation): number {
     const spanIds = new Set(
       caseItem.spans
-        .filter((span) => span.review?.disposition !== 'excluido')
+        .filter((span) => !isHumanExcludedSpan(span))
         .map((span) => span.spanId)
     );
     return caseItem.concepts.filter(
@@ -2794,11 +2825,11 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
   }
 
   caseEligibleSpanCount(caseItem: CaseAnnotation): number {
-    return caseItem.spans.filter((span) => span.review?.disposition !== 'excluido').length;
+    return caseItem.spans.filter((span) => !isHumanExcludedSpan(span)).length;
   }
 
   caseExcludedSpanCount(caseItem: CaseAnnotation): number {
-    return caseItem.spans.filter((span) => span.review?.disposition === 'excluido').length;
+    return caseItem.spans.filter((span) => isHumanExcludedSpan(span)).length;
   }
 
   caseProgressLabel(caseItem: CaseAnnotation): string {
@@ -2964,6 +2995,10 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       const fixedSpan = caseItem.spans.find((item) => item.spanId === span.spanId);
       if (!fixedSpan) return;
       fixedSpan.status = 'descartado';
+      fixedSpan.review = {
+        disposition: 'excluido',
+        reason: 'Descartada por decisión explícita del anotador.',
+      };
       fixedSpan.humanAudit = {
         ...(fixedSpan.humanAudit ?? {}),
         lastAction: 'discarded',
@@ -3026,14 +3061,6 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
       // Changing hierarchy invalidates a previously chosen code
       concept.sctid = '';
       concept.term = '';
-      // Experimental attributes are category-specific. Do not leave a
-      // clinical or procedure status attached after reclassifying the same
-      // mention to another SNOMED hierarchy.
-      if (cat !== 'Hallazgo clínico') {
-        concept.clinicalStatus = null;
-        concept.severity = null;
-      }
-      if (cat !== 'Procedimiento') concept.procedureStatus = null;
     });
     if (previousCategory && previousCategory !== cat) {
       this.updateCaseTelemetry(caseIdx, (item) => (item.categoryChanges += 1));
@@ -3333,24 +3360,19 @@ export class AnnotatorComponent implements OnInit, OnDestroy {
         text: c.text,
         ...(c.specialty?.trim() ? { specialty: c.specialty.trim() } : {}),
         textNorm: c.textNorm,
-        spans: c.spans,
+        spans: c.spans.map(persistSpan),
         // Preserve every started block. An unfinished concept is progress
         // that must survive both download and local recovery.
-        concepts: c.concepts.map((concept) => ({ ...concept })),
+        concepts: c.concepts.map(persistConcept),
         comentarios: c.comentarios,
         review: c.review,
-        lexicalMentions: (c.lexicalMentions ?? []).map((mention) => ({
-          ...mention,
-          candidateSenseIds: [...mention.candidateSenseIds],
-          annotation: normalizeLexicalAnnotation(mention.annotation, mention.surface),
-        })),
+        lexicalMentions: (c.lexicalMentions ?? []).map(persistLexicalMention),
         lexicalReview: c.lexicalReview,
       })),
       _meta: persistedMeta,
       _premarking: this.premarking(),
       _trace: this.trace(),
       _annotationProtocol: this.annotationProtocol(),
-      _lexicalInventory: this.lexicalInventory(),
     };
   }
 

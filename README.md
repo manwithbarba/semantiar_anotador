@@ -43,6 +43,23 @@ El detalle paso a paso, con imágenes y ejemplos, está en el
 > 📄 Descripción técnica detallada (integración con el servidor de terminología,
 > autocompletado, búsqueda multi-prefijo, FHIR API): [`docs/IMPLEMENTACION.md`](docs/IMPLEMENTACION.md).
 
+## Wiki colaborativa y casos avanzados
+
+La **wiki colaborativa de SemantIAr Anotador** reúne guías, procedimientos y
+respuestas a dudas frecuentes en un espacio que las personas anotadoras pueden
+ayudar a mejorar. Está publicada en
+[Google Sites](https://sites.google.com/view/semantiar-anotador/) y su fuente
+editorial versionada se conserva en
+[docs/wiki-google-sites](docs/wiki-google-sites/README.md).
+
+El material incluye un [informe didáctico de resolución de casos avanzados de
+Calibración 3](docs/wiki-google-sites/04_CASOS_AVANZADOS_CAL3.md), elaborado con
+escenarios sanitizados: no se publican notas clínicas completas, JSON de trabajo
+ni identificadores de casos o pacientes.
+
+El acceso **Manuales** de la aplicación y este README apuntan al mismo recurso
+vigente.
+
 ## Flujo unificado de revisión
 
 1. **Cargar JSON** con los textos a anotar, o reabrir un JSON de salida previo
@@ -57,12 +74,12 @@ El detalle paso a paso, con imágenes y ejemplos, está en el
    pueden incorporar menciones omitidas y expresiones con significado local sin abandonar la nota.
 4. **Paso 3 · Decisión de menciones:** revisar una cola secuencial de marcas,
    con navegación **Anterior / Siguiente**. Cada aparición se clasifica por
-   capas de anotación: **Solo información clínica**, **Solo significado local**
-   o **Información clínica + significado local**. La opción **Excluir: no
-   corresponde al protocolo** es distinta del significado local: se reserva para
-   ruido, falsos positivos o texto que no debe conservarse. La combinación de
-   capas no afirma que un término sea clínico y no clínico a la vez; indica que
-   la misma aparición conserva dos registros independientes.
+   capas de anotación: **Solo información clínica**, **Solo abreviatura
+   contextual**, **Información clínica + abreviatura contextual** o **Sin valor
+   clínico ni abreviatura (Anular)**. La última opción se reserva para ruido,
+   falsos positivos o texto que no debe conservarse. La combinación de capas no
+   afirma que un término sea clínico y no clínico a la vez; indica que la misma
+   aparición conserva dos registros independientes.
 5. **Detalle de la marca:** para una marca clínica se completa jerarquía,
    concepto SNOMED CT, literal y contexto; para un significado local se resuelve
    la expresión, su sentido, tipo, función, ubicación y pistas. El detalle se abre junto a
@@ -161,7 +178,8 @@ Igual que la entrada + metadatos de exportación y, por caso, un array
           "pol": "Activo",
           "cert": "Confirmado",
           "temp": "Actual",
-          "suj": "Paciente"
+          "suj": "Paciente",
+          "contextReviewed": true
         }
       ],
       "comentarios": ""
@@ -169,6 +187,15 @@ Igual que la entrada + metadatos de exportación y, por caso, un array
   ]
 }
 ```
+
+En el modo neutral de calibración, los campos clínicos visibles se limitan a la
+jerarquía, código, término, literal y los cuatro atributos de contexto, además
+de los identificadores y metadatos de trazabilidad necesarios. Los campos
+experimentales `section`, `clinicalStatus`, `procedureStatus` y `severity`, junto
+con las sugerencias semánticas automáticas de los spans, no se muestran ni se
+exportan. Tampoco se muestran ni se exportan catálogos de expansiones o
+sentidos candidatos: una expansión sólo puede registrarse de forma manual
+cuando el anotador elige **Proponer sentido nuevo**.
 
 > Un JSON de salida puede volver a cargarse: las anotaciones existentes se
 > recuperan (la selección previa se muestra como chip; para cambiarla, re-buscar).

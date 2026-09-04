@@ -28,7 +28,7 @@
   </button>
   <a
     class="annotation-manual-link toolbar-manual-link"
-    href="https://notebook.google.com/notebook/81f1cd98-d33e-46d0-8c4f-a28c43138365"
+    href="https://sites.google.com/view/semantiar-anotador/"
     target="_blank"
     rel="noopener noreferrer"
     aria-label="Abrir manuales de SemantIAr Anotador">
@@ -318,14 +318,14 @@
         </div>
         <p class="case-text-help" [attr.id]="'selection-help-' + ci">
           @if (unifiedReviewPrototype() && !premarkedVisibleFor(ci)) {
-            Leé la nota completa sin sugerencias resaltadas. Después confirmá la lectura para iniciar la marcación.
+            Leé la nota completa sin marcas resaltadas. Después confirmá la lectura para iniciar la marcación.
           } @else {
             Seleccioná un tramo exacto del texto para agregar una mención; las marcas superpuestas se pueden elegir por separado.
           }
         </p>
         @if (!unifiedReviewPrototype() || premarkedVisibleFor(ci)) {
           <div class="annotation-mark-legend" aria-label="Leyenda de marcas en la nota">
-            <span><i class="mark-swatch mark-pending" aria-hidden="true">?</i> Sugerencia pendiente</span>
+            <span><i class="mark-swatch mark-pending" aria-hidden="true">?</i> Mención pendiente</span>
             <span><i class="mark-swatch mark-clinical" aria-hidden="true">C</i> Información clínica</span>
             <span><i class="mark-swatch mark-lexical" aria-hidden="true">F</i> Forma breve</span>
             <span><i class="mark-swatch mark-both" aria-hidden="true">A</i> Ambas dimensiones</span>
@@ -334,7 +334,7 @@
         @if (unifiedReviewPrototype() && !readingCompleteFor(ci)) {
           <section class="unified-reading-gate" aria-label="Confirmación de lectura inicial" role="region">
             <span class="unified-kicker">Paso 1 · lectura ciega</span>
-            <strong>Leé toda la nota antes de ver las sugerencias.</strong>
+            <strong>Leé toda la nota antes de ver las marcas.</strong>
             <p>
               La aplicación oculta las premarcaciones durante esta primera lectura para que puedas detectar también las menciones omitidas.
             </p>
@@ -613,18 +613,6 @@
                         <span><strong>Certeza</strong>{{ concept.cert }}</span>
                         <span><strong>Temporalidad</strong>{{ concept.temp }}</span>
                         <span><strong>Sujeto</strong>{{ concept.suj }}</span>
-                        @if (concept.section) {
-                          <span><strong>Sección</strong>{{ clinicalSectionLabel(concept.section) }}</span>
-                        }
-                        @if (concept.cat === 'Hallazgo clínico' && concept.clinicalStatus) {
-                          <span><strong>Estado</strong>{{ concept.clinicalStatus }}</span>
-                        }
-                        @if (concept.cat === 'Hallazgo clínico' && concept.severity) {
-                          <span><strong>Severidad</strong>{{ concept.severity }}</span>
-                        }
-                        @if (concept.cat === 'Procedimiento' && concept.procedureStatus) {
-                          <span><strong>Procedimiento</strong>{{ concept.procedureStatus }}</span>
-                        }
                       </div>
                       <button mat-stroked-button color="primary" type="button"
                               (click)="openUnifiedItemDetails(ci, item.key)">
@@ -842,7 +830,7 @@
 
             @if (!(caseItem.lexicalMentions?.length)) {
               <div class="lexical-empty">
-                No hay formas sugeridas. Revisá igualmente toda la nota y seleccioná cada forma
+                No hay formas preseleccionadas. Revisá igualmente toda la nota y seleccioná cada forma
                 breve que encuentres.
               </div>
             }
@@ -1036,7 +1024,7 @@
                         </mat-select>
                         <mat-hint [id]="'lexical-decision-help-' + ci + '-' + mention.mentionId">
                           Pendiente bloquea el cierre; ambigua y no puedo determinarla son
-                          abstenciones finales válidas. “Sentido resuelto” requiere elegir un significado disponible.
+                          abstenciones finales válidas. “Sentido resuelto” requiere registrar un significado confirmado.
                         </mat-hint>
                       </mat-form-field>
                     }
@@ -1375,22 +1363,6 @@
                          (ngModelChange)="updateConceptField(ci, cj, 'textoLiteral', $event)"
                          placeholder="expresión exacta del texto" />
                 </mat-form-field>
-                <mat-form-field appearance="outline" class="f-section" subscriptSizing="dynamic">
-                  <mat-label>Sección de la nota</mat-label>
-                  <mat-select
-                    [ngModel]="concept.section"
-                    (ngModelChange)="updateConceptField(ci, cj, 'section', $event)">
-                    @if (concept.section && !isKnownClinicalSection(concept.section)) {
-                      <mat-option [value]="concept.section">
-                        Valor existente: {{ concept.section }}
-                      </mat-option>
-                    }
-                    @for (section of clinicalSections; track section.value) {
-                      <mat-option [value]="section.value">{{ section.label }}</mat-option>
-                    }
-                  </mat-select>
-                  <mat-hint>Ubicación local que ayuda a interpretar la mención.</mat-hint>
-                </mat-form-field>
               </div>
 
               <!-- Clinical context -->
@@ -1435,50 +1407,6 @@
                   </mat-select>
                 </mat-form-field>
               </div>
-              @if (concept.cat === 'Hallazgo clínico' || concept.cat === 'Procedimiento') {
-                <div class="context-extra-row" aria-label="Atributos clínicos adicionales en prueba local">
-                  @if (concept.cat === 'Hallazgo clínico') {
-                  <mat-form-field appearance="outline" class="f-extra" subscriptSizing="dynamic">
-                    <mat-label>Estado clínico</mat-label>
-                    <mat-select
-                      [ngModel]="concept.clinicalStatus"
-                      (ngModelChange)="updateConceptField(ci, cj, 'clinicalStatus', $event)">
-                      <mat-option [value]="null">Sin especificar</mat-option>
-                      @for (status of clinicalStatuses; track status) {
-                        <mat-option [value]="status">{{ status }}</mat-option>
-                      }
-                    </mat-select>
-                    <mat-hint>Usalo sólo si la nota expresa el estado.</mat-hint>
-                  </mat-form-field>
-                  <mat-form-field appearance="outline" class="f-extra" subscriptSizing="dynamic">
-                    <mat-label>Severidad (si aparece)</mat-label>
-                    <mat-select
-                      [ngModel]="concept.severity"
-                      (ngModelChange)="updateConceptField(ci, cj, 'severity', $event)">
-                      <mat-option [value]="null">No expresada</mat-option>
-                      @for (severity of severities; track severity) {
-                        <mat-option [value]="severity">{{ severity }}</mat-option>
-                      }
-                    </mat-select>
-                    <mat-hint>No la infieras desde el concepto SNOMED.</mat-hint>
-                  </mat-form-field>
-                }
-                  @if (concept.cat === 'Procedimiento') {
-                  <mat-form-field appearance="outline" class="f-extra" subscriptSizing="dynamic">
-                    <mat-label>Estado del procedimiento</mat-label>
-                    <mat-select
-                      [ngModel]="concept.procedureStatus"
-                      (ngModelChange)="updateConceptField(ci, cj, 'procedureStatus', $event)">
-                      <mat-option [value]="null">Sin especificar</mat-option>
-                      @for (status of procedureStatuses; track status) {
-                        <mat-option [value]="status">{{ status }}</mat-option>
-                      }
-                    </mat-select>
-                    <mat-hint>Separá lo indicado de lo efectivamente realizado.</mat-hint>
-                  </mat-form-field>
-                  }
-                </div>
-              }
             </details>
             }
           }
@@ -1647,7 +1575,7 @@
     <section>
       <h3>2. Leé y marcá la nota</h3>
       <p>
-        Leé la nota completa antes de mirar las marcas sugeridas. Después recorré todo el texto:
+        Leé la nota completa antes de mirar las marcas del lote. Después recorré todo el texto:
         aceptá, corregí, anulá o agregá cada mención. Las marcas verdes son clínicas, las violetas
         son formas breves y las ámbar reúnen las dos revisiones.
       </p>

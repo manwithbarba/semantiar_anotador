@@ -46,6 +46,12 @@ directamente a cada etapa, evitando desplazamientos largos.
 - Lea la nota completa, aunque existan términos resaltados.
 - Un resaltado es un candidato: puede aceptarlo, descartarlo o ajustar sus
   límites.
+- La leyenda distingue las dimensiones: verde para información clínica,
+  violeta para forma breve y ámbar cuando la misma aparición conserva ambas.
+- Para ampliar o reducir una marca, selecciónela, marque el nuevo tramo —puede
+  atravesar otra premarcación— y pulse **Usar como nuevos límites**. Los rangos
+  exactamente duplicados se rechazan, pero las superposiciones parciales se
+  mantienen.
 - Para incorporar una mención omitida puede mantener pulsado y seleccionar su
   expresión exacta. En celular se recomienda **Agregar mención clínica**:
   escriba el texto y toque la aparición correcta que muestra la aplicación. El
@@ -72,6 +78,13 @@ Para cada mención clínicamente relevante:
 2. Busque el concepto y selecciónelo de la lista de SNOMED CT.
 3. Verifique el texto literal de la nota.
 4. Complete polaridad, certeza, temporalidad y sujeto.
+
+La interfaz de calibración es deliberadamente neutral: no agrega sección,
+estado clínico, estado del procedimiento ni severidad al concepto. Tampoco
+expande siglas, asigna categorías ni excluye spam automáticamente. Esas
+decisiones deben quedar explícitas en la revisión humana. La **sección** que
+puede registrarse al revisar una forma breve pertenece sólo a la capa léxica.
+Confirme la casilla de revisión de los cuatro atributos de contexto clínico.
 
 La selección queda registrada inmediatamente en la sesión. Puede agregar tantos
 conceptos como sean necesarios.

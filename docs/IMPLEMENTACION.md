@@ -300,6 +300,21 @@ lo que permite vincular cada código con su expresión en español rioplatense �
 para estudios de cobertura terminológica y de sinónimos locales— y un campo de
 **comentarios** por caso para dudas del anotador.
 
+La interfaz vigente usa un modo neutral de calibración. No agrega al concepto
+clínico campos experimentales de sección, estado clínico, estado del
+procedimiento ni severidad; tampoco aplica expansiones, categorías o
+exclusiones semánticas automáticas a los spans. El inventario de expansiones y
+sentidos candidatos tampoco se expone ni se arrastra a la exportación. Esas
+decisiones quedan para el anotador y se registra únicamente el estado de trabajo
+explícito.
+
+Los cuatro atributos de aserción existentes siguen siendo funcionales. En los
+conceptos nuevos la interfaz agrega una confirmación explícita de que fueron
+revisados; los JSON anteriores se consideran revisados para no reabrir trabajo
+ya validado. La prueba local no agrega anatomía ni lateralidad como campos
+universales: cuando correspondan, deben resolverse mediante el concepto o sus
+relaciones SNOMED CT.
+
 ---
 
 ## 7. Flujo de trabajo, progreso y trazabilidad
@@ -477,8 +492,17 @@ Cada caso de un lote v2 contiene:
   literal, origen del candidato, sentidos posibles no ordenados y una
   `annotation` editable;
 - `lexicalReview`: cierre explícito de la revisión exhaustiva de la nota;
-- `_lexicalInventory` en el documento: inventario provisional único de sentidos
-  posibles, sin probabilidades, ranking ni sentido preferido.
+- `_lexicalInventory` puede venir en el lote de entrada como inventario
+  provisional único de sentidos posibles, sin probabilidades, ranking ni sentido
+  preferido. El modo neutral de Angular conserva sólo su versión para
+  trazabilidad: no muestra el catálogo, vacía `candidateSenseIds` y no lo
+  incluye en la exportación.
+
+La nota deriva una capa visual sin agregar campos al JSON: una marca clínica se
+muestra en verde, una aparición presente sólo en `lexicalMentions` se muestra en
+violeta y una aparición con el mismo par exacto `start`/`end` en ambas capas se
+muestra en ámbar. Las superposiciones parciales siguen siendo marcas distintas;
+no se interpretan automáticamente como «Ambos».
 
 Las decisiones admitidas son `resolved`, `ambiguous`, `unknown`,
 `new_sense_proposed`, `form_error`, `nonclinical` y `rejected`, además del estado
@@ -493,6 +517,14 @@ hace posible una revisión exhaustiva tanto en los lotes asistidos como en el
 Core Blind. Las apariciones agregadas manualmente pueden eliminarse; los
 candidatos distribuidos se conservan en el registro y pueden marcarse
 `rejected` o `nonclinical`.
+
+Para corregir límites se selecciona primero la marca y luego el nuevo tramo. El
+ajuste permite atravesar otras marcas y conserva la trazabilidad de los offsets
+originales. Si la aparición tiene ambas dimensiones, el span clínico, su literal
+vinculado y la aparición léxica se desplazan de forma atómica; la decisión
+léxica vuelve a `pending` porque cambió la superficie observada. Una colisión
+con otro rango exacto se rechaza, mientras que una superposición parcial se
+conserva.
 
 La nota no puede finalizarse hasta que:
 

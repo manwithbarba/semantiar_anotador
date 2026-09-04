@@ -12,6 +12,13 @@ La interfaz presenta esta capa bajo la denominación **Abreviatura contextual / 
 - **Información clínica + abreviatura contextual** (Ambas capas integradas en la misma marca).
 - **Sin valor clínico ni abreviatura (Anular)** (Registro explícito de rechazo / anulación).
 
+La representación visual deriva esas dimensiones sin modificar el contrato
+persistido: verde para la capa clínica, violeta para la capa léxica y ámbar
+cuando `spans` y `lexicalMentions` comparten exactamente `start` y `end`. Una
+superposición parcial conserva dos marcas independientes y no equivale a
+«Ambos». Al ajustar los límites de una marca de doble capa se actualizan ambos
+registros en la misma operación y la decisión léxica vuelve a `pending`.
+
 ## Códigos estables
 
 | Campo | Código → etiqueta visible |
@@ -78,12 +85,14 @@ exportación:
 `section` representa la ubicación estructural local dentro de la nota; no una
 especialidad global.
 
-## Sugerencias automáticas
+## Metadatos de candidatos en la entrada
 
 La forma puede venir preseleccionada por una heurística de mayúsculas o dígitos
 para mantener compatibilidad con los lotes v2. Es una sugerencia provisional que
 el anotador debe revisar. Las mayúsculas no prueban por sí solas que una forma
-sea `initialism`, y la escritura no determina su significado contextual.
+sea `initialism`, y la escritura no determina su significado contextual. En el
+modo neutral de Angular estos metadatos de entrada no se muestran ni se
+exportan: la forma y su significado deben decidirse manualmente.
 
 ## Schema y compatibilidad v2
 

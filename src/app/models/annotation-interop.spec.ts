@@ -59,11 +59,12 @@ describe('SemantIAr annotation interoperability', () => {
     ).toBe(migrated.spans?.[0].textoLiteral);
     expect(migrated.concepts?.[0].sctid).toBe('222980061000013107');
     expect(migrated.concepts?.[0]).toMatchObject({
-      section: 'examen físico',
-      clinicalStatus: 'Activo',
-      severity: 'Leve',
       contextReviewed: true,
     });
+    expect(migrated.concepts?.[0]).not.toHaveProperty('section');
+    expect(migrated.concepts?.[0]).not.toHaveProperty('clinicalStatus');
+    expect(migrated.concepts?.[0]).not.toHaveProperty('procedureStatus');
+    expect(migrated.concepts?.[0]).not.toHaveProperty('severity');
     expect(prepared.document.schemaVersion).toBeUndefined();
     expect(prepared.document.textProfile?.offsetUnit).toBe('utf16-code-unit');
   });

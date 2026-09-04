@@ -98,18 +98,11 @@ const SPAN_ORIGINS = new Set<SpanOrigin>([
   'human',
 ]);
 
-/** Contextual hints generated with a span. They intentionally exclude an SCTID. */
-export interface SpanSuggestion {
-  /** Source systems may use labels outside the three annotation categories. */
-  category?: Category | string;
-  expansionAbbrev?: string;
-  pol?: Polarity;
-  cert?: Certainty;
-  temp?: Temporality;
-  suj?: Subject;
-  section?: string;
-}
-
+/**
+ * Historical premark review metadata. The Angular client never interprets
+ * this field as a semantic decision; it is retained only for round-tripping
+ * legacy files and audit provenance.
+ */
 export interface SpanReview {
   disposition: 'elegible' | 'excluido';
   reason: string;
@@ -139,7 +132,6 @@ export interface PremarkedSpan {
   confidence: number;
   matchedKey?: string;
   usedWSD?: boolean;
-  suggest?: SpanSuggestion;
   status: SpanStatus;
   review?: SpanReview;
   humanAudit?: SpanHumanAudit;
@@ -149,7 +141,7 @@ export interface PremarkedSpan {
  * Visual state represented by one exact source range.
  *
  * `pending` is deliberately a fourth, temporary display state: it is the
- * neutral colour used for an automatic pre-mark until the annotator chooses
+ * neutral colour used for a batch premark until the annotator chooses
  * clinical information, a brief form, both dimensions, or excludes it.
  */
 export type TextMarkKind = 'pending' | 'clinical' | 'lexical' | 'both';
@@ -219,9 +211,22 @@ export function normalizePremarkedSpans(
       continue;
     }
 
+    // A discarded status is authoritative only when the input carries the
+    // explicit human discard audit written by the UI. Legacy machine batches
+    // sometimes used `descartado` as a classifier outcome; those spans reopen
+    // as pending so loading a file can never hide work from the annotator.
     const status: SpanStatus =
-      span.status === 'confirmado' || span.status === 'descartado' ? span.status : 'pendiente';
-    spans.push(reviewPremarkedSpan({ ...span, status }, textNorm));
+      span.status === 'confirmado'
+        ? 'confirmado'
+        : span.status === 'descartado' && span.humanAudit?.lastAction === 'discarded'
+          ? 'descartado'
+          : 'pendiente';
+    // Structural normalization only. Do not infer a category, expand an
+    // abbreviation, or apply an automatic inclusion/exclusion here. Remove
+    // legacy machine suggestions so they cannot leak into a new export.
+    const normalizedSpan = { ...span, status } as PremarkedSpan & Record<string, unknown>;
+    delete normalizedSpan['suggest'];
+    spans.push(normalizedSpan);
     ids.add(span.spanId);
   }
 
@@ -258,15 +263,15 @@ export function buildTextMarks(
 
   return [...grouped.entries()]
     .map(([key, groupedRange]): TextMark | null => {
-      const selectableSpans = groupedRange.spans.filter((span) => span.status !== 'descartado');
+      const selectableSpans = groupedRange.spans
+        .filter((span) => !isHumanExcludedSpan(span))
+        .map((span) =>
+          span.status === 'descartado' ? { ...span, status: 'pendiente' as const } : span
+        );
       const activeClinical = selectableSpans.some(
-        (span) =>
-          span.status === 'confirmado' && span.review?.disposition !== 'excluido'
+        (span) => span.status === 'confirmado' && !isHumanExcludedSpan(span)
       );
-      const pendingClinical = selectableSpans.some(
-        (span) =>
-          span.status === 'pendiente' && span.review?.disposition !== 'excluido'
-      );
+      const pendingClinical = selectableSpans.some((span) => span.status === 'pendiente');
       const activeLexical = groupedRange.lexicalMentions.filter(
         (mention) => mention.annotation.decisionStatus !== 'rejected'
       );
@@ -324,304 +329,18 @@ export function buildTextSegments(
 }
 
 /**
- * Lab analytes excluded when immediately followed by a numeric result.
- * A measured analyte value (e.g. "GOT 38") is contextually clear but maps to
- * a Quantity, not a Finding/Procedure concept at annotation grain.
- * Note: 'hb' (hemoglobina) is handled separately — it has a cardiac WSD sense.
+ * A legacy premark may carry an exclusion disposition from an upstream
+ * classifier. It is not a decision in the Angular client. Only a discarded
+ * span, or the legacy lexical-only action recorded with a human audit, is
+ * treated as excluded for presentation and reconciliation.
  */
-const LABORATORY_ANALYTES = new Set([
-  // bilirubins
-  'bd', 'bi', 'bt',
-  // coagulation
-  'kptt', 'tp',
-  // enzymes / liver
-  'aldolasa', 'ck', 'cpk', 'fa', 'fal', 'ggt', 'got', 'gpt', 'ldh', 'tgo', 'tgp',
-  // haematology
-  'gb', 'gr', 'hb', 'hemoglobina', 'hto', 'hcto', 'plaq', 'plaquetas',
-  // inflammatory
-  'pcr', 'vsg',
-  // metabolic
-  'albumina', 'beab', 'bilirrubina', 'colesterol', 'creat', 'creatinina',
-  'ferritina', 'fructosamina', 'glucemia', 'glucosa', 'hdl', 'hierro', 'ldl',
-  'lipasa', 'potasio', 'procalcitonina', 'sodio', 'transaminasas', 'transferrina',
-  'trigliceridos', 'tromboplastina', 'urea', 'uremia',
-  // thyroid
-  't3', 't4', 'tsh',
-]);
-
-/** Vital-sign abbreviations kept when carrying a measured numeric value. */
-const VITAL_SIGNS = new Set(['fc', 'fr', 'sat', 'spo2', 'ta']);
-
-/**
- * Single-token administrative/structural terms that never correspond to a
- * standalone SNOMED CT concept in the three annotation hierarchies.
- */
-const ADMINISTRATIVE_TERMS = new Set([
-  'pte',   // "paciente" — subject reference, not a clinical concept
-  'mc',    // "motivo de consulta" — section header
-  'gi',    // "gastrointestinal" — anatomical modifier
-  'tto',   // "tratamiento" — generic noun; specific treatment captured elsewhere
-]);
-
-/** Route abbreviations excluded when isolated (valid only as modifiers). */
-const ROUTES = new Set(['ev', 'im', 'sc', 'vo']);
-
-/** Medications and parenteral preparations — always Fármaco. */
-const MEDICATIONS = new Set(['aas', 'atb', 'php']);
-
-/** Devices / lines / catheters — default Hallazgo clínico (in-situ state). */
-const DEVICES = new Set(['avp', 'sng']);
-
-/**
- * Procedures: imaging, electrophysiology, serology panels, vital-sign monitoring.
- * These are always eligible with category Procedimiento.
- */
-const PROCEDURES = new Set([
-  'csv',                        // control de signos vitales
-  'ecg', 'eco', 'examen fisico', 'pap', 'rmn', 'tac',
-  'chagas', 'hiv', 'toxo', 'vdrl',  // serology panels
-]);
-
-/** Clinical findings with unambiguous meaning (no WSD needed). */
-const CLINICAL_FINDINGS = new Set([
-  'afebril',
-  'rha',   // ruidos hidroaéreos
-]);
-
-function literalKey(span: PremarkedSpan): string {
-  return span.textoLiteral.trim().toLocaleLowerCase('es-AR');
-}
-
-function nearbyText(span: PremarkedSpan, textNorm: string): string {
-  return textNorm.slice(Math.max(0, span.start - 80), Math.min(textNorm.length, span.end + 80));
-}
-
-function followsMeasuredValue(span: PremarkedSpan, textNorm: string): boolean {
-  return /^\s*[:=]?\s*\d+(?:[.,/]\d+)?(?:\s*(?:%|mg\/dl|mmhg|rpm|lpm|g\/dl))?/i.test(
-    textNorm.slice(span.end)
+export function isHumanExcludedSpan(span: PremarkedSpan): boolean {
+  return (
+    (span.status === 'descartado' && span.humanAudit?.lastAction === 'discarded') ||
+    (span.review?.disposition === 'excluido' &&
+      span.humanAudit?.lastAction === 'accepted' &&
+      /forma breve/i.test(span.review.reason))
   );
-}
-
-function suggestCategory(span: PremarkedSpan, category: Category, expansionAbbrev?: string): PremarkedSpan {
-  return {
-    ...span,
-    suggest: {
-      ...span.suggest,
-      category,
-      ...(expansionAbbrev ? { expansionAbbrev } : {}),
-    },
-  };
-}
-
-/**
- * Classifies a premarked span into one of three annotation hierarchies
- * (Hallazgo clínico / Procedimiento / Fármaco) or marks it as excluded noise.
- *
- * Rules are applied in strict priority order following the tri-axial calibration
- * convention.  No SCTID is ever pre-loaded; only `suggest.category` is set so the
- * annotator sees a hint without being anchored to a specific concept.
- *
- * Priority chain:
- *   1  Administrative / structural terms     → excluido
- *   2  Route-only abbreviations              → excluido
- *   3  Lab analytes with numeric result      → excluido
- *   4  HB — WSD: cardiac vs haematology      → elegible (Hallazgo) | excluido
- *   5  Vital signs with numeric result       → elegible (Hallazgo)
- *   6  EG — WSD: edad gestacional vs Gaucher → elegible | excluido
- *   7  PR — WSD: per rectum / ECG / urología → elegible | excluido
- *   8  SV — WSD: sonda vesical vs signos vit → elegible (Hallazgo | Procedimiento)
- *   9  Unambiguous clinical findings         → elegible (Hallazgo)
- *  10  Medications                           → elegible (Fármaco)
- *  11  Devices / lines                       → elegible (Hallazgo)
- *  12  Procedures                            → elegible (Procedimiento)
- *  13  NER category normalisation            → elegible (normalised)
- *  14  Generic fallback                      → elegible (candidate for review)
- */
-export function reviewPremarkedSpan(span: PremarkedSpan, textNorm: string): PremarkedSpan {
-  const literal = literalKey(span);
-  const context = nearbyText(span, textNorm);
-  const measuredValue = followsMeasuredValue(span, textNorm);
-
-  // ── 1. Administrative / structural terms ──────────────────────────────────
-  if (ADMINISTRATIVE_TERMS.has(literal)) {
-    return {
-      ...span,
-      review: {
-        disposition: 'excluido',
-        reason: 'Término estructural o administrativo sin concepto SNOMED CT propio.',
-      },
-    };
-  }
-
-  // ── 2. Route-only abbreviations ───────────────────────────────────────────
-  if (ROUTES.has(literal)) {
-    return {
-      ...span,
-      review: { disposition: 'excluido', reason: 'Vía aislada; requiere sustancia o acto explícito.' },
-    };
-  }
-
-  // ── 3. Lab analytes with numeric result ───────────────────────────────────
-  if (LABORATORY_ANALYTES.has(literal) && measuredValue) {
-    return {
-      ...span,
-      review: {
-        disposition: 'excluido',
-        reason: 'Analito de laboratorio con valor numérico; no es una mención anotable independiente.',
-      },
-    };
-  }
-
-  // ── 4. HB — WSD: hemoglobina (lab) vs bloqueo de rama (cardiology) ────────
-  if (literal === 'hb') {
-    if (/\b(ecg|electrocardiograma|rama|bloqueo|conducción|bradicardia|taquicardia)\b/i.test(context)) {
-      return {
-        ...suggestCategory(span, 'Hallazgo clínico', 'Bloqueo de rama'),
-        review: { disposition: 'elegible', reason: 'HB en contexto cardiológico: bloqueo de rama.' },
-      };
-    }
-    if (measuredValue) {
-      return {
-        ...span,
-        review: {
-          disposition: 'excluido',
-          reason: 'HB hemoglobina con valor numérico aislado.',
-        },
-      };
-    }
-    // HB without a value and without cardiac context → keep as candidate
-  }
-
-  // ── 5. Vital signs with measured value ────────────────────────────────────
-  if (VITAL_SIGNS.has(literal) && measuredValue) {
-    return {
-      ...suggestCategory(span, 'Hallazgo clínico'),
-      review: { disposition: 'elegible', reason: 'Signo vital con valor medido.' },
-    };
-  }
-
-  // ── 6. EG — WSD: edad gestacional vs enfermedad de Gaucher ───────────────
-  // The dictionary default ("enfermedad de Gaucher") almost never applies in
-  // clinical notes; the obstetric sense covers the vast majority of occurrences.
-  // Positive context: obstetric terms, gestational week notation, or obstetric
-  // monitoring checklist items (PGE = prostaglandina E).
-  if (literal === 'eg') {
-    const obstetricsRe =
-      /\b(sem(?:ana)?s?|embarazo|gestacional|g\d\s*p\d|obstetr|cesar[eé]|parto|fetal|[uú]tero|prenatal|perinatal|gestante|matern[ao]|neonatal|pge\b|anteparto|expulsivo|rec[áa]lculo)\b/i;
-    if (obstetricsRe.test(context)) {
-      return {
-        ...suggestCategory(span, 'Hallazgo clínico', 'Edad gestacional'),
-        review: { disposition: 'elegible', reason: 'EG con contexto obstétrico.' },
-      };
-    }
-    return {
-      ...span,
-      review: {
-        disposition: 'excluido',
-        reason: 'EG sin contexto obstétrico suficiente; evita expansión default ambigua (enfermedad de Gaucher).',
-      },
-    };
-  }
-
-  // ── 7. PR — WSD: per rectum / intervalo PR (ECG) / prostatectomía radical ──
-  if (literal === 'pr') {
-    if (/\b(ecg|electrocardiograma|intervalo)\b/i.test(context)) {
-      return {
-        ...span,
-        review: { disposition: 'excluido', reason: 'PR en contexto ECG (intervalo PR); evita expansión "per rectum".' },
-      };
-    }
-    if (/\b(pr[oó]stata|prostatect|psa|urolog|prost[áa]t|resección)\b/i.test(context)) {
-      return {
-        ...suggestCategory(span, 'Procedimiento', 'Prostatectomía radical'),
-        review: { disposition: 'elegible', reason: 'PR en contexto urológico: prostatectomía radical.' },
-      };
-    }
-    // "per rectum" examination — eligible as procedure
-    return {
-      ...suggestCategory(span, 'Procedimiento'),
-      review: { disposition: 'elegible', reason: 'PR: examen per rectum.' },
-    };
-  }
-
-  // ── 8. SV — WSD: sonda vesical (device) vs signos vitales (procedure) ─────
-  if (literal === 'sv') {
-    if (/\b(permeable|clampe[ao]|d[eé]bito|drenaje|vesical|urinario|foley|in situ)\b/i.test(context)) {
-      return {
-        ...suggestCategory(span, 'Hallazgo clínico', 'Sonda vesical'),
-        review: { disposition: 'elegible', reason: 'SV en contexto de sonda vesical (estado del dispositivo).' },
-      };
-    }
-    if (/\b(control(?:ar)?|csv|monitoreo|monitore[ao])\b/i.test(context)) {
-      return {
-        ...suggestCategory(span, 'Procedimiento', 'Control de signos vitales'),
-        review: { disposition: 'elegible', reason: 'SV en contexto de monitoreo de signos vitales.' },
-      };
-    }
-    return {
-      ...span,
-      review: {
-        disposition: 'elegible',
-        reason: 'SV ambiguo: puede ser sonda vesical (Hallazgo) o signos vitales (Procedimiento). Revisar contexto.',
-      },
-    };
-  }
-
-  // ── 9. Unambiguous clinical findings ─────────────────────────────────────
-  if (CLINICAL_FINDINGS.has(literal)) {
-    return {
-      ...suggestCategory(span, 'Hallazgo clínico'),
-      review: { disposition: 'elegible', reason: 'Hallazgo clínico con significado no ambiguo.' },
-    };
-  }
-
-  // ── 10. Medications ───────────────────────────────────────────────────────
-  if (MEDICATIONS.has(literal)) {
-    return {
-      ...suggestCategory(span, 'Fármaco'),
-      review: { disposition: 'elegible', reason: 'Sustancia o preparado administrable.' },
-    };
-  }
-
-  // ── 11. Devices / lines ───────────────────────────────────────────────────
-  // Default: device in situ (Hallazgo). When an action verb is in context the
-  // act should be annotated as a *separate* span (origin='human'); the device
-  // itself remains a Hallazgo reflecting its in-situ state.
-  if (DEVICES.has(literal)) {
-    return {
-      ...suggestCategory(span, 'Hallazgo clínico'),
-      review: { disposition: 'elegible', reason: 'Dispositivo o acceso en estado/in situ.' },
-    };
-  }
-
-  // ── 12. Procedures ────────────────────────────────────────────────────────
-  if (PROCEDURES.has(literal)) {
-    return {
-      ...suggestCategory(span, 'Procedimiento'),
-      review: { disposition: 'elegible', reason: 'Estudio, prueba o procedimiento clínico.' },
-    };
-  }
-
-  // ── 13. NER category normalisation ───────────────────────────────────────
-  if (span.origin === 'ner') {
-    const rawCat = span.suggest?.category ?? '';
-    const category: Category =
-      rawCat === 'Medicamento' || rawCat === 'Fármaco'
-        ? 'Fármaco'
-        : rawCat === 'Procedimiento'
-          ? 'Procedimiento'
-          : 'Hallazgo clínico';
-    return {
-      ...suggestCategory(span, category),
-      review: { disposition: 'elegible', reason: 'Categoría normalizada desde NER.' },
-    };
-  }
-
-  // ── 14. Generic fallback ──────────────────────────────────────────────────
-  return {
-    ...span,
-    review: { disposition: 'elegible', reason: 'Candidato conservado para revisión humana.' },
-  };
 }
 
 /** Input document uploaded by the annotator (or loaded from the example). */
@@ -652,6 +371,8 @@ export interface AnnotationProtocol {
   candidateMetadataStripped: boolean;
   suggestedSctidVisible: boolean;
   suggestedCategoryApplied: boolean;
+  /** Explicitly records that the client applies no semantic premark rules. */
+  semanticAutomationEnabled?: false;
   exhaustiveReviewRequired: boolean;
   coreBlindIncluded: boolean;
   preannotationsPresent: boolean;
@@ -784,7 +505,7 @@ export const LEXICAL_DECISIONS: LexicalChoice<LexicalDecisionStatus>[] = [
   {
     value: 'resolved',
     label: 'Sentido resuelto',
-    description: 'La nota permite elegir un significado concreto de la lista.',
+    description: 'El contexto permite confirmar y registrar un significado concreto.',
   },
   {
     value: 'ambiguous',
@@ -801,7 +522,7 @@ export const LEXICAL_DECISIONS: LexicalChoice<LexicalDecisionStatus>[] = [
   {
     value: 'new_sense_proposed',
     label: 'Proponer sentido nuevo',
-    description: 'El significado se entiende, pero no aparece entre las opciones.',
+    description: 'El significado se entiende y se registra manualmente, sin catálogo de candidatos.',
   },
   {
     value: 'form_error',
@@ -816,7 +537,7 @@ export const LEXICAL_DECISIONS: LexicalChoice<LexicalDecisionStatus>[] = [
   {
     value: 'rejected',
     label: 'No es abreviatura ni acrónimo',
-    description: 'El candidato fue marcado por error y debe excluirse de la capa léxica.',
+    description: 'Decidiste que la marca no corresponde y la anulás en la capa léxica.',
   },
 ];
 
@@ -917,11 +638,6 @@ export const LEXICAL_SECTIONS: LexicalChoice<string>[] = [
   { value: 'encabezado', label: 'Encabezado', description: 'Etiqueta que organiza la nota.' },
   { value: 'otra parte de la nota', label: 'Otra parte de la nota', description: 'Ubicación no incluida en las opciones anteriores.' },
 ];
-
-/** The same controlled note sections are available for clinical concepts. */
-export const CLINICAL_SECTIONS: LexicalChoice<string>[] = LEXICAL_SECTIONS.map((section) => ({
-  ...section,
-}));
 
 /** Standardized contextual clues. Multiple clues may be chosen for one appearance. */
 export const LEXICAL_EVIDENCE_CODES: LexicalChoice<string>[] = [
@@ -1204,26 +920,6 @@ export type Polarity = 'Activo' | 'Negado';
 export type Certainty = 'Confirmado' | 'Sospecha' | 'Diferencial';
 export type Temporality = 'Actual' | 'Histórico';
 export type Subject = 'Paciente' | 'Familiar';
-/** Estado afirmado del hallazgo, cuando la nota lo expresa de forma explícita. */
-export type ClinicalStatus =
-  | 'Activo'
-  | 'Resuelto'
-  | 'Recurrente'
-  | 'En remisión'
-  | 'Inactivo'
-  | 'No determinable';
-/** Estado del procedimiento, cuando la nota permite distinguir su ejecución. */
-export type ProcedureStatus =
-  | 'Planificado'
-  | 'Indicado'
-  | 'En curso'
-  | 'Realizado'
-  | 'Cancelado'
-  | 'No realizado'
-  | 'No determinable';
-/** Gravedad sólo cuando está escrita o inequívocamente expresada en la nota. */
-export type Severity = 'Leve' | 'Moderada' | 'Grave' | 'Crítica';
-
 /** One annotated concept block. A case may contain any number of concepts. */
 export interface ConceptAnnotation {
   /**
@@ -1239,14 +935,6 @@ export interface ConceptAnnotation {
   cert: Certainty;
   temp: Temporality;
   suj: Subject;
-  /** Sección de la nota clínica donde se ubica el concepto. */
-  section?: string | null;
-  /** Experimental local: sólo se completa para hallazgos clínicos explícitos. */
-  clinicalStatus?: ClinicalStatus | null;
-  /** Experimental local: sólo se completa para procedimientos explícitos. */
-  procedureStatus?: ProcedureStatus | null;
-  /** Experimental local: gravedad expresada; no se infiere desde el concepto. */
-  severity?: Severity | null;
   /** True when the annotator explicitly confirms the four assertion attributes. */
   contextReviewed?: boolean;
   /** Fixed source span when the concept was produced from premarking. */
@@ -1284,8 +972,10 @@ export function conceptIsComplete(concept: ConceptAnnotation): boolean {
 
 /** Candidates that still require an explicit clinical/non-clinical decision. */
 export function actionablePendingSpans(spans: readonly PremarkedSpan[]): PremarkedSpan[] {
+  // Every pending span remains in the human decision queue. Legacy review
+  // dispositions are provenance only and must not hide a candidate.
   return spans.filter(
-    (span) => span.status === 'pendiente' && span.review?.disposition !== 'excluido'
+    (span) => span.status === 'pendiente' || (span.status === 'descartado' && !isHumanExcludedSpan(span))
   );
 }
 
@@ -1330,7 +1020,7 @@ export function reconcileConceptSpanLinks(
       const literal = concept.textoLiteral.trim();
       const candidates = normalizedSpans.filter(
         (span) =>
-          span.review?.disposition !== 'excluido' &&
+          !isHumanExcludedSpan(span) &&
           !linkedSpanIds.has(span.spanId) &&
           span.textoLiteral.trim() === literal
       );
@@ -1349,15 +1039,9 @@ export function reconcileConceptSpanLinks(
 
     linkedSpanIds.add(sourceSpan.spanId);
     linkedCount += 1;
-    if (conceptIsComplete(concept)) {
-      // A persisted complete concept is the explicit human decision for its
-      // source span. Repair stale candidate status during rehydration.
-      sourceSpan.status = 'confirmado';
-      sourceSpan.review = {
-        disposition: 'elegible',
-        reason: sourceSpan.review?.reason ?? 'Vinculada al concepto codificado.',
-      };
-    }
+    // Do not repair or overwrite the span's status/review while loading. The
+    // concept link is structural; the clinical decision remains exactly as
+    // persisted and can be resolved by the annotator if inconsistent.
   }
 
   return {
@@ -1663,10 +1347,15 @@ export const ASSISTED_ANNOTATION_PROTOCOL: AnnotationProtocol = {
   candidateMetadataStripped: true,
   suggestedSctidVisible: false,
   suggestedCategoryApplied: false,
+  semanticAutomationEnabled: false,
   exhaustiveReviewRequired: true,
   coreBlindIncluded: false,
   preannotationsPresent: true,
   lexicalLayerEnabled: true,
+  lexicalCandidateMetadataVisible: false,
+  lexicalPreferredSenseVisible: false,
+  lexicalSenseRankingVisible: false,
+  lexicalSenseCodebookAvailable: false,
 };
 
 export const CORE_BLIND_PROTOCOL: AnnotationProtocol = {
@@ -1676,9 +1365,14 @@ export const CORE_BLIND_PROTOCOL: AnnotationProtocol = {
   candidateMetadataStripped: true,
   suggestedSctidVisible: false,
   suggestedCategoryApplied: false,
+  semanticAutomationEnabled: false,
   exhaustiveReviewRequired: true,
   coreBlindIncluded: true,
   preannotationsPresent: false,
+  lexicalCandidateMetadataVisible: false,
+  lexicalPreferredSenseVisible: false,
+  lexicalSenseRankingVisible: false,
+  lexicalSenseCodebookAvailable: false,
 };
 
 /** Categories currently enabled, with their SNOMED hierarchy ECL constraint. */
@@ -1692,25 +1386,6 @@ export const POLARITIES: Polarity[] = ['Activo', 'Negado'];
 export const CERTAINTIES: Certainty[] = ['Confirmado', 'Sospecha', 'Diferencial'];
 export const TEMPORALITIES: Temporality[] = ['Actual', 'Histórico'];
 export const SUBJECTS: Subject[] = ['Paciente', 'Familiar'];
-export const CLINICAL_STATUSES: ClinicalStatus[] = [
-  'Activo',
-  'Resuelto',
-  'Recurrente',
-  'En remisión',
-  'Inactivo',
-  'No determinable',
-];
-export const PROCEDURE_STATUSES: ProcedureStatus[] = [
-  'Planificado',
-  'Indicado',
-  'En curso',
-  'Realizado',
-  'Cancelado',
-  'No realizado',
-  'No determinable',
-];
-export const SEVERITIES: Severity[] = ['Leve', 'Moderada', 'Grave', 'Crítica'];
-
 /** Medical specialties offered for note-level provenance, sorted alphabetically. */
 export const MEDICAL_SPECIALTIES: string[] = [
   'Alergología e inmunología clínica',
@@ -1790,10 +1465,6 @@ export function newConcept(sequence?: number): ConceptAnnotation {
     cert: 'Confirmado',
     temp: 'Actual',
     suj: 'Paciente',
-    section: null,
-    clinicalStatus: null,
-    procedureStatus: null,
-    severity: null,
     contextReviewed: false,
   };
 }

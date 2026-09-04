@@ -30,7 +30,7 @@ app-annotator .mark-both {
   --mark-background: #fef3c7;
   --mark-border: #b45309;
 }
-/* Automatic pre-marks stay neutral until the annotator assigns a dimension. */
+/* Batch premarks stay neutral until the annotator assigns a dimension. */
 app-annotator .mark-pending,
 app-annotator .premarked-span:not(.mark-clinical):not(.mark-lexical):not(.mark-both) {
   --mark-background: #e8edf3;

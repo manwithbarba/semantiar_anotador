@@ -503,7 +503,7 @@ describe('App', () => {
     expect(attributes.textContent).toContain('Editar atributos');
   });
 
-  it('should expose category-specific attributes and require explicit context confirmation for new concepts', async () => {
+  it('should keep the clinical concept form neutral without experimental attributes', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
@@ -527,36 +527,112 @@ describe('App', () => {
     }]);
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('.f-section')).toBeTruthy();
-    expect(fixture.nativeElement.textContent).toContain('Estado clínico');
-    expect(fixture.nativeElement.textContent).toContain('Severidad (si aparece)');
+    expect(fixture.nativeElement.querySelector('.f-section')).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Estado clínico');
+    expect(fixture.nativeElement.textContent).not.toContain('Severidad');
     expect(fixture.nativeElement.textContent).not.toContain('Estado del procedimiento');
     expect(conceptIsComplete(concept)).toBe(false);
 
-    annotator.updateConceptField(0, 0, 'section', 'evolución');
-    annotator.updateConceptField(0, 0, 'clinicalStatus', 'Recurrente');
-    annotator.updateConceptField(0, 0, 'severity', 'Moderada');
     annotator.setClinicalContextReviewed(0, 0, true);
-    expect(annotator.cases()[0].concepts[0]).toMatchObject({
-      section: 'evolución',
-      clinicalStatus: 'Recurrente',
-      severity: 'Moderada',
-      contextReviewed: true,
-    });
     expect(conceptIsComplete(annotator.cases()[0].concepts[0])).toBe(true);
-
     annotator.onCategoryChange(0, 0, 'Procedimiento');
-    fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Estado del procedimiento');
-    expect(fixture.nativeElement.textContent).not.toContain('Estado clínico');
     expect(annotator.cases()[0].concepts[0]).toMatchObject({
       cat: 'Procedimiento',
-      clinicalStatus: null,
-      severity: null,
-      procedureStatus: null,
       sctid: '',
       term: '',
     });
+  });
+
+  it('should strip legacy semantic suggestions and experimental concept fields on export', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const annotator = fixture.debugElement.query(By.directive(AnnotatorComponent))
+      .componentInstance as AnnotatorComponent;
+    annotator.unifiedReviewPrototype.set(false);
+    annotator.cases.set([{
+      id: 'NEUTRAL-EXPORT-001',
+      text: 'TTO',
+      textNorm: 'TTO',
+      spans: [{
+        spanId: 'legacy-001',
+        start: 0,
+        end: 3,
+        textoLiteral: 'TTO',
+        origin: 'dict',
+        confidence: 0.9,
+        status: 'descartado',
+        review: { disposition: 'excluido', reason: 'regla automática antigua' },
+        suggest: { category: 'Procedimiento', expansionAbbrev: 'tratamiento' },
+      } as any],
+      concepts: [{
+        ...newConcept(1),
+        cat: 'Hallazgo clínico',
+        sctid: '386661006',
+        term: 'Fiebre',
+        textoLiteral: 'TTO',
+        section: 'evolución',
+        clinicalStatus: 'Activo',
+        procedureStatus: 'Realizado',
+        severity: 'Leve',
+      } as any],
+      lexicalMentions: [{
+        ...newHumanLexicalMention('legacy-lexical-001', 0, 3, 'TTO'),
+        candidateSenseIds: ['legacy:automatic-expansion'],
+        annotation: {
+          ...newHumanLexicalMention('legacy-lexical-001', 0, 3, 'TTO').annotation,
+          decisionStatus: 'resolved',
+          senseId: 'legacy:automatic-expansion',
+        },
+      }],
+      comentarios: '',
+      review: { status: 'pending' },
+    }]);
+    annotator.lexicalInventory.set({
+      schemaVersion: '2.0',
+      layerVersion: 'SEMANTIAR-LEXICAL-2.0',
+      inventoryVersion: 'legacy-inventory',
+      locale: 'es-AR',
+      status: 'provisional',
+      rankingPresent: false,
+      probabilitiesPresent: false,
+      annotatorMayProposeNewSense: true,
+      annotatorMayAbstain: true,
+      abbreviations: [{
+        key: 'TTO',
+        caseSensitiveForms: ['TTO'],
+        senses: [{ senseId: 'legacy:automatic-expansion', expansion: 'tratamiento' }],
+      }],
+    });
+
+    let capturedBlob: Blob | undefined;
+    const createObjectUrl = vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => {
+      capturedBlob = blob as Blob;
+      return 'blob:neutral-export-test';
+    });
+    const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+
+    annotator.download();
+    const outputText = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(capturedBlob!);
+    });
+    const output = JSON.parse(outputText);
+    expect(output.cases[0].spans[0]).not.toHaveProperty('suggest');
+    expect(output.cases[0].spans[0]).not.toHaveProperty('review');
+    expect(output.cases[0].spans[0].status).toBe('pendiente');
+    expect(output.cases[0].concepts[0]).not.toHaveProperty('section');
+    expect(output.cases[0].concepts[0]).not.toHaveProperty('clinicalStatus');
+    expect(output.cases[0].concepts[0]).not.toHaveProperty('procedureStatus');
+    expect(output.cases[0].concepts[0]).not.toHaveProperty('severity');
+    expect(output.cases[0].lexicalMentions[0].candidateSenseIds).toEqual([]);
+    expect(output).not.toHaveProperty('_lexicalInventory');
+
+    click.mockRestore();
+    revokeObjectUrl.mockRestore();
+    createObjectUrl.mockRestore();
   });
 
   it('should keep the free-form meaning input mounted while typing', async () => {
@@ -1570,7 +1646,7 @@ describe('App', () => {
       ])
     );
     expect(text).toContain('Sin clasificar deja el papel vacío');
-    expect(text).toContain('las mayúsculas no prueban que sea una sigla');
+    expect(text).toContain('la escritura por sí sola no determina el significado');
     expect(text).not.toContain('sense:internal-only');
     expect(text).not.toContain('posición 0–2');
   });

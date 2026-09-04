@@ -104,6 +104,12 @@ function validateAndNormalizeConcepts(raw: unknown, caseId: string): ConceptAnno
       );
     }
     const concept = item as Partial<ConceptAnnotation>;
+    const rawConcept = item as Record<string, unknown>;
+    const conceptWithoutRemovedFields = { ...rawConcept };
+    delete conceptWithoutRemovedFields['section'];
+    delete conceptWithoutRemovedFields['clinicalStatus'];
+    delete conceptWithoutRemovedFields['procedureStatus'];
+    delete conceptWithoutRemovedFields['severity'];
     if (typeof concept.sctid === 'number') {
       throw new AnnotationInteropError(
         `El SCTID del concepto ${index + 1} del caso “${caseId}” está guardado como número. ` +
@@ -121,7 +127,7 @@ function validateAndNormalizeConcepts(raw: unknown, caseId: string): ConceptAnno
         `El SCTID “${sctid}” del caso “${caseId}” no tiene un formato válido.`
       );
     }
-    return { ...concept, sctid } as ConceptAnnotation;
+    return { ...conceptWithoutRemovedFields, sctid } as ConceptAnnotation;
   });
 }
 

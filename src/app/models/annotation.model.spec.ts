@@ -17,6 +17,7 @@ import {
   normalizeLexicalMentions,
   normalizeLexicalReview,
   normalizePremarkedSpans,
+  isHumanExcludedSpan,
 } from './annotation.model';
 
 describe('premarked span helpers', () => {
@@ -209,175 +210,75 @@ describe('premarked span helpers', () => {
       .join('')).toBe(text);
   });
 
-  it('excludes isolated laboratory results but retains vital signs with values', () => {
-    const text = 'GOT 38, GPT 49, TA 120/80.';
+  it('keeps every valid premark neutral and ignores legacy semantic decisions', () => {
+    const text = 'GOT 38, EG 28 sem. PR en ECG. TTO indicado.';
     const result = normalizePremarkedSpans(
       [
-        { spanId: 's001', start: 0, end: 3, textoLiteral: 'GOT', origin: 'dict', confidence: 0.9, status: 'pendiente' },
-        { spanId: 's002', start: 8, end: 11, textoLiteral: 'GPT', origin: 'dict', confidence: 0.9, status: 'pendiente' },
-        { spanId: 's003', start: 16, end: 18, textoLiteral: 'TA', origin: 'dict', confidence: 0.9, status: 'pendiente' },
+        { spanId: 's001', start: 0, end: 3, textoLiteral: 'GOT', origin: 'dict', confidence: 0.9, status: 'pendiente', review: { disposition: 'excluido', reason: 'regla automática antigua' } },
+        { spanId: 's002', start: 8, end: 10, textoLiteral: 'EG', origin: 'dict', confidence: 0.6, status: 'pendiente', review: { disposition: 'elegible', reason: 'clasificación automática antigua' } },
+        { spanId: 's003', start: 19, end: 21, textoLiteral: 'PR', origin: 'dict', confidence: 0.6, status: 'pendiente', review: { disposition: 'excluido', reason: 'expansión automática antigua' } },
+        { spanId: 's004', start: 30, end: 33, textoLiteral: 'TTO', origin: 'dict', confidence: 0.6, status: 'pendiente', suggest: { category: 'Procedimiento', expansionAbbrev: 'tratamiento' } } as any,
       ],
-      text
+      text,
     );
 
-    expect(result.spans.map((span) => span.review?.disposition)).toEqual(['excluido', 'excluido', 'elegible']);
-    expect(result.spans[2].suggest?.category).toBe('Hallazgo clínico');
-    expect(buildTextSegments(text, result.spans).map((segment) => segment.value).join('')).toBe(text);
-  });
-
-  it('uses context to avoid default EG and PR expansions', () => {
-    const text = 'EG: 28.5 sem. PR 0.16 en ECG.';
-    const result = normalizePremarkedSpans(
-      [
-        { spanId: 's001', start: 0, end: 2, textoLiteral: 'EG', origin: 'dict', confidence: 0.6, status: 'pendiente' },
-        { spanId: 's002', start: 14, end: 16, textoLiteral: 'PR', origin: 'dict', confidence: 0.6, status: 'pendiente' },
-      ],
-      text
-    );
-
-    expect(result.spans[0].suggest?.expansionAbbrev).toBe('Edad gestacional');
-    expect(result.spans[1].review?.disposition).toBe('excluido');
-  });
-
-  it('preclassifies tri-axial candidates without assigning a concept', () => {
-    const text = 'AVP infundiendo PHP. Se solicita ECG.';
-    const result = normalizePremarkedSpans(
-      [
-        { spanId: 's001', start: 0, end: 3, textoLiteral: 'AVP', origin: 'dict', confidence: 0.9, status: 'pendiente' },
-        { spanId: 's002', start: 16, end: 19, textoLiteral: 'PHP', origin: 'dict', confidence: 0.9, status: 'pendiente' },
-        { spanId: 's003', start: 33, end: 36, textoLiteral: 'ECG', origin: 'dict', confidence: 0.9, status: 'pendiente' },
-      ],
-      text
-    );
-
-    expect(result.spans.map((span) => span.suggest?.category)).toEqual([
-      'Hallazgo clínico',
-      'Fármaco',
-      'Procedimiento',
+    expect(result.spans).toHaveLength(4);
+    expect(result.spans.every((span) => span.status === 'pendiente')).toBe(true);
+    expect(result.spans.map((span) => span.review?.disposition)).toEqual([
+      'excluido',
+      'elegible',
+      'excluido',
+      undefined,
     ]);
-    expect(result.spans.every((span) => !('sctid' in span))).toBe(true);
+    expect(result.spans.every((span) => !Object.prototype.hasOwnProperty.call(span, 'suggest'))).toBe(true);
+    expect(buildTextMarks(text, result.spans)).toHaveLength(4);
+    expect(result.spans.every((span) => !isHumanExcludedSpan(span))).toBe(true);
+
+    const humanLexical = {
+      ...result.spans[0],
+      status: 'confirmado' as const,
+      review: { disposition: 'excluido' as const, reason: 'Clasificada como forma breve.' },
+      humanAudit: { lastAction: 'accepted' as const },
+    };
+    expect(isHumanExcludedSpan(humanLexical)).toBe(true);
   });
 
-  it('excludes administrative terms (PTE, MC, TTO, GI)', () => {
-    const text = 'PTE estable. MC: dolor. TTO indicado. Compromiso GI.';
-    const mkSpan = (id: string, start: number, end: number, lit: string) =>
-      ({ spanId: id, start, end, textoLiteral: lit, origin: 'dict' as const, confidence: 0.9, status: 'pendiente' as const });
-    const result = normalizePremarkedSpans(
-      [mkSpan('s1', 0, 3, 'PTE'), mkSpan('s2', 13, 15, 'MC'), mkSpan('s3', 23, 26, 'TTO'), mkSpan('s4', 49, 51, 'GI')],
-      text
-    );
-    expect(result.spans.every((s) => s.review?.disposition === 'excluido')).toBe(true);
-  });
-
-  it('excludes new extended lab analytes with values (PLAQ, ALDOLASA, HTO, BT)', () => {
-    const text = 'PLAQ 344000. Aldolasa 8. HTO 41. BT 0.27.';
-    const mkSpan = (id: string, start: number, end: number, lit: string) =>
-      ({ spanId: id, start, end, textoLiteral: lit, origin: 'dict' as const, confidence: 0.9, status: 'pendiente' as const });
-    const result = normalizePremarkedSpans(
-      [
-        mkSpan('s1', 0, 4, 'PLAQ'),
-        mkSpan('s2', 13, 21, 'Aldolasa'),
-        mkSpan('s3', 23, 26, 'HTO'),
-        mkSpan('s4', 33, 35, 'BT'),
-      ],
-      text
-    );
-    expect(result.spans.every((s) => s.review?.disposition === 'excluido')).toBe(true);
-  });
-
-  it('classifies HB as finding in cardiac context and excludes it as lab analyte with value', () => {
-    const textCardiac = 'ECG: HB izquierdo. Ritmo sinusal.';
-    const textLab = 'Hb 13.8 g/dl.';
-    const mkSpan = (start: number, end: number, lit: string) =>
-      ({ spanId: 's1', start, end, textoLiteral: lit, origin: 'dict' as const, confidence: 0.9, status: 'pendiente' as const });
-
-    const cardiac = normalizePremarkedSpans([mkSpan(5, 7, 'HB')], textCardiac);
-    expect(cardiac.spans[0].review?.disposition).toBe('elegible');
-    expect(cardiac.spans[0].suggest?.category).toBe('Hallazgo clínico');
-
-    const lab = normalizePremarkedSpans([mkSpan(0, 2, 'Hb')], textLab);
-    expect(lab.spans[0].review?.disposition).toBe('excluido');
-  });
-
-  it('resolves EG in obstetric checklist context (PGE, parto terms)', () => {
-    const text = 'RHA+EG+CATARSIS+DIURESIS+PGE NEG';
-    const result = normalizePremarkedSpans(
-      [{ spanId: 's1', start: 4, end: 6, textoLiteral: 'EG', origin: 'dict' as const, confidence: 0.6, status: 'pendiente' as const }],
-      text
-    );
-    expect(result.spans[0].review?.disposition).toBe('elegible');
-    expect(result.spans[0].suggest?.expansionAbbrev).toBe('Edad gestacional');
-  });
-
-  it('resolves PR as procedure in urology context', () => {
-    const text = 'Se realizó PR. PSA elevado, urología.';
-    const result = normalizePremarkedSpans(
-      [{ spanId: 's1', start: 11, end: 13, textoLiteral: 'PR', origin: 'dict' as const, confidence: 0.6, status: 'pendiente' as const }],
-      text
-    );
-    expect(result.spans[0].review?.disposition).toBe('elegible');
-    expect(result.spans[0].suggest?.category).toBe('Procedimiento');
-  });
-
-  it('disambiguates SV as device (sonda vesical) vs procedure (signos vitales)', () => {
-    const textDevice = 'SV permeable, débito escaso.';
-    const textProcedure = 'CSV, monitoreado, medicado.';
-    const mkSpan = (end: number, lit: string) =>
-      ({ spanId: 's1', start: 0, end, textoLiteral: lit, origin: 'dict' as const, confidence: 0.9, status: 'pendiente' as const });
-
-    const device = normalizePremarkedSpans([mkSpan(2, 'SV')], textDevice);
-    expect(device.spans[0].suggest?.category).toBe('Hallazgo clínico');
-
-    const proc = normalizePremarkedSpans([mkSpan(3, 'CSV')], textProcedure);
-    expect(proc.spans[0].suggest?.category).toBe('Procedimiento');
-  });
-
-  it('classifies VDRL as procedure and unambiguous findings correctly', () => {
-    const text = 'VDRL NR. RHA presentes. Afebril.';
-    const result = normalizePremarkedSpans(
-      [
-        { spanId: 's1', start: 0, end: 4, textoLiteral: 'VDRL', origin: 'dict' as const, confidence: 0.9, status: 'pendiente' as const },
-        { spanId: 's2', start: 9, end: 12, textoLiteral: 'RHA', origin: 'dict' as const, confidence: 0.9, status: 'pendiente' as const },
-        { spanId: 's3', start: 24, end: 31, textoLiteral: 'Afebril', origin: 'dict' as const, confidence: 0.9, status: 'pendiente' as const },
-      ],
-      text
-    );
-    expect(result.spans[0].suggest?.category).toBe('Procedimiento');
-    expect(result.spans[1].suggest?.category).toBe('Hallazgo clínico');
-    expect(result.spans[2].suggest?.category).toBe('Hallazgo clínico');
-  });
-
-  it('excludes LDL followed by a numeric result and classifies physical examination as procedure', () => {
-    const text = 'LDL 153. examen fisico completo.';
+  it('reopens a legacy discarded premark unless a human discard audit exists', () => {
+    const text = 'TTO y GOT.';
     const result = normalizePremarkedSpans(
       [
         {
-          spanId: 's1',
+          spanId: 'machine-discarded',
           start: 0,
           end: 3,
-          textoLiteral: 'LDL',
+          textoLiteral: 'TTO',
           origin: 'dict',
           confidence: 0.9,
-          status: 'pendiente',
+          status: 'descartado',
+          review: { disposition: 'excluido', reason: 'regla automática antigua' },
         },
         {
-          spanId: 's2',
-          start: 9,
-          end: 22,
-          textoLiteral: 'examen fisico',
-          origin: 'matcher',
-          confidence: 0.8,
-          status: 'pendiente',
+          spanId: 'human-discarded',
+          start: 6,
+          end: 9,
+          textoLiteral: 'GOT',
+          origin: 'dict',
+          confidence: 0.9,
+          status: 'descartado',
+          review: { disposition: 'excluido', reason: 'Descartada por decisión explícita del anotador.' },
+          humanAudit: { lastAction: 'discarded' },
         },
       ],
-      text
+      text,
     );
 
-    expect(result.spans[0].review?.disposition).toBe('excluido');
-    expect(result.spans[1].review?.disposition).toBe('elegible');
-    expect(result.spans[1].suggest?.category).toBe('Procedimiento');
+    expect(result.spans.map((span) => span.status)).toEqual(['pendiente', 'descartado']);
+    expect(isHumanExcludedSpan(result.spans[0])).toBe(false);
+    expect(isHumanExcludedSpan(result.spans[1])).toBe(true);
+    expect(buildTextMarks(text, result.spans)).toEqual([
+      expect.objectContaining({ key: 'range-0-3', kind: 'pending' }),
+    ]);
   });
-
   it('retains human spans as eligible, including their origin and manual review reason', () => {
     const text = 'Ictericia de piel y mucosas.';
     const result = normalizePremarkedSpans(
@@ -409,10 +310,6 @@ describe('premarked span helpers', () => {
       sequence: 3,
       cat: '',
       sctid: '',
-      section: null,
-      clinicalStatus: null,
-      procedureStatus: null,
-      severity: null,
       contextReviewed: false,
     });
     expect(newConcept().sequence).toBeUndefined();
@@ -423,6 +320,7 @@ describe('premarked span helpers', () => {
       mode: 'assisted-span-review',
       preannotationsPresent: true,
       coreBlindIncluded: false,
+      semanticAutomationEnabled: false,
     });
     expect(CORE_BLIND_PROTOCOL).toMatchObject({
       mode: 'core-blind',

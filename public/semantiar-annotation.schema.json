@@ -60,6 +60,9 @@
                 "origin": { "enum": ["candidate", "dict", "matcher", "ner", "spancat", "rescue", "human"] },
                 "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
                 "status": { "enum": ["pendiente", "confirmado", "descartado"] }
+              },
+              "not": {
+                "required": ["suggest"]
               }
             }
           },
@@ -117,19 +120,19 @@
                 "cert": { "enum": ["Confirmado", "Sospecha", "Diferencial"] },
                 "temp": { "enum": ["Actual", "Histórico"] },
                 "suj": { "enum": ["Paciente", "Familiar"] },
-                "section": { "type": ["string", "null"] },
-                "clinicalStatus": {
-                  "enum": ["Activo", "Resuelto", "Recurrente", "En remisión", "Inactivo", "No determinable", null]
-                },
-                "procedureStatus": {
-                  "enum": ["Planificado", "Indicado", "En curso", "Realizado", "Cancelado", "No realizado", "No determinable", null]
-                },
-                "severity": { "enum": ["Leve", "Moderada", "Grave", "Crítica", null] },
                 "contextReviewed": { "type": "boolean" },
                 "sctid": {
                   "type": "string",
                   "pattern": "^(|[0-9]{6,18})$"
                 }
+              },
+              "not": {
+                "anyOf": [
+                  { "required": ["section"] },
+                  { "required": ["clinicalStatus"] },
+                  { "required": ["procedureStatus"] },
+                  { "required": ["severity"] }
+                ]
               }
             }
           }
