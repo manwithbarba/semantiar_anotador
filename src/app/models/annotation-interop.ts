@@ -194,6 +194,71 @@ function assertInterchangeSchema(raw: unknown): void {
   );
 }
 
+/**
+ * The first exported lots used schemaVersion 1.0.0 before the neutral concept
+ * contract removed clinical status fields.  Keep strict validation for the
+ * current contract, but allow a clearly identifiable old lot to pass through
+ * the migration path when removing only those known legacy properties makes it
+ * valid.  The input object is never mutated.
+ */
+function stripLegacySemanticFieldsForSchemaCheck(raw: unknown): {
+  sanitized: unknown;
+  removed: boolean;
+} {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { sanitized: raw, removed: false };
+  }
+
+  const input = raw as Record<string, unknown>;
+  if (!Array.isArray(input['cases'])) {
+    return { sanitized: raw, removed: false };
+  }
+
+  let removed = false;
+  const cases = (input['cases'] as unknown[]).map((rawCase) => {
+    if (!rawCase || typeof rawCase !== 'object' || Array.isArray(rawCase)) {
+      return rawCase;
+    }
+
+    const caseRecord = rawCase as Record<string, unknown>;
+    const cleanCase: Record<string, unknown> = { ...caseRecord };
+
+    if (Array.isArray(caseRecord['spans'])) {
+      cleanCase['spans'] = (caseRecord['spans'] as unknown[]).map((rawSpan) => {
+        if (!rawSpan || typeof rawSpan !== 'object' || Array.isArray(rawSpan)) {
+          return rawSpan;
+        }
+        const span = { ...(rawSpan as Record<string, unknown>) };
+        if (Object.prototype.hasOwnProperty.call(span, 'suggest')) {
+          delete span['suggest'];
+          removed = true;
+        }
+        return span;
+      });
+    }
+
+    if (Array.isArray(caseRecord['concepts'])) {
+      cleanCase['concepts'] = (caseRecord['concepts'] as unknown[]).map((rawConcept) => {
+        if (!rawConcept || typeof rawConcept !== 'object' || Array.isArray(rawConcept)) {
+          return rawConcept;
+        }
+        const concept = { ...(rawConcept as Record<string, unknown>) };
+        for (const key of ['section', 'clinicalStatus', 'procedureStatus', 'severity']) {
+          if (Object.prototype.hasOwnProperty.call(concept, key)) {
+            delete concept[key];
+            removed = true;
+          }
+        }
+        return concept;
+      });
+    }
+
+    return cleanCase;
+  });
+
+  return { sanitized: { ...input, cases }, removed };
+}
+
 export function prepareAnnotationDocument(raw: unknown): PreparedAnnotationDocument {
   if (!raw || typeof raw !== 'object') {
     throw new AnnotationInteropError('El JSON debe contener un objeto en la raíz.');
@@ -208,8 +273,19 @@ export function prepareAnnotationDocument(raw: unknown): PreparedAnnotationDocum
       throw new AnnotationInteropError('"schemaVersion" debe ser una cadena de texto.');
     }
     if (input.schemaVersion === SEMANTIAR_SCHEMA_VERSION) {
-      assertInterchangeSchema(raw);
-      strictInterchange = true;
+      if (validateInterchangeSchema(raw)) {
+        strictInterchange = true;
+      } else {
+        const legacyCheck = stripLegacySemanticFieldsForSchemaCheck(raw);
+        if (legacyCheck.removed && validateInterchangeSchema(legacyCheck.sanitized)) {
+          sourceSchemaVersion = input.schemaVersion;
+          warnings.push(
+            `Lote ${input.schemaVersion}: se eliminaron campos semánticos heredados y se migró al contrato neutral.`
+          );
+        } else {
+          assertInterchangeSchema(raw);
+        }
+      }
     } else if (KNOWN_LEGACY_SCHEMA_VERSIONS.has(input.schemaVersion)) {
       sourceSchemaVersion = input.schemaVersion;
       warnings.push(
@@ -251,7 +327,17 @@ export function prepareAnnotationDocument(raw: unknown): PreparedAnnotationDocum
     const sourceTextNorm =
       typeof rawCase.textNorm === 'string' ? rawCase.textNorm : rawCase.text;
     const textNorm = canonicalizeAnnotationText(sourceTextNorm);
-    const spans = remapSpans(rawCase.spans, sourceTextNorm, textNorm) as PremarkedSpan[] | undefined;
+    const remappedSpans = remapSpans(rawCase.spans, sourceTextNorm, textNorm);
+    const spans = Array.isArray(remappedSpans)
+      ? remappedSpans.map((rawSpan) => {
+          if (!rawSpan || typeof rawSpan !== 'object' || Array.isArray(rawSpan)) {
+            return rawSpan;
+          }
+          const span = { ...(rawSpan as Record<string, unknown>) };
+          delete span['suggest'];
+          return span;
+        }) as PremarkedSpan[]
+      : (remappedSpans as PremarkedSpan[] | undefined);
     const lexicalMentions = remapLexicalMentions(
       rawCase.lexicalMentions,
       sourceTextNorm,

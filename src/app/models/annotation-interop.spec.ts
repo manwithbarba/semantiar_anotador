@@ -108,6 +108,67 @@ describe('SemantIAr annotation interoperability', () => {
     ).toThrow(/no lo cumple/);
   });
 
+  it('migrates old 1.0.0 lots that still contain removed semantic fields', () => {
+    const prepared = prepareAnnotationDocument({
+      schemaVersion: '1.0.0',
+      textProfile: {
+        normalization: 'NFC',
+        lineEndings: 'LF',
+        offsetUnit: 'utf16-code-unit',
+      },
+      terminology: {
+        server: 'https://example.test/fhir',
+        editionUri: 'http://snomed.info/sct',
+        version: null,
+        displayLanguage: 'es',
+        capturedAt: '2026-08-31T00:00:00.000Z',
+      },
+      producer: { app: 'SemantIAr', build: 'legacy', platform: 'web' },
+      cases: [
+        {
+          id: 'LEGACY-1.0.0',
+          text: 'Paciente afebril.',
+          spans: [
+            {
+              spanId: 'legacy-span',
+              start: 9,
+              end: 16,
+              textoLiteral: 'afebril',
+              origin: 'dict',
+              confidence: 0.9,
+              status: 'confirmado',
+              suggest: { category: 'Hallazgo clínico' },
+            },
+          ],
+          concepts: [
+            {
+              cat: 'Hallazgo clínico',
+              sctid: '373572006',
+              term: 'Afebril',
+              textoLiteral: 'afebril',
+              pol: 'Activo',
+              cert: 'Confirmado',
+              temp: 'Actual',
+              suj: 'Paciente',
+              section: 'examen físico',
+              clinicalStatus: 'Activo',
+              procedureStatus: null,
+              severity: null,
+              contextReviewed: true,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(prepared.document.schemaVersion).toBeUndefined();
+    expect(prepared.document.sourceSchemaVersion).toBe('1.0.0');
+    expect(prepared.warnings[0]).toMatch(/campos semánticos heredados/);
+    expect(prepared.document.cases[0].spans?.[0]).not.toHaveProperty('suggest');
+    expect(prepared.document.cases[0].concepts?.[0]).not.toHaveProperty('procedureStatus');
+    expect(prepared.document.cases[0].concepts?.[0]).not.toHaveProperty('severity');
+  });
+
   it('migrates every known legacy lot schema without requiring regenerated JSON', () => {
     for (const schemaVersion of [
       '2.0-core-blind',
