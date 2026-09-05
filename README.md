@@ -6,7 +6,7 @@ usando el buscador embebido (`autocomplete-binding`) restringido por jerarquía.
 Pensada para el flujo de calibración de anotadores del proyecto SEMANTIAR
 (corpus clínico en español rioplatense).
 
-## Versión vigente · 9 de agosto de 2026
+## Versión vigente · 5 de septiembre de 2026
 
 La versión actual incorpora el flujo unificado de revisión que se está
 evaluando con anotadores profesionales de salud. La revisión de cada celda se
@@ -14,6 +14,14 @@ organiza en una secuencia visible y no mezcla la lectura exhaustiva de la nota
 con la decisión detallada de cada aparición. La publicación operativa se hace
 desde `main` mediante GitHub Pages; los lotes clínicos de trabajo no forman
 parte de la publicación.
+
+## Referencias del pipeline
+
+La interfaz del anotador se mantiene separada del pipeline doctoral. La
+implementación y su trazabilidad están en
+[`proyecto_doctoral_semantiar_15_05_26`](https://github.com/manwithbarba/proyecto_doctoral_semantiar_15_05_26/tree/codex/pipeline-optimization-20260723),
+y el perfil portable para notebooks CPU de 32 GB está documentado en su
+[`guía CPU`](https://github.com/manwithbarba/proyecto_doctoral_semantiar_15_05_26/blob/codex/pipeline-optimization-20260723/docs/OPERACION_CPU_32GB.md).
 
 ## Empezar a anotar
 
