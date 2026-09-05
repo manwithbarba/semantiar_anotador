@@ -60,15 +60,6 @@ ni identificadores de casos o pacientes.
 El acceso **Manuales** de la aplicación y este README apuntan al mismo recurso
 vigente.
 
-## Archivo documental CAL3
-
-La carpeta [`docs/cal3/`](docs/cal3/README.md) conserva una selección curada y
-sanitizada de documentación de Calibración 3: protocolo, material técnico,
-contratos UI/JSON y léxico, diccionario de datos y gobernanza editorial. Son
-fuentes candidatas para revisión humana; no contienen lotes clínicos, JSON de
-trabajo, identificadores de pacientes ni credenciales. El inventario y los
-criterios de selección se mantienen en el repositorio doctoral del pipeline.
-
 ## Flujo unificado de revisión
 
 1. **Cargar JSON** con los textos a anotar, o reabrir un JSON de salida previo
